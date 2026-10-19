@@ -4,7 +4,7 @@ import { ModelSizing } from "./model-catalog/definitions/model-definition";
 
 const GB_PER_GIB = 1.073741824;
 const toGib = (gb: number) => gb / GB_PER_GIB;
-const vllm = engineProfile("vllm", "0.31.1");
+const vllm = engineProfile("0.31.1");
 
 function entry(sizing: Record<string, unknown>, extra: Partial<FootprintEntry> = {}): FootprintEntry {
   return { sizing: ModelSizing.parse({ maxContextLength: 262144, minKvCacheGb: 1, ...sizing }), tags: [], placement: { limits: [] }, ...extra };

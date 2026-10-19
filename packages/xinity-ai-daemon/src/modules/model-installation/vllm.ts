@@ -1,8 +1,6 @@
 import {
   catchError,
-  concat,
   defer,
-  EMPTY,
   endWith,
   filter,
   from,
@@ -23,19 +21,21 @@ import {
   createSystemdVllmOps,
   SINGLE_NODE,
   type MemoryUse,
+  type NodeGroup,
+  type VllmInstanceConfig,
   type VllmOps,
 } from "./vllm-ops";
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
-import { DOES_NOT_FIT_ON_NODE, chargedAgainstHostMemory, engineProfile, engineArgValue, sharesHostMemory, gpuId, maxNumSeqs, tensorParallelLayouts, type DesiredGroup, type GpuInfo, type GroupStage, type GroupMemberHealth } from "common-env";
+import { DOES_NOT_FIT_ON_NODE, chargedAgainstHostMemory, engineProfile, engineArgValue, sharesHostMemory, gpuId, maxNumSeqs, tensorParallelLayout, type DeploymentSettings, type DesiredGroup, type GpuInfo, type GroupStage, type GroupMemberHealth } from "common-env";
 import { downloadModel, largestWeightFileBytes } from "./vllm-download";
-import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
+import { devicesFor, readHostDevices, resolvePinnedCards, type GpuDevices } from "./gpu-devices";
 import type { ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
 import { addressInUse, coupledPaths, memberGroupFrom } from "./coupling-network";
 import { peerSourceFor, sharePeerFilesFor } from "./peer-share";
-import { resolveInstallationEntry } from "./catalog";
+import { resolveInstallationEntry, type InstallationEntry } from "./catalog";
 import { updateInstallationState, getLocalInstallationState, getLocalInstallationStates } from "./state";
 
 const log = rootLogger.child({ name: "vllm" });
@@ -45,10 +45,10 @@ const WAITS_FOR_GROUP = "Waiting for the other machines of its group";
 
 const everyMemberAdmitted = (group: DesiredGroup) =>
   group.members.length === group.size
-  && group.members.every((member) => (member.stage === "admitted" || member.stage === "running") && member.generation === group.generation);
+  && group.members.every((member) => (member.stage === "admitted" || member.stage === "running"));
 
 const failedInItsAttempt = (group: DesiredGroup) =>
-  group.members.some((member) => member.stage === "failed" && member.generation === group.generation);
+  group.members.some((member) => member.stage === "failed");
 
 const behindItsGroup = (installation: SyncInstallation, reportedGeneration: number | null | undefined) =>
   // A member that never reported an attempt counts as on the current one.
@@ -136,7 +136,7 @@ async function markInstallationReady(installation: SyncInstallation, providerMod
     await warmupChatModel(installation.port, providerModel);
   }
   await updateInstallationState(installation.id, "ready", { statusMessage: HEALTHY, ...groupReport(installation, "running") });
-  releaseAdmission(installation.id);
+  admittedGb.delete(installation.id);
 }
 
 function throttledDownloadProgress(installationId: string, intervalMs: number): (progress: number) => Promise<void> {
@@ -208,7 +208,7 @@ const healthWatches = new Map<string, Subscription>();
 function watchUntilHealthy(installation: SyncInstallation, ops: VllmOps, providerModel: string, modelType?: string): void {
   stopWatching(installation.id);
   const watch: Subscription = pollUntilHealthy$(installation, ops, providerModel, modelType).pipe(
-    catchError((err) => handleInstallationError(err, installation, ops, true)),
+    catchError((err) => failInstallation(err, installation, ops, true)),
     finalize(() => {
       if (healthWatches.get(installation.id) === watch) {
         healthWatches.delete(installation.id);
@@ -229,7 +229,7 @@ export function perCardSizing(
   installation: Pick<SyncInstallation, "specifier" | "estCapacity" | "kvCacheCapacity">,
   sizing: ModelSizingFields | undefined,
   cards: number,
-): { weightGb: number; kvCacheGb: number } {
+): CardShare {
   // estCapacity is the VRAM occupied, which includes every card's copy of a replicated kv head, so
   // weights come from the catalog. Only a legacy entry lacks sizing, and it is never split.
   const weightGb = sizing
@@ -238,8 +238,7 @@ export function perCardSizing(
   if (cards <= 1) {
     return { weightGb, kvCacheGb: installation.kvCacheCapacity };
   }
-  const layout = tensorParallelLayouts({ ...sizing, weightGb }, { cards, kvCacheGb: installation.kvCacheCapacity })
-    .find((candidate) => candidate.tensorParallelSize === cards);
+  const layout = tensorParallelLayout({ ...sizing, weightGb }, { tensorParallelSize: cards, kvCacheGb: installation.kvCacheCapacity });
   if (!layout) {
     throw new Error(`${installation.specifier} cannot run tensor parallel across ${cards} cards`);
   }
@@ -252,6 +251,48 @@ type StartOutcome =
 
 const downloaded = new Set<string>();
 
+async function ensureDownloaded(installation: SyncInstallation, entry: InstallationEntry): Promise<void> {
+  if (downloaded.has(installation.id)) {
+    return;
+  }
+  const source = peerSourceFor(installation.group);
+  await updateInstallationState(installation.id, "downloading", {
+    statusMessage: source ? `Copying from ${source.name}` : "Downloading model",
+    progress: 0,
+    ...groupReport(installation, "preparing"),
+  });
+  await downloadModel(entry.engineSpecifier, throttledDownloadProgress(installation.id, 5000), entry.downloadFilter, { source });
+  downloaded.add(installation.id);
+}
+
+async function admitOnNode(
+  installation: SyncInstallation,
+  entry: InstallationEntry,
+  charge: (NodeCharge & { cards: number }) | undefined,
+  profile: HardwareProfile,
+  running: SyncInstallation[],
+): Promise<string | undefined> {
+  if (installation.group && !admittedGb.has(installation.id)) {
+    for (const { address } of installation.group.addresses) {
+      if (await addressInUse(address)) {
+        throw new Error(`Coupling address ${address} is already in use on its network`);
+      }
+    }
+  }
+  await dropPageCache();
+  if (!charge) {
+    return undefined;
+  }
+  // Admission reserves what the scheduler charged for loading, so a member it placed is never refused here for it.
+  const loadingGb = engineProfile().hostLoadingPerLargestFile * (entry.sizing?.largestFileGb ?? 0);
+  const sharedHostMemory = sharesHostMemory(profile.gpus);
+  return admit(installation.id, {
+    neededGb: chargedAgainstHostMemory({ gpuGb: charge.gpuGbPerCard * charge.cards, hostGb: charge.hostGb }, sharedHostMemory) + loadingGb,
+    chargedElsewhereGb: running.reduce((total, other) => total + chargedAgainstHostMemory({ gpuGb: other.estCapacity, hostGb: other.hostCapacity ?? 0 }, sharedHostMemory), 0),
+    usableGb: profile.hostMemoryGb,
+  });
+}
+
 async function downloadAndStart(installation: SyncInstallation, running: SyncInstallation[], ops: VllmOps): Promise<StartOutcome> {
   const entry = await resolveInstallationEntry(installation.specifier, "vllm");
   if (!entry) {
@@ -263,45 +304,12 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
   const devices = devicesFor(pinnedCards, profile.gpus, await readHostDevices());
   const perCard = perCardSizing(installation, entry.sizing, devices.tensorParallelSize * (installation.group?.size ?? 1));
 
-  if (!downloaded.has(installation.id)) {
-    const source = peerSourceFor(installation.group);
-    await updateInstallationState(installation.id, "downloading", {
-      statusMessage: source ? `Copying from ${source.name}` : "Downloading model",
-      progress: 0,
-      ...groupReport(installation, "preparing"),
-    });
-    await downloadModel(providerModel, throttledDownloadProgress(installation.id, 5000), entry.downloadFilter, { source });
-    downloaded.add(installation.id);
-  }
+  await ensureDownloaded(installation, entry);
 
   const charge = footprintCharge(installation, entry.sizing, devices.tensorParallelSize);
-  const gpuMemoryUtilization = computeGpuUtilization({
-    specifier: installation.specifier,
-    gpuGb: charge?.gpuGbPerCard ?? fittedGpuGb(perCard.weightGb, perCard.kvCacheGb),
-    gpuIds: installation.gpuIds,
-  }, profile);
-  const modelType = entry.type;
-
-  // Admission reserves what the scheduler charged for loading, so a member it placed is never refused here for it.
-  const admittedLoadingGb = engineProfile("vllm").hostLoadingPerLargestFile * (entry.sizing?.largestFileGb ?? 0);
-  if (installation.group && !admittedGb.has(installation.id)) {
-    for (const { address } of installation.group.addresses) {
-      if (await addressInUse(address)) {
-        throw new Error(`Coupling address ${address} is already in use on its network`);
-      }
-    }
-  }
-  await dropPageCache();
-  if (charge) {
-    const sharedHostMemory = sharesHostMemory(profile.gpus);
-    const waiting = await admit(installation.id, {
-      neededGb: chargedAgainstHostMemory({ gpuGb: charge.gpuGbPerCard * devices.tensorParallelSize, hostGb: charge.hostGb }, sharedHostMemory) + admittedLoadingGb,
-      chargedElsewhereGb: running.reduce((total, other) => total + chargedAgainstHostMemory({ gpuGb: other.estCapacity, hostGb: other.hostCapacity ?? 0 }, sharedHostMemory), 0),
-      usableGb: profile.hostMemoryGb,
-    });
-    if (waiting) {
-      return { started: false, waiting, ...groupReport(installation, "preparing") };
-    }
+  const waiting = await admitOnNode(installation, entry, charge && { ...charge, cards: devices.tensorParallelSize }, profile, running);
+  if (waiting) {
+    return { started: false, waiting, ...groupReport(installation, "preparing") };
   }
   if (installation.group && !everyMemberAdmitted(installation.group)) {
     return { started: false, waiting: WAITS_FOR_GROUP, ...groupReport(installation, "admitted") };
@@ -309,37 +317,39 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
   downloaded.delete(installation.id);
 
   await updateInstallationState(installation.id, "installing", { statusMessage: "Starting vLLM service" });
-  await ops.start(installation.id, {
-    model: providerModel,
+  await ops.start(installation.id, launchConfig({
+    model: {
+      vllmProviderName: providerModel,
+      modelType: entry.type,
+      trustRemoteCode: entry.tags.includes("custom_code"),
+      hasToolsTag: entry.tags.includes("tools"),
+      args: entry.args,
+    },
     port: installation.port,
-    kvCacheBytes: `${perCard.kvCacheGb}g`,
-    trustRemoteCode: entry.tags.includes("custom_code"),
-    gpuMemoryUtilization,
-    extraArgs: buildVllmExtraArgs(
-      modelType,
-      entry.tags.includes("tools"),
-      entry.args,
-      installation.hostCapacity === null
-        ? entry.sizing && maxNumSeqs({ sizing: entry.sizing, engineArgs: entry.args }, profile.gpus, installation.kvCacheCapacity)
-        : installation.maxNumSeqs ?? undefined,
-    ),
-    settings: installation.settings,
+    share: perCard,
+    charge,
+    maxNumSeqs: installation.hostCapacity === null
+      ? entry.sizing && maxNumSeqs({ sizing: entry.sizing, engineArgs: entry.args }, profile.gpus, installation.kvCacheCapacity)
+      : installation.maxNumSeqs ?? undefined,
+    loadingGb: await loadingAllowanceGb(providerModel),
+    profile,
     devices,
     group: installation.group ? memberGroupFrom(installation.group, await coupledPaths()) : SINGLE_NODE,
-    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, await loadingAllowanceGb(providerModel)),
-  });
+    settings: installation.settings,
+    gpuIds: installation.gpuIds,
+  }));
 
-  return { started: true, modelType, providerModel };
+  return { started: true, modelType: entry.type, providerModel };
 }
 
-type FootprintCharge = { gpuGbPerCard: number; hostGb: number };
+export type NodeCharge = { gpuGbPerCard: number; hostGb: number };
 
 // A row of the deprecated format is charged no host part, which a limit would turn into a kill.
-export function footprintCharge(
+function footprintCharge(
   installation: Pick<SyncInstallation, "estCapacity" | "hostCapacity">,
   sizing: ModelSizingFields | undefined,
   cards: number,
-): FootprintCharge | undefined {
+): NodeCharge | undefined {
   if (!sizing || installation.hostCapacity === null) {
     return undefined;
   }
@@ -350,12 +360,49 @@ const HOST_LIMIT_MARGIN = 1.1;
 const HOST_LIMIT_MIN_BYTES = 2 ** 30;
 
 export async function loadingAllowanceGb(providerModel: string, engineVersion?: string): Promise<number> {
-  return engineProfile("vllm", engineVersion).hostLoadingPerLargestFile * (await largestWeightFileBytes(providerModel)) / 1e9;
+  return engineProfile(engineVersion).hostLoadingPerLargestFile * (await largestWeightFileBytes(providerModel)) / 1e9;
 }
 
-// Not lowered once loading ends.
+// A running container keeps the limit it started with, so the loading allowance stays in it after loading.
 export function hostMemoryLimitBytes(hostGb: number, loadingGb: number): number {
   return Math.max(Math.ceil((hostGb * HOST_LIMIT_MARGIN + loadingGb) * 1e9), HOST_LIMIT_MIN_BYTES);
+}
+
+export type CardShare = { weightGb: number; kvCacheGb: number };
+
+export type LaunchPlan = {
+  model: { vllmProviderName: string; modelType: string | undefined; trustRemoteCode: boolean; hasToolsTag: boolean; args: readonly string[] };
+  port: number;
+  share: CardShare;
+  charge: NodeCharge | undefined;
+  maxNumSeqs: number | undefined;
+  loadingGb: number;
+  profile: HardwareProfile;
+  devices: GpuDevices;
+  group: NodeGroup;
+  settings?: DeploymentSettings | null;
+  gpuIds?: string[];
+  gpuMemoryUtilization?: number;
+};
+
+export function launchConfig(plan: LaunchPlan): VllmInstanceConfig {
+  const { model, share, charge } = plan;
+  return {
+    model: model.vllmProviderName,
+    port: plan.port,
+    kvCacheBytes: `${share.kvCacheGb}g`,
+    trustRemoteCode: model.trustRemoteCode,
+    gpuMemoryUtilization: plan.gpuMemoryUtilization ?? computeGpuUtilization({
+      specifier: model.vllmProviderName,
+      gpuGb: charge?.gpuGbPerCard ?? fittedGpuGb(share.weightGb, share.kvCacheGb),
+      gpuIds: plan.gpuIds,
+    }, plan.profile),
+    extraArgs: buildVllmExtraArgs(model.modelType, model.hasToolsTag, model.args, plan.maxNumSeqs),
+    settings: plan.settings,
+    devices: plan.devices,
+    group: plan.group,
+    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, plan.loadingGb),
+  };
 }
 
 async function availableMemoryGb(): Promise<number> {
@@ -368,20 +415,16 @@ async function availableMemoryGb(): Promise<number> {
 // until it is ready.
 const admittedGb = new Map<string, number>();
 
-function releaseAdmission(installationId: string): void {
+function abandonStart(installationId: string): void {
   admittedGb.delete(installationId);
+  downloaded.delete(installationId);
 }
 
 function forgetUndesired(desiredIds: ReadonlySet<string>): void {
-  for (const id of healthWatches.keys()) {
+  for (const id of new Set([...healthWatches.keys(), ...admittedGb.keys(), ...downloaded])) {
     if (!desiredIds.has(id)) {
       stopWatching(id);
-    }
-  }
-  for (const id of [...admittedGb.keys(), ...downloaded]) {
-    if (!desiredIds.has(id)) {
-      releaseAdmission(id);
-      downloaded.delete(id);
+      abandonStart(id);
     }
   }
 }
@@ -483,39 +526,28 @@ export function computeGpuUtilization(
 // Reconciliation
 // ---------------------------------------------------------------------------
 
-function reconcileStaleStates$(
-  installations: Array<SyncInstallation>,
-  activeSet: Set<string>,
-  ops: VllmOps,
-): Observable<void> {
+async function eachAtMost<T>(items: T[], concurrency: number, work: (item: T) => Promise<void>): Promise<void> {
+  const queue = [...items];
+  await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+    for (let item = queue.shift(); item !== undefined; item = queue.shift()) {
+      await work(item);
+    }
+  }));
+}
+
+async function reconcileStaleStates(installations: SyncInstallation[], activeSet: Set<string>, ops: VllmOps): Promise<void> {
   const activeAndDesired = installations.filter((i) => activeSet.has(i.id) && !healthWatches.has(i.id));
-  if (activeAndDesired.length === 0) {
-    return EMPTY;
-  }
-
   const stateMap = getLocalInstallationStates(activeAndDesired.map((i) => i.id));
-  const needsReconciliation = activeAndDesired.filter((i) => {
-    const state = stateMap.get(i.id);
-    return !state || state.lifecycleState !== "ready";
-  });
-
+  const needsReconciliation = activeAndDesired.filter((i) => stateMap.get(i.id)?.lifecycleState !== "ready");
   if (needsReconciliation.length === 0) {
-    return EMPTY;
+    return;
   }
 
   log.info(
     { instances: needsReconciliation.map((i) => `${i.specifier} (${i.id})`) },
     "vLLM reconciling stale state for running instances",
   );
-
-  return from(needsReconciliation).pipe(
-    mergeMap(
-      (installation) => defer(() => from(reconcileOne(installation, stateMap.get(installation.id), ops))),
-      4,
-    ),
-    ignoreElements(),
-    endWith(void 0 as void),
-  );
+  await eachAtMost(needsReconciliation, 4, (installation) => reconcileOne(installation, stateMap.get(installation.id), ops));
 }
 
 const OVER_HOST_BUDGET = "over its host memory budget";
@@ -541,15 +573,11 @@ async function reportHostUse(installation: SyncInstallation, statusMessage: stri
   }
 }
 
-function reportHostUse$(installations: SyncInstallation[], activeSet: Set<string>, ops: VllmOps): Observable<void> {
+async function reportHostUses(installations: SyncInstallation[], activeSet: Set<string>, ops: VllmOps): Promise<void> {
   const running = installations.filter((installation) => activeSet.has(installation.id));
   const states = getLocalInstallationStates(running.map((installation) => installation.id));
   const ready = running.filter((installation) => states.get(installation.id)?.lifecycleState === "ready");
-  return from(ready).pipe(
-    mergeMap((installation) => defer(() => from(reportHostUse(installation, states.get(installation.id)?.statusMessage ?? null, ops))), 4),
-    ignoreElements(),
-    endWith(void 0 as void),
-  );
+  await eachAtMost(ready, 4, (installation) => reportHostUse(installation, states.get(installation.id)?.statusMessage ?? null, ops));
 }
 
 async function reconcileOne(
@@ -605,9 +633,9 @@ async function reportExited(installation: SyncInstallation, ops: VllmOps): Promi
 }
 
 const exitedWhileRunning = (installation: SyncInstallation) =>
-  // Members do not restart on their own, so one its group still counts as running, with no process here, has exited.
+  // A member never restarts on its own. When its group still counts it as running but nothing runs here, it has exited.
   !!installation.group
-  && installation.group.members.some((member) => member.rank === installation.group!.rank && member.stage === "running" && member.generation === installation.group!.generation);
+  && installation.group.members.some((member) => member.rank === installation.group!.rank && member.stage === "running");
 
 // ---------------------------------------------------------------------------
 // Sync entry point
@@ -627,69 +655,46 @@ export function syncVllmInstallations$(
   installations: Array<SyncInstallation>,
   ops: VllmOps = resolveDefaultOps(),
 ): Observable<void> {
+  return defer(() => from(syncVllmInstallations(installations, ops)));
+}
+
+async function syncVllmInstallations(installations: SyncInstallation[], ops: VllmOps): Promise<void> {
   syncedMembers = installations.filter((installation) => installation.group);
   void sharePeerFilesFor(installations).catch((err) => log.warn({ err }, "Could not update the model files shared with group members"));
-  return defer(() => from(ops.ensureSetup())).pipe(
-    switchMap(() => from(ops.listRunning())),
-    switchMap((activeIds) => {
-      const desiredIds = new Set(installations.map((i) => i.id));
-      forgetUndesired(desiredIds);
-      const states = getLocalInstallationStates(activeIds);
-      const leaving = new Set(installations
-        .filter((i) => activeIds.includes(i.id) && !!i.group && (failedInItsAttempt(i.group) || behindItsGroup(i, states.get(i.id)?.groupGeneration)))
-        .map((i) => i.id));
-      const activeSet = new Set(activeIds.filter((id) => !leaving.has(id)));
-      const stale = activeIds.filter((id) => !desiredIds.has(id));
-      const toRemove = [...stale, ...leaving];
-      const candidates = installations.filter((i) => !activeSet.has(i.id));
+  await ops.ensureSetup();
+  const activeIds = await ops.listRunning();
 
-      if (stale.length) {
-        log.info({ ids: stale }, "vLLM removing stale instances");
-      }
-      if (leaving.size) {
-        log.info({ ids: [...leaving] }, "vLLM stopping members whose group failed or restarted");
-      }
-      if (candidates.length) {
-        log.info({ instances: candidates.map((i) => `${i.specifier} (${i.id})`) }, "vLLM adding instances");
-      }
+  const desiredIds = new Set(installations.map((i) => i.id));
+  forgetUndesired(desiredIds);
+  const states = getLocalInstallationStates(activeIds);
+  const leaving = new Set(installations
+    .filter((i) => activeIds.includes(i.id) && !!i.group && (failedInItsAttempt(i.group) || behindItsGroup(i, states.get(i.id)?.groupGeneration)))
+    .map((i) => i.id));
+  const activeSet = new Set(activeIds.filter((id) => !leaving.has(id)));
+  const stale = activeIds.filter((id) => !desiredIds.has(id));
+  const candidates = installations.filter((i) => !activeSet.has(i.id));
 
-      const reconcile$ = reconcileStaleStates$(installations, activeSet, ops);
-      const hostUse$ = reportHostUse$(installations, activeSet, ops);
-      const remove$ = removeStaleContainers$(toRemove, ops);
-      const start$ = startNewInstallations$(candidates, installations.filter((i) => activeSet.has(i.id)), ops);
-
-      const work: Observable<unknown>[] = [reconcile$, hostUse$];
-      if (toRemove.length > 0) {
-        work.push(remove$);
-      }
-      if (candidates.length > 0) {
-        work.push(start$);
-      }
-
-      return concat(...work).pipe(ignoreElements(), endWith(void 0 as void));
-    }),
-  );
-}
-
-function removeStaleContainers$(ids: string[], ops: VllmOps): Observable<void> {
-  return from(ids).pipe(
-    mergeMap(
-      (id) => defer(() => {
-        stopWatching(id);
-        return from(ops.stop(id));
-      }).pipe(tap(() => log.info({ id }, "vLLM stopped instance"))),
-      1,
-    ),
-    ignoreElements(),
-    endWith(void 0 as void),
-  );
-}
-
-function startNewInstallations$(candidates: SyncInstallation[], running: SyncInstallation[], ops: VllmOps): Observable<void> {
-  if (candidates.length === 0) {
-    return EMPTY;
+  if (stale.length) {
+    log.info({ ids: stale }, "vLLM removing stale instances");
+  }
+  if (leaving.size) {
+    log.info({ ids: [...leaving] }, "vLLM stopping members whose group failed or restarted");
+  }
+  if (candidates.length) {
+    log.info({ instances: candidates.map((i) => `${i.specifier} (${i.id})`) }, "vLLM adding instances");
   }
 
+  await reconcileStaleStates(installations, activeSet, ops);
+  await reportHostUses(installations, activeSet, ops);
+  for (const id of [...stale, ...leaving]) {
+    stopWatching(id);
+    await ops.stop(id);
+    log.info({ id }, "vLLM stopped instance");
+  }
+  await startNewInstallations(candidates, installations.filter((i) => activeSet.has(i.id)), ops);
+}
+
+async function startNewInstallations(candidates: SyncInstallation[], running: SyncInstallation[], ops: VllmOps): Promise<void> {
   const stateMap = getLocalInstallationStates(candidates.map((i) => i.id));
   const failedIds = new Set(candidates
     .filter((i) => stateMap.get(i.id)?.lifecycleState === "failed" && !behindItsGroup(i, stateMap.get(i.id)?.groupGeneration))
@@ -702,68 +707,46 @@ function startNewInstallations$(candidates: SyncInstallation[], running: SyncIns
     log.info({ ids: [...failedIds] }, "Skipping failed installations (re-deploy to retry)");
   }
 
-  const failWithGroup$ = from(groupFailed).pipe(mergeMap((installation) => {
-    releaseAdmission(installation.id);
-    downloaded.delete(installation.id);
+  await Promise.all(groupFailed.map((installation) => {
+    abandonStart(installation.id);
     log.warn({ model: installation.specifier, installationId: installation.id, generation: installation.group!.generation }, "vLLM member failed with its group");
-    return from(updateInstallationState(installation.id, "failed", { errorMessage: GROUP_FAILED, statusMessage: GROUP_FAILED, ...groupReport(installation, "failed") }));
+    return updateInstallationState(installation.id, "failed", { errorMessage: GROUP_FAILED, statusMessage: GROUP_FAILED, ...groupReport(installation, "failed") });
   }));
-
-  const failExited$ = from(exited).pipe(mergeMap(async (installation) => {
+  await Promise.all(exited.map(async (installation) => {
     await reportExited(installation, ops);
     await ops.stop(installation.id).catch(() => {});
     log.warn({ model: installation.specifier, installationId: installation.id }, "vLLM member exited, failing it");
   }));
-
-  return concat(failWithGroup$, failExited$, from(toAdd).pipe(
-    mergeMap((installation) => {
-      let containerStarted = false;
-      return defer(() =>
-        from(downloadAndStart(installation, running, ops).then((outcome) => {
-          containerStarted = outcome.started;
-          return outcome;
-        })),
-      ).pipe(
-        switchMap((outcome) => outcome.started
-          ? defer(() => {
-            watchUntilHealthy(installation, ops, outcome.providerModel, outcome.modelType);
-            return EMPTY;
-          })
-          : from(updateInstallationState(installation.id, "installing", { statusMessage: outcome.waiting, groupStage: outcome.groupStage, groupGeneration: outcome.groupGeneration })).pipe(ignoreElements())),
-        catchError((err) => handleInstallationError(err, installation, ops, containerStarted)),
-      );
-    }),
-  )).pipe(
-    ignoreElements(),
-    endWith(void 0 as void),
-  );
+  await Promise.all(toAdd.map(async (installation) => {
+    try {
+      const outcome = await downloadAndStart(installation, running, ops);
+      if (outcome.started) {
+        watchUntilHealthy(installation, ops, outcome.providerModel, outcome.modelType);
+      } else {
+        await updateInstallationState(installation.id, "installing", { statusMessage: outcome.waiting, groupStage: outcome.groupStage, groupGeneration: outcome.groupGeneration });
+      }
+    } catch (err) {
+      await failInstallation(err, installation, ops, false);
+    }
+  }));
 }
 
-function handleInstallationError(
-  err: unknown,
-  installation: SyncInstallation,
-  ops: VllmOps,
-  containerStarted: boolean,
-): Observable<never> {
+async function failInstallation(err: unknown, installation: SyncInstallation, ops: VllmOps, containerStarted: boolean): Promise<void> {
   log.error({ err, model: installation.specifier, installationId: installation.id }, "vLLM failed to start");
-  releaseAdmission(installation.id);
-  downloaded.delete(installation.id);
+  abandonStart(installation.id);
 
   const preCapturedLogs = (err as { preCapturedLogs?: string })?.preCapturedLogs;
-
-  return from(
-    (async () => {
-      const logs = preCapturedLogs || (containerStarted ? await ops.getLogs(installation.id).catch(() => "") : "");
-      const fatalMatch = logs ? matchFatalPattern(logs) : null;
-      await updateInstallationState(installation.id, "failed", {
-        errorMessage: fatalMatch ?? String((err as Error)?.message ?? err),
-        statusMessage: "Failed to start",
-        failureLogs: logs || null,
-        ...groupReport(installation, "failed"),
-      });
-      if (containerStarted) {
-        await ops.stop(installation.id).catch(() => {});
-      }
-    })().catch(() => {}),
-  ).pipe(ignoreElements());
+  await (async () => {
+    const logs = preCapturedLogs || (containerStarted ? await ops.getLogs(installation.id).catch(() => "") : "");
+    const fatalMatch = logs ? matchFatalPattern(logs) : null;
+    await updateInstallationState(installation.id, "failed", {
+      errorMessage: fatalMatch ?? String((err as Error)?.message ?? err),
+      statusMessage: "Failed to start",
+      failureLogs: logs || null,
+      ...groupReport(installation, "failed"),
+    });
+    if (containerStarted) {
+      await ops.stop(installation.id).catch(() => {});
+    }
+  })().catch(() => {});
 }

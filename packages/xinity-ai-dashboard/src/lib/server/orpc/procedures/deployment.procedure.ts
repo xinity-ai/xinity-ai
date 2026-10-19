@@ -103,7 +103,7 @@ const CapacityCheckOutput = z.object({
   shortfall: CapacityShortfallDto.optional().describe("What a model that does not fit needs, against what is free"),
 });
 
-type CapacityCheckResult = z.infer<typeof CapacityCheckOutput>;
+export type CapacityCheckResult = z.infer<typeof CapacityCheckOutput>;
 export type CapacityShortfall = z.infer<typeof CapacityShortfallDto>;
 export type PlannedReplicaPreview = z.infer<typeof PlannedReplicaDto>;
 

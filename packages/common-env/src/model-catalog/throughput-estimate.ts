@@ -190,6 +190,10 @@ export type ConcurrencyEstimate = {
  * The compute one is a property of the card, where per-token weight reads stop dominating
  * the matrix multiplies batched against them.
  */
+export function requestsThatFit(cacheBytes: number, bytesPerRequest: number): number {
+  return Math.max(1, Math.floor(cacheBytes / bytesPerRequest));
+}
+
 export function estimateConcurrency(
   model: Pick<Model, "sizing" | "engine">,
   node: Pick<NodeCapability, "gpus">,
@@ -210,12 +214,9 @@ export function estimateConcurrency(
   const stateBytes = stateBytesPerSequence ?? 0;
   const cacheBytes = allocation.kvCacheGb * BYTES_PER_GB;
 
-  const fullContextConcurrency = Math.max(
-    1,
-    Math.floor(cacheBytes / (configuredContext * kvBytesPerToken + stateBytes)),
-  );
+  const fullContextConcurrency = requestsThatFit(cacheBytes, configuredContext * kvBytesPerToken + stateBytes);
   const bytesPerRequest = liveTokens * kvBytesPerToken + stateBytes;
-  const workingSetConcurrency = Math.max(1, Math.floor(cacheBytes / bytesPerRequest));
+  const workingSetConcurrency = requestsThatFit(cacheBytes, bytesPerRequest);
 
   const activeWeightBytes = (activeWeightGb ?? weightGb) * BYTES_PER_GB;
   const kvBandwidthKnee = Math.max(

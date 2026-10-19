@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 
 type Config = Record<string, any>;
-export type CheckpointTensor = { name: string; bytes: number };
+type CheckpointTensor = { name: string; bytes: number };
 
 const ENCODER = /(^|\.)(visual|vision_tower|vision_model|vision_encoder|audio_tower|audio_model|multi_modal_projector|mm_projector|embed_vision|embed_audio)\./;
 const DRAFT = /(^|\.)mtp\./;

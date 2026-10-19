@@ -33,9 +33,8 @@ export async function checkGroup(members: HostedMember[], hostOf: (hostName: str
   // Once every member runs, the rendezvous is behind them. Before that, a member that cannot reach
   // rank 0 waits for good, which a host firewall on the coupling causes.
   for (const member of current.filter((candidate) => candidate.group.rank > 0 && stageOf(candidate) !== "running")) {
-    const master = member.group.masterAddresses.find(({ subnet }) => subnet === member.group.addresses[0]!.subnet) ?? member.group.masterAddresses[0]!;
-    const target = `${master.address}:${member.group.rendezvousPort}`;
-    const probe = await hostOf(member.hostName).run(["timeout", "5", "bash", "-c", `</dev/tcp/${master.address}/${member.group.rendezvousPort}`]);
+    const target = `${member.group.masterAddress}:${member.group.rendezvousPort}`;
+    const probe = await hostOf(member.hostName).run(["timeout", "5", "bash", "-c", `</dev/tcp/${member.group.masterAddress}/${member.group.rendezvousPort}`]);
     if (probe.exitCode === PROBE_TIMED_OUT) {
       results.push({
         label,

@@ -26,8 +26,7 @@ export type ClusterState = {
   availableServers: AiNode[];
 };
 
-/** Returns availableServers ordered by the given strategy's preference.
- * Re-evaluated per placement so spread strategies see updated `used` after each replica. */
+// Ranked again for every placement, so spreading strategies see what the previous replica used.
 export function rankServers(strategy: DeploymentStrategy, state: ClusterState): AiNode[] {
   return orderByStrategy(strategy, state.availableServers, (server) => state.serverCapacity.get(server.id));
 }
@@ -41,7 +40,7 @@ function nodeCards(server: AiNode): CardCapacity[] {
   return cards.length > 0 ? cards : [{ id: null, vendor: gpu?.vendor ?? "", name: gpu?.name ?? "", total: server.estCapacity, used: 0 }];
 }
 
-export function cardsOf(state: ClusterState, nodeId: string): CardCapacity[] {
+function cardsOf(state: ClusterState, nodeId: string): CardCapacity[] {
   return state.cardCapacity.get(nodeId) ?? [];
 }
 

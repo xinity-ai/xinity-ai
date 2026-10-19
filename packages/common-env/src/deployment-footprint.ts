@@ -1,8 +1,7 @@
 import type { ModelSizingFields, PlacementLimitFields } from "./model-catalog/definitions/model-definition";
-import type { Engine } from "./model-catalog/definitions/model-primitives";
 import type { KvPaging } from "./model-catalog/kv-cache-floor";
 import { matchesVersionRange, satisfiesMinVersion } from "./model-catalog/semver";
-import { estimateConcurrency } from "./model-catalog/throughput-estimate";
+import { estimateConcurrency, requestsThatFit } from "./model-catalog/throughput-estimate";
 import type { GpuInfo } from "./tether-protocol";
 import { kvCacheSharePerCard, runsTensorParallel } from "./tensor-parallel";
 
@@ -12,7 +11,7 @@ const gib = (value: number) => value * GB_PER_GIB;
 
 export type Layout = { cardsPerNode: number; nodes: number };
 
-export const layoutRanks = (layout: Layout) => layout.cardsPerNode * layout.nodes;
+const layoutRanks = (layout: Layout) => layout.cardsPerNode * layout.nodes;
 
 export type FootprintEntry = {
   sizing: ModelSizingFields;
@@ -23,7 +22,7 @@ export type FootprintEntry = {
 
 // What the engine itself holds beyond weights and KV, by deployment shape. Values are the measured
 // maximum on GB10 with vLLM 0.31, rounded up.
-export type EngineProfile = {
+type EngineProfile = {
   gpuPerRankGb: { whole: number; split: number };
   gpuSpeculativeGb: number;
   hostLeaderGb: number;
@@ -55,30 +54,12 @@ const VLLM_0_31: EngineProfile = {
   paging: { attentionBlockTokens: { standard: 16, latent: 128 }, alignStatePagesPerGroup: 2, groupSizeRatio: 1.5 },
 };
 
-// Ollama keeps its own accounting: one shared server per node, weights and KV only.
-const OLLAMA: EngineProfile = {
-  gpuPerRankGb: { whole: 0, split: 0 },
-  gpuSpeculativeGb: 0,
-  hostLeaderGb: 0,
-  hostFollowerGb: 0,
-  hostVisionGb: 0,
-  hostPerImageInFlightGb: 0,
-  pinnedPerCommunicatorGb: 0,
-  hostWeightAllocationGb: (gb) => gb,
-  hostLoadingPerLargestFile: 0,
-  paging: { attentionBlockTokens: { standard: 16, latent: 16 }, alignStatePagesPerGroup: 2, groupSizeRatio: 1.5 },
-};
-
 // Newest first. A node on a version older than every entry, or one that reports none, gets the newest.
-export const ENGINE_PROFILES: Record<Engine, readonly { since: string; profile: EngineProfile }[]> = {
-  vllm: [{ since: "0.0.0", profile: VLLM_0_31 }],
-  ollama: [{ since: "0.0.0", profile: OLLAMA }],
-};
+const VLLM_PROFILES: readonly { since: string; profile: EngineProfile }[] = [{ since: "0.0.0", profile: VLLM_0_31 }];
 
-export function engineProfile(engine: Engine, version?: string): EngineProfile {
-  const profiles = ENGINE_PROFILES[engine];
-  const matching = version ? profiles.find((candidate) => satisfiesMinVersion(version, candidate.since)) : undefined;
-  return (matching ?? profiles[0]!).profile;
+export function engineProfile(version?: string): EngineProfile {
+  const matching = version ? VLLM_PROFILES.find((candidate) => satisfiesMinVersion(version, candidate.since)) : undefined;
+  return (matching ?? VLLM_PROFILES[0]!).profile;
 }
 
 export const DOES_NOT_FIT_ON_NODE = "Does not fit next to the installations running here";
@@ -88,7 +69,7 @@ export function sharesHostMemory(gpus: readonly Pick<GpuInfo, "vramMb">[]): bool
   return !gpus.some((gpu) => gpu.vramMb > 0);
 }
 
-export type MemoryCharge = { gpuGb: number; hostGb: number };
+type MemoryCharge = { gpuGb: number; hostGb: number };
 
 export function chargedAgainstCards({ gpuGb, hostGb }: MemoryCharge, sharedHostMemory: boolean): number {
   return gpuGb + (sharedHostMemory ? hostGb : 0);
@@ -115,7 +96,7 @@ export type FootprintPart = { part: FootprintPartKind; gb: number };
 
 export type PartedFootprint = { gpuGb: number; hostGb: number; parts: FootprintPart[] };
 
-export type RankFootprint = PartedFootprint & { node: number };
+type RankFootprint = PartedFootprint & { node: number };
 
 export type Footprint = {
   ranks: RankFootprint[];
@@ -124,7 +105,7 @@ export type Footprint = {
   hostGb: number;
 };
 
-export type FootprintRequest = {
+type FootprintRequest = {
   layout: Layout;
   kvCacheGb: number;
   imagesInFlight: number;
@@ -156,7 +137,7 @@ function fullContextRequests(sizing: ModelSizingFields, kvCacheGb: number): numb
     return 1;
   }
   const contextTokens = Math.min(maxContextLength, attentionWindow ?? Infinity);
-  return Math.max(1, Math.floor((kvCacheGb * BYTES_PER_GB) / (contextTokens * kvBytesPerToken + (stateBytesPerSequence ?? 0))));
+  return requestsThatFit(kvCacheGb * BYTES_PER_GB, contextTokens * kvBytesPerToken + (stateBytesPerSequence ?? 0));
 }
 
 export function imagesInFlight(entry: FootprintEntry, gpus: GpuInfo[], kvCacheGb: number): number {
@@ -217,7 +198,7 @@ function parted(parts: FootprintPart[]): PartedFootprint {
   return { gpuGb: total("gpu"), hostGb: total("host"), parts: merged };
 }
 
-export type LayoutOption = { layout: Layout; allowed: true } | { layout: Layout; allowed: false; reason: string };
+type LayoutOption = { layout: Layout; allowed: true } | { layout: Layout; allowed: false; reason: string };
 
 type LayoutContext = { entry: FootprintEntry; layout: Layout; ranks: number; vendor: string };
 

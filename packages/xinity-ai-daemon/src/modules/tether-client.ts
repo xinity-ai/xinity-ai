@@ -15,8 +15,6 @@ import {
   type TetherRefusal,
   type TetherRefusalReason,
   type NodeRegistration,
-  type InstallationStateReport,
-  type InterconnectReport,
   type UnsignedInstallationStateReport,
   type UnsignedInterconnectReport,
   type UnsignedNodeRegistration,
@@ -223,48 +221,29 @@ export async function* connectSSE(currentRegistration: () => Promise<UnsignedNod
   }
 }
 
-export async function reportInstallationStates(report: UnsignedInstallationStateReport): Promise<boolean> {
+async function postSigned<T>(path: string, report: T, canonical: (report: T, authorization: string) => string, name: string): Promise<boolean> {
   try {
-    const authorization = authorizePost(STATUS_PATH);
-    const signed: InstallationStateReport = {
-      ...report,
-      signature: await signPayloadAsNode(canonicalStateReport(report, authorization)),
-    };
-    const res = await fetch(serviceUrl(config.tether.url, STATUS_PATH), {
+    const authorization = authorizePost(path);
+    const res = await fetch(serviceUrl(config.tether.url, path), {
       method: "POST",
       headers: jsonHeaders(authorization),
-      body: JSON.stringify(signed),
+      body: JSON.stringify({ ...report, signature: await signPayloadAsNode(canonical(report, authorization)) }),
     });
     if (!res.ok) {
       const { message, reason } = await readRefusal(res);
-      log.error({ status: res.status, reason, refusal: message }, "Status POST failed");
+      log.error({ status: res.status, reason, refusal: message }, `${name} POST failed`);
     }
     return res.ok;
   } catch (err) {
-    log.error({ err }, "Status POST error");
+    log.error({ err }, `${name} POST error`);
     return false;
   }
 }
 
-export async function reportInterconnect(report: UnsignedInterconnectReport): Promise<boolean> {
-  try {
-    const authorization = authorizePost(INTERCONNECT_PATH);
-    const signed: InterconnectReport = {
-      ...report,
-      signature: await signPayloadAsNode(canonicalInterconnectReport(report, authorization)),
-    };
-    const res = await fetch(serviceUrl(config.tether.url, INTERCONNECT_PATH), {
-      method: "POST",
-      headers: jsonHeaders(authorization),
-      body: JSON.stringify(signed),
-    });
-    if (!res.ok) {
-      const { message, reason } = await readRefusal(res);
-      log.error({ status: res.status, reason, refusal: message }, "Interconnect POST failed");
-    }
-    return res.ok;
-  } catch (err) {
-    log.error({ err }, "Interconnect POST error");
-    return false;
-  }
+export function reportInstallationStates(report: UnsignedInstallationStateReport): Promise<boolean> {
+  return postSigned(STATUS_PATH, report, canonicalStateReport, "Status");
+}
+
+export function reportInterconnect(report: UnsignedInterconnectReport): Promise<boolean> {
+  return postSigned(INTERCONNECT_PATH, report, canonicalInterconnectReport, "Interconnect");
 }

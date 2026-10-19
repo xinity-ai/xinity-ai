@@ -1,12 +1,12 @@
 import { inArray, modelInstallationStateT, modelInstallationT, sql, stateOfInstallation, type ModelInstallation } from "common-db";
 import { getDB } from "./db";
-import type { DesiredGroup, DesiredState, GroupStage } from "common-env";
+import type { DesiredGroup, DesiredState, GroupStage, InstallationGroup } from "common-env";
 import { rootLogger } from "./logger";
 import { masterHostsOf, type MasterHost } from "./group-peer-host";
 
 const log = rootLogger.child({ name: "desired-state" });
 
-export type GroupMember = ModelInstallation & { stage: GroupStage | null; stageGeneration: number | null };
+type GroupMember = ModelInstallation & { stage: GroupStage | null; stageGeneration: number | null };
 
 export function toDesiredState(
   nodeId: string,
@@ -20,11 +20,19 @@ export function toDesiredState(
     }
     const members = groupMembers.filter((member) => member.group?.id === row.group!.id);
     const leader = members.find((member) => member.group!.rank === 0);
-    return leader && {
+    if (!leader) {
+      return undefined;
+    }
+    const { subnet } = row.group.addresses[0]!;
+    const onSubnet = (addresses: InstallationGroup["addresses"]) => (addresses.find((candidate) => candidate.subnet === subnet) ?? addresses[0])?.address;
+    const masterHost = masterHosts.get(row.group.id) ?? { machineName: leader.nodeId, addresses: [] };
+    return {
       ...row.group,
-      masterAddresses: leader.group!.addresses,
-      masterHost: masterHosts.get(row.group.id) ?? { machineName: leader.nodeId, addresses: [] },
-      members: members.map((member) => ({ rank: member.group!.rank, stage: member.stage, generation: member.stageGeneration })).sort((a, b) => a.rank - b.rank),
+      masterAddress: onSubnet(leader.group!.addresses)!,
+      masterHost: { machineName: masterHost.machineName, address: onSubnet(masterHost.addresses) ?? null },
+      members: members
+        .map((member) => ({ rank: member.group!.rank, stage: member.stageGeneration === row.group!.generation ? member.stage : null }))
+        .sort((a, b) => a.rank - b.rank),
     };
   };
 

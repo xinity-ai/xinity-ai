@@ -1,26 +1,24 @@
+<script module lang="ts">
+  import type { CapacityCheckResult } from "$lib/server/orpc/procedures/deployment.procedure";
+
+  export type CapacityPreview = CapacityCheckResult & { blocked: boolean };
+</script>
+
 <script lang="ts">
   import type { NodeCapability } from "common-env/model-catalog";
-  import type { CapacityShortfall, PlannedReplicaPreview } from "$lib/server/orpc/procedures/deployment.procedure";
+  import type { CapacityShortfall } from "$lib/server/orpc/procedures/deployment.procedure";
   import type { FootprintPartKind } from "common-env";
   import { formatGb } from "$lib/util";
   import { HardDrive, CircleCheck, CircleAlert, Info, ChevronRight } from "@lucide/svelte";
 
   let {
-    plannedReplicas = [],
+    capacity,
     nodeCapabilities = [],
     enabled = true,
-    capacityChecked = false,
-    capacityBlocked = false,
-    capacityReason,
-    capacityShortfall,
   }: {
-    plannedReplicas?: PlannedReplicaPreview[];
+    capacity?: CapacityPreview;
     nodeCapabilities?: NodeCapability[];
     enabled?: boolean;
-    capacityChecked?: boolean;
-    capacityBlocked?: boolean;
-    capacityReason?: string;
-    capacityShortfall?: CapacityShortfall;
   } = $props();
 
   const PART_LABELS: Record<FootprintPartKind, string> = {
@@ -34,6 +32,7 @@
     imageInput: "Image input",
   };
 
+  const plannedReplicas = $derived(capacity?.replicas ?? []);
   const showsSpecifier = $derived(new Set(plannedReplicas.map((replica) => replica.specifier)).size > 1);
   const plannedMachines = $derived(plannedReplicas.flatMap((replica) => replica.machines));
   const sumOf = (machines: typeof plannedMachines, gb: (machine: (typeof plannedMachines)[number]) => number) => machines.reduce((sum, machine) => sum + gb(machine), 0);
@@ -43,7 +42,7 @@
     [sumOf(plannedMachines.filter((machine) => !machine.sharedMemory), (machine) => machine.hostGb), "RAM"],
   ].flatMap(([gb, memory]) => ((gb as number) > 0 ? [`${formatGb(gb as number)} ${memory}`] : [])).join(" + "));
   const totalFree = $derived(nodeCapabilities.reduce((sum, node) => sum + node.free, 0));
-  const closest = $derived(capacityShortfall?.perMachine[0]);
+  const closest = $derived(capacity?.shortfall?.perMachine[0]);
   const closestHostGb = $derived(closest?.parts.filter(({ memory }) => memory === "host").reduce((sum, { gb }) => sum + gb, 0) ?? 0);
 
   function formatMemory(gpuGb: number, hostGb: number, sharedMemory: boolean): string {
@@ -113,12 +112,12 @@
         {/if}
       </dl>
     </div>
-  {:else if closest && capacityShortfall}
+  {:else if closest && capacity?.shortfall}
     <dl class="space-y-1.5 text-sm">
       <div class="text-muted-foreground">
-        {capacityShortfall.machines > 1 ? `Each of ${capacityShortfall.machines} machines needs` : "Needs on one machine"}
+        {capacity.shortfall.machines > 1 ? `Each of ${capacity.shortfall.machines} machines needs` : "Needs on one machine"}
       </div>
-      {#each capacityShortfall.perMachine as { machineName, neededGb, freeGb, sharedMemory } (machineName)}
+      {#each capacity.shortfall.perMachine as { machineName, neededGb, freeGb, sharedMemory } (machineName)}
         <div class="flex justify-between gap-4 pl-4">
           <dt class="text-muted-foreground">{machineName}</dt>
           <dd class="text-right">{formatGb(neededGb)} needed, {formatGb(freeGb)} {sharedMemory ? "URAM" : "VRAM"} free</dd>
@@ -133,7 +132,7 @@
         </dd>
       </div>
     </dl>
-  {:else if !capacityChecked}
+  {:else if !capacity}
     <p class="text-sm text-muted-foreground">Working out where it would run…</p>
   {/if}
 
@@ -142,23 +141,23 @@
       <Info class="w-4 h-4 shrink-0 mt-0.5" />
       <span>This deployment will be saved disabled. Capacity is only enforced when it is enabled.</span>
     </div>
-  {:else if capacityChecked && capacityBlocked}
+  {:else if capacity?.blocked}
     <div class="flex items-start gap-2 text-sm text-destructive">
       <CircleAlert class="w-4 h-4 shrink-0 mt-0.5" />
       <span>
         {#if closest}
           Does not fit: {closest.machineName} comes closest and is {formatGb(Math.max(0, closest.neededGb - closest.freeGb))} short.
         {:else}
-          {capacityReason ?? "This deployment needs more capacity than is currently available"}
+          {capacity.reason ?? "This deployment needs more capacity than is currently available"}
         {/if}
       </span>
     </div>
-  {:else if capacityChecked && capacityReason}
+  {:else if capacity?.reason}
     <div class="flex items-start gap-2 text-sm text-muted-foreground">
       <Info class="w-4 h-4 shrink-0 mt-0.5" />
-      <span>{capacityReason}</span>
+      <span>{capacity.reason}</span>
     </div>
-  {:else if capacityChecked}
+  {:else if capacity}
     <div class="flex items-start gap-2 text-sm text-emerald-600 dark:text-emerald-400">
       <CircleCheck class="w-4 h-4 shrink-0 mt-0.5" />
       <span>Fits in the current cluster.</span>

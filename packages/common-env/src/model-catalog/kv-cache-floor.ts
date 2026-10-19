@@ -8,7 +8,7 @@ export type KvPaging = {
   groupSizeRatio: number;
 };
 
-export type KvFloorSizing = {
+type KvFloorSizing = {
   kvBytesPerToken?: number;
   stateBytesPerSequence?: number;
   attentionLayers?: number;

@@ -12,7 +12,7 @@
   import type { DeploymentDefinition } from "./+page.server";
   import { settingsEqual, type DeploymentSettings } from "common-env/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
-  import type { CapacityShortfall, PlannedReplicaPreview } from "$lib/server/orpc/procedures/deployment.procedure";
+  import type { CapacityPreview } from "./DeploymentCapacitySummary.svelte";
 
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";
@@ -210,15 +210,12 @@
 
   const CAPACITY_PREVIEW_DELAY_MS = 300;
 
-  let capacityChecked = $state(false);
-  let capacityBlocked = $state(false);
-  let capacityReason = $state<string | undefined>(undefined);
-  let plannedReplicas = $state<PlannedReplicaPreview[]>([]);
-  let capacityShortfall = $state<CapacityShortfall | undefined>(undefined);
+  let capacity = $state<CapacityPreview | undefined>(undefined);
 
   $effect(() => {
     if (!selectedPrimarySpecifier) {
-      capacityChecked = false; capacityBlocked = false; capacityReason = undefined; plannedReplicas = []; capacityShortfall = undefined; return;
+      capacity = undefined;
+      return;
     }
     const canary = isCanaryEnabled ? selectedCanarySpecifier : null;
     const draft = {
@@ -236,12 +233,12 @@
     const timer = setTimeout(() => {
       orpc.deployment.checkCapacity(draft, { signal: abort.signal }).then(([error, data]) => {
         if (abort.signal.aborted) return;
-        if (error) { browserLogger.error({ error }, "Capacity check failed"); capacityChecked = false; capacityBlocked = false; plannedReplicas = []; capacityShortfall = undefined; return; }
-        capacityChecked = true;
-        capacityBlocked = gated && !data.deployable;
-        capacityReason = data.reason;
-        plannedReplicas = data.replicas;
-        capacityShortfall = data.shortfall;
+        if (error) {
+          browserLogger.error({ error }, "Capacity check failed");
+          capacity = undefined;
+          return;
+        }
+        capacity = { ...data, blocked: gated && !data.deployable };
       });
     }, CAPACITY_PREVIEW_DELAY_MS);
     return () => { clearTimeout(timer); abort.abort(); };
@@ -306,7 +303,7 @@
     (!requiresCustomCodeConsent || customCodeConsent) &&
     (!requiresLicenseConsent || licenseConsent) &&
     DeploymentSettingsDto.safeParse(settings).success &&
-    !capacityBlocked && replicas >= 1 &&
+    !capacity?.blocked && replicas >= 1 &&
     (!keepsUnknownEntry || !hasChangesBesidesEnabled),
   ));
 
@@ -470,11 +467,7 @@
           {modelCompatibility}
           {maxReplicas}
           {enabled}
-          {capacityChecked}
-          {capacityBlocked}
-          {capacityReason}
-          {plannedReplicas}
-          {capacityShortfall}
+          {capacity}
           editMode={isEditMode}
           readonlyModels={requiresDisabled}
           {requiresDisabled}
@@ -523,9 +516,9 @@
               {isEditMode ? "Enabled" : "Start deployment in enabled state"}
             </span>
           </label>
-          {#if enabled && capacityBlocked}
+          {#if enabled && capacity?.blocked}
             <span class="text-sm text-destructive px-1">
-              {capacityReason ?? "This deployment needs more capacity than is currently available"}.
+              {capacity.reason ?? "This deployment needs more capacity than is currently available"}.
               <br>
               Uncheck "{isEditMode ? "Enabled" : "Start deployment in enabled state"}" to save it disabled.
             </span>

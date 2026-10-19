@@ -50,7 +50,7 @@ type GroupLaunch<Group extends NodeGroup> = {
 
 const COUPLING_NETWORK_PREFIX = "xinity-coupling-";
 
-export const couplingNetworkName = (path: CoupledPath) =>
+const couplingNetworkName = (path: CoupledPath) =>
   `${COUPLING_NETWORK_PREFIX}${path.interface}-${path.subnet.replace(/[./]/g, "-")}`
     // Docker lowercases the name when a container joins by name=.
     .toLowerCase();
@@ -58,6 +58,16 @@ export const couplingNetworkName = (path: CoupledPath) =>
 const couplingInterface = (index: number) => `coupl${index}`;
 
 const rdmaDevicesEnv = (group: Extract<NodeGroup, { kind: "member" }>) => `NCCL_IB_HCA==${group.paths.map((path) => path.rdmaDevice).join(",")}`;
+
+export const pathCidr = (path: CoupledPath) => `${path.address}/${path.subnet.split("/")[1]}`;
+
+// Without VLLM_HOST_IP, vLLM announces its message queue on another address, such as Docker's bridge, which the other members cannot reach.
+const memberEnv = (group: Extract<NodeGroup, { kind: "member" }>, socketInterface: string) => [
+  rdmaDevicesEnv(group),
+  `NCCL_SOCKET_IFNAME=${socketInterface}`,
+  `GLOO_SOCKET_IFNAME=${socketInterface}`,
+  `VLLM_HOST_IP=${group.paths[0]!.address}`,
+];
 
 const GROUP_LAUNCH: { [Kind in NodeGroup["kind"]]: GroupLaunch<Extract<NodeGroup, { kind: Kind }>> } = {
   single: {
@@ -79,15 +89,10 @@ const GROUP_LAUNCH: { [Kind in NodeGroup["kind"]]: GroupLaunch<Extract<NodeGroup
       "--master-port", String(group.masterPort),
       ...(group.rank > 0 ? ["--headless"] : []),
     ],
-    systemdEnv: (group) => [
-      rdmaDevicesEnv(group),
-      `NCCL_SOCKET_IFNAME=${group.paths[0]!.interface}`,
-      `GLOO_SOCKET_IFNAME=${group.paths[0]!.interface}`,
-      `VLLM_HOST_IP=${group.paths[0]!.address}`,
-    ],
+    systemdEnv: (group) => memberEnv(group, group.paths[0]!.interface),
     systemdUnitLines: (group) => group.paths.flatMap((path) => {
       const ip = Bun.which("ip") ?? "ip";
-      const address = `${path.address}/${path.subnet.split("/")[1]}`;
+      const address = pathCidr(path);
       // The unit holds its member addresses on the host interfaces exactly as long as it runs, across restarts too.
       return [`ExecStartPre=+${ip} addr replace ${address} dev ${path.interface}`, `ExecStopPost=-${ip} addr del ${address} dev ${path.interface}`];
     }),
@@ -101,13 +106,7 @@ const GROUP_LAUNCH: { [Kind in NodeGroup["kind"]]: GroupLaunch<Extract<NodeGroup
         "--device", "/dev/infiniband",
         "--ulimit", "memlock=-1:-1",
       ],
-      env: [
-        rdmaDevicesEnv(group),
-        `NCCL_SOCKET_IFNAME=${couplingInterface(0)}`,
-        `GLOO_SOCKET_IFNAME=${couplingInterface(0)}`,
-        // vLLM otherwise announces its message queue on the bridge address, which the other members cannot reach.
-        `VLLM_HOST_IP=${group.paths[0]!.address}`,
-      ],
+      env: memberEnv(group, couplingInterface(0)),
       host: "0.0.0.0",
       port: 8000,
     }),

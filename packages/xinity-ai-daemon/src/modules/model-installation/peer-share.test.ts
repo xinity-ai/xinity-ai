@@ -83,12 +83,12 @@ describe("peerShareHandler", () => {
 });
 
 describe("peerSourceFor", () => {
-  const leaderAddress = { subnet: "192.168.100.0/24", address: "192.168.100.1" };
-  const group = (rank: number, masterHostAddresses: { subnet: string; address: string }[]) => ({
+  const leaderAddress = "192.168.100.1";
+  const group = (rank: number, masterHostAddress: string | null) => ({
     id: "group-1", rank, size: 2, rendezvousPort: 29500, generation: 1,
     addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.253" }],
-    masterAddresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }],
-    masterHost: { machineName: "asus-7", addresses: masterHostAddresses },
+    masterAddress: "192.168.100.254",
+    masterHost: { machineName: "asus-7", address: masterHostAddress },
     members: [],
   });
   const copyDir = path.join(testCacheDir, "copies");
@@ -105,7 +105,7 @@ describe("peerSourceFor", () => {
       return answer(calls.length);
     }) as typeof fetch);
     try {
-      const fetched = await peerSourceFor(group(1, [leaderAddress]))!.fetch(request(etag, stallMs, sha256));
+      const fetched = await peerSourceFor(group(1, leaderAddress))!.fetch(request(etag, stallMs, sha256));
       return { fetched, calls, path: request(etag).incompletePath };
     } finally {
       fetchSpy.mockRestore();
@@ -113,9 +113,9 @@ describe("peerSourceFor", () => {
   }
 
   test("names rank 0's machine as the source for the other members, and none for rank 0 or without its address", () => {
-    expect(peerSourceFor(group(1, [leaderAddress]))?.name).toBe("asus-7");
-    expect(peerSourceFor(group(0, [leaderAddress]))).toBeUndefined();
-    expect(peerSourceFor(group(1, []))).toBeUndefined();
+    expect(peerSourceFor(group(1, leaderAddress))?.name).toBe("asus-7");
+    expect(peerSourceFor(group(0, leaderAddress))).toBeUndefined();
+    expect(peerSourceFor(group(1, null))).toBeUndefined();
     expect(peerSourceFor(null)).toBeUndefined();
   });
 

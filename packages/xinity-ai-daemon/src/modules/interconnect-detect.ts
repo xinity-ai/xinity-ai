@@ -160,7 +160,6 @@ export async function detectInterconnect(): Promise<DetectedPort[]> {
   return groupIntoPorts(paths, neighbours, await readLocalMacs());
 }
 
-// Local monitoring of how many restarts / deregistrations a interconnect had during the daemons livetime
 export function createInterconnectMonitor(detect: () => Promise<DetectedPort[]> = detectInterconnect) {
   const addressLosses = new Map<string, number>();
   const pathsWithAddress = new Set<string>();

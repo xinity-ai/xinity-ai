@@ -3,7 +3,7 @@ import { gpuId, runsTensorParallel } from "common-env";
 import type { GpuVendor } from "common-env/model-catalog";
 import { normalizePciBusId, type DetectedGpu } from "../hardware-detect";
 
-export type RenderNode = { pciBusId: string; vendor: GpuVendor | null; path: string; gid: number };
+type RenderNode = { pciBusId: string; vendor: GpuVendor | null; path: string; gid: number };
 
 export type HostDevices = { renderNodes: RenderNode[]; kfdGid: number | null };
 
@@ -58,7 +58,7 @@ const CUDA_PCI_ORDER = "CUDA_DEVICE_ORDER=PCI_BUS_ID";
 const ROCM_DOCKER_ARGS = ["--group-add", "video", "--security-opt", "seccomp=unconfined"];
 const LEVEL_ZERO_CARD_PER_DEVICE = "ZE_FLAT_DEVICE_HIERARCHY=COMPOSITE";
 
-export const DEVICE_CONTROL: Record<GpuVendor, DeviceControl> = {
+const DEVICE_CONTROL: Record<GpuVendor, DeviceControl> = {
   nvidia: {
     unpinned: () => ({
       env: [CUDA_PCI_ORDER, "CUDA_VISIBLE_DEVICES=0"],

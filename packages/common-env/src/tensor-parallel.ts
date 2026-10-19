@@ -6,36 +6,27 @@ export function runsTensorParallel(vendor: string): boolean {
   return isKnownGpuVendor(vendor) && RUNS_TENSOR_PARALLEL[vendor];
 }
 
-export type TensorParallelSizing = {
+type TensorParallelSizing = {
   weightGb: number;
   attentionHeads?: number;
   kvHeads?: number;
   mlaAttention?: boolean;
 };
 
-export type TensorParallelLayout = {
+type TensorParallelLayout = {
   tensorParallelSize: number;
   perCardWeightGb: number;
   perCardKvCacheGb: number;
 };
 
-export function tensorParallelLayouts(
+export function tensorParallelLayout(
   sizing: TensorParallelSizing,
-  { cards, kvCacheGb }: { cards: number; kvCacheGb: number },
-): TensorParallelLayout[] {
-  const layouts: TensorParallelLayout[] = [];
-  for (let tensorParallelSize = 1; tensorParallelSize <= cards; tensorParallelSize++) {
-    const kvShare = kvCacheSharePerCard(sizing, tensorParallelSize);
-    if (kvShare === undefined) {
-      continue;
-    }
-    layouts.push({
-      tensorParallelSize,
-      perCardWeightGb: sizing.weightGb / tensorParallelSize,
-      perCardKvCacheGb: kvCacheGb * kvShare,
-    });
-  }
-  return layouts;
+  { tensorParallelSize, kvCacheGb }: { tensorParallelSize: number; kvCacheGb: number },
+): TensorParallelLayout | undefined {
+  const kvShare = kvCacheSharePerCard(sizing, tensorParallelSize);
+  return kvShare === undefined
+    ? undefined
+    : { tensorParallelSize, perCardWeightGb: sizing.weightGb / tensorParallelSize, perCardKvCacheGb: kvCacheGb * kvShare };
 }
 
 // vLLM's own rules: attention heads must divide by the TP size, and KV heads split while there

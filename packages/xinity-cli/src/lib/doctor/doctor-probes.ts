@@ -120,8 +120,12 @@ function statusCodeCheck(label: string, statusCode: number, curlOutput: string):
   return { label, status: "fail", message: `Returned ${statusCode}` };
 }
 
-/** A daemon predating the tether field gets the plain health check alone. */
-export async function checkDaemonHealth(host: Host, url: string): Promise<CheckResult[]> {
+export type DaemonCoupling = { interconnect: InterconnectPort[]; groupMembers: GroupMemberHealth[] };
+
+export const NO_COUPLING: DaemonCoupling = { interconnect: [], groupMembers: [] };
+
+// A daemon that predates a field reports no check or coupling for it.
+export async function probeDaemonHealth(host: Host, url: string): Promise<{ checks: CheckResult[]; coupling: DaemonCoupling }> {
   const result = await host.run([
     "curl", "-s", "-w", "\n%{http_code}",
     "--connect-timeout", "5", "--max-time", "5",
@@ -131,35 +135,22 @@ export async function checkDaemonHealth(host: Host, url: string): Promise<CheckR
   const statusCode = parseInt(lines.pop() ?? "", 10);
   const health = statusCodeCheck("Health endpoint", statusCode, result.output);
   if (health.status !== "pass") {
-    return [health];
+    return { checks: [health], coupling: NO_COUPLING };
   }
-  const tether = parseTetherConnection(lines.join("\n"));
-  return tether ? [health, tetherConnectionCheck(tether)] : [health];
-}
-
-export type DaemonCoupling = { interconnect: InterconnectPort[]; groupMembers: GroupMemberHealth[] };
-
-// Empty when the daemon is unreachable or predates what is read.
-export async function readDaemonCoupling(host: Host, healthUrl: string): Promise<DaemonCoupling> {
-  const result = await host.run(["curl", "-s", "--connect-timeout", "5", "--max-time", "5", healthUrl]);
-  const body = result.ok ? parseJson(result.output) : undefined;
+  const body = parseJson(lines.join("\n"));
+  const tether = tetherConnectionSchema.safeParse(body?.tether).data;
   return {
-    interconnect: interconnectPortSchema.array().safeParse(body?.interconnect).data ?? [],
-    groupMembers: groupMemberHealthSchema.array().safeParse(body?.groupMembers).data ?? [],
+    checks: tether ? [health, tetherConnectionCheck(tether)] : [health],
+    coupling: {
+      interconnect: interconnectPortSchema.array().safeParse(body?.interconnect).data ?? [],
+      groupMembers: groupMemberHealthSchema.array().safeParse(body?.groupMembers).data ?? [],
+    },
   };
 }
 
 function parseJson(text: string): Record<string, unknown> | undefined {
   try {
     return JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-}
-
-function parseTetherConnection(body: string): TetherConnection | undefined {
-  try {
-    return tetherConnectionSchema.parse(JSON.parse(body)?.tether);
   } catch {
     return undefined;
   }

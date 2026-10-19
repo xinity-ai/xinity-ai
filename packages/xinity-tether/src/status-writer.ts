@@ -75,7 +75,6 @@ export async function readPinnedPublicKey(nodeId: string): Promise<string | null
   return row?.publicKey ?? null;
 }
 
-/** An installation the tether no longer knows is dropped, because a deployment deleted mid-report is a normal race. */
 export async function writeInterconnect(nodeId: string, interconnect: InterconnectPort[]): Promise<void> {
   await getDB()
     .update(aiNodeT)
@@ -103,6 +102,7 @@ export async function partitionOwnedStates(
   for (const state of states) {
     const actual = owner.get(state.installationId);
     if (actual === undefined) {
+      // A deployment deleted mid-report is a normal race, so its installation is simply dropped.
       continue;
     }
     (actual === nodeId ? owned : foreign).push(state);

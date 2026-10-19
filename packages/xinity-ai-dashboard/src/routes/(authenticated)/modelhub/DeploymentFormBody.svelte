@@ -4,7 +4,7 @@
   import type { ModelCompatibility } from "$lib/server/orpc/procedures/cluster.procedure";
   import ModelSelectorModal from "./ModelSelectorModal.svelte";
   import DeploymentModelTile from "./DeploymentModelTile.svelte";
-  import DeploymentCapacitySummary from "./DeploymentCapacitySummary.svelte";
+  import DeploymentCapacitySummary, { type CapacityPreview } from "./DeploymentCapacitySummary.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
@@ -14,7 +14,6 @@
   import { ChevronDown } from "@lucide/svelte";
   import type { DeploymentSettings } from "common-env/deployment-settings";
   import DeploymentSettingsSection from "./DeploymentSettingsSection.svelte";
-  import type { CapacityShortfall, PlannedReplicaPreview } from "$lib/server/orpc/procedures/deployment.procedure";
 
   let {
     selectedPrimaryModel,
@@ -41,14 +40,10 @@
     keepsUnknownCanary = false,
     maxReplicas = 0,
     showTrafficSlider = true,
-    plannedReplicas = [],
+    capacity,
     nodeCapabilities = [],
     modelCompatibility = {},
     enabled = true,
-    capacityChecked = false,
-    capacityBlocked = false,
-    capacityReason,
-    capacityShortfall,
     onPublicSpecifierInput,
     onDeploymentNameInput,
     onCanaryEnabledChange,
@@ -79,14 +74,10 @@
     keepsUnknownCanary?: boolean;
     maxReplicas?: number;
     showTrafficSlider?: boolean;
-    plannedReplicas?: PlannedReplicaPreview[];
+    capacity?: CapacityPreview;
     nodeCapabilities?: NodeCapability[];
     modelCompatibility?: ModelCompatibility;
     enabled?: boolean;
-    capacityChecked?: boolean;
-    capacityBlocked?: boolean;
-    capacityReason?: string;
-    capacityShortfall?: CapacityShortfall;
     publicSpecifierError?: string;
     onPublicSpecifierInput?: () => void;
     onDeploymentNameInput?: () => void;
@@ -441,13 +432,9 @@
 <!-- Capacity summary -->
 {#if selectedPrimaryModel}
   <DeploymentCapacitySummary
-    {plannedReplicas}
+    {capacity}
     {nodeCapabilities}
     {enabled}
-    {capacityChecked}
-    {capacityBlocked}
-    {capacityReason}
-    {capacityShortfall}
   />
 {/if}
 

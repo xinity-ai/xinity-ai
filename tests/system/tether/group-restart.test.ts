@@ -106,13 +106,13 @@ describe("tether: restarting a group served across nodes", () => {
     expect(await generations()).toEqual([GROUP_RESTART_BUDGET + 1, GROUP_RESTART_BUDGET + 1]);
   });
 
-  it("hands every member the stage and attempt of each member, and rank 0's addresses to meet at", async () => {
+  it("hands every member each member's stage in the current attempt, and rank 0's address to meet at", async () => {
     await placeGroup();
     await report(0, "admitted", 1);
     await report(1, "preparing", 1);
     const desired = await buildDesiredState(nodeIds[1]!);
     const group = desired.installations.find((installation) => installation.installationId === installationIds[1])!.group!;
-    expect(group.members).toEqual([{ rank: 0, stage: "admitted", generation: 1 }, { rank: 1, stage: "preparing", generation: 1 }]);
-    expect(group.masterAddresses).toEqual([{ subnet: "192.168.100.0/24", address: "192.168.100.254" }]);
+    expect(group.members).toEqual([{ rank: 0, stage: "admitted" }, { rank: 1, stage: "preparing" }]);
+    expect(group.masterAddress).toBe("192.168.100.254");
   });
 });

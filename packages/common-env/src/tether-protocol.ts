@@ -59,10 +59,9 @@ const couplingAddressSchema = z.object({
   subnet: z.cidrv4(),
   address: z.ipv4(),
 });
-export type CouplingAddress = z.infer<typeof couplingAddressSchema>;
 
 // Rank 0 serves.
-export const installationGroupSchema = z.object({
+const installationGroupSchema = z.object({
   id: z.uuid(),
   rank: z.number().int().nonnegative(),
   size: z.number().int().min(2),
@@ -72,10 +71,13 @@ export const installationGroupSchema = z.object({
 });
 export type InstallationGroup = z.infer<typeof installationGroupSchema>;
 
-export const desiredGroupSchema = installationGroupSchema.extend({
-  masterAddresses: z.array(couplingAddressSchema).min(1),
-  masterHost: z.object({ machineName: z.string(), addresses: z.array(couplingAddressSchema) }),
-  members: z.array(z.object({ rank: z.number().int().nonnegative(), stage: z.enum(GROUP_STAGES).nullable(), generation: z.number().int().positive().nullable() })),
+const desiredGroupSchema = installationGroupSchema.extend({
+  // Rank 0's address on this member's first subnet, where the members meet.
+  masterAddress: z.ipv4(),
+  // Rank 0's machine and its own address on that subnet, null when it reports none there.
+  masterHost: z.object({ machineName: z.string(), address: z.ipv4().nullable() }),
+  // Each member's stage in the group's current attempt, null while it has none.
+  members: z.array(z.object({ rank: z.number().int().nonnegative(), stage: z.enum(GROUP_STAGES).nullable() })),
 });
 export type DesiredGroup = z.infer<typeof desiredGroupSchema>;
 

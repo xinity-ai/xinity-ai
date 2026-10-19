@@ -10,8 +10,8 @@ import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, I
 import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts";
 import {
   type CheckResult,
-  checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkDaemonHealth, checkSmtp,
-  checkInfoserverUrl, readDaemonCoupling, type DaemonCoupling,
+  checkPostgresAndMigrations, checkRedis, checkServiceHealth, probeDaemonHealth, checkSmtp,
+  checkInfoserverUrl, NO_COUPLING, type DaemonCoupling,
   fileExistsCheck, serviceActiveCheck, isLocalUrl,
 } from "./doctor-probes.ts";
 
@@ -342,13 +342,14 @@ async function checkDaemonConnectivity(
   values: Record<string, string>,
   serviceActive: boolean,
   host: Host,
-): Promise<CheckResult[]> {
+): Promise<{ checks: CheckResult[]; coupling: DaemonCoupling }> {
   const checks: CheckResult[] = [];
   await pushInfoserverCheck(checks, values, host);
-  if (serviceActive) {
-    checks.push(...await checkDaemonHealth(host, daemonHealthUrl(values)));
+  if (!serviceActive) {
+    return { checks, coupling: NO_COUPLING };
   }
-  return checks;
+  const health = await probeDaemonHealth(host, daemonHealthUrl(values));
+  return { checks: [...checks, ...health.checks], coupling: health.coupling };
 }
 
 async function checkInfoserverConnectivity(
@@ -525,9 +526,10 @@ async function checkComponent(
   component: Component,
   entry: ComponentEntry,
   opts: DoctorRunOptions & { infoserverUrls?: { url: string; components: string[] }[] },
-): Promise<{ report: ComponentReport; values: Record<string, string> }> {
+): Promise<{ report: ComponentReport; values: Record<string, string>; coupling: DaemonCoupling }> {
   const host = opts.host;
   const checks: CheckResult[] = [];
+  let coupling = NO_COUPLING;
 
   checks.push(...(await checkInstallation(component, entry, host)));
 
@@ -547,12 +549,13 @@ async function checkComponent(
         ...(await checkDashboardConnectivity(configResult.values, serviceActive, host)),
       );
       break;
-    case "daemon":
-      checks.push(
-        ...(await checkDaemonConnectivity(configResult.values, serviceActive, host)),
-      );
+    case "daemon": {
+      const connectivity = await checkDaemonConnectivity(configResult.values, serviceActive, host);
+      checks.push(...connectivity.checks);
+      coupling = connectivity.coupling;
       checks.push(...(await checkDaemonDrivers(configResult.values, host)));
       break;
+    }
     case "infoserver":
       checks.push(
         ...(await checkInfoserverConnectivity(
@@ -573,6 +576,7 @@ async function checkComponent(
       checks,
     },
     values: configResult.values,
+    coupling,
   };
 }
 
@@ -592,7 +596,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   opts.spinner?.message("Checking system…");
   components.push(await checkSystem(host));
 
-  let coupling: DaemonCoupling = { interconnect: [], groupMembers: [] };
+  let coupling = NO_COUPLING;
   const discoveredInfoserverUrls = new Map<string, string[]>();
   const remoteInfoserverChecks: CheckResult[] = [];
 
@@ -612,7 +616,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
       ? [...discoveredInfoserverUrls.entries()].map(([url, comps]) => ({ url, components: comps }))
       : [];
 
-    const { report, values } = await checkComponent(comp, entry, {
+    const { report, values, coupling: componentCoupling } = await checkComponent(comp, entry, {
       ...opts,
       host,
       infoserverUrls,
@@ -620,7 +624,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     components.push(report);
 
     if (comp === "daemon") {
-      coupling = await readDaemonCoupling(host, daemonHealthUrl(values));
+      coupling = componentCoupling;
     }
 
     if (comp !== "infoserver" && values.INFOSERVER_URL) {
