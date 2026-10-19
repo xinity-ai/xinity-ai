@@ -14,26 +14,26 @@ const row = (id: string, nodeId: string, group: InstallationGroup | null = null)
   port: 11435, driver: "vllm", settings: { version: 1 }, gpuIds: [], group,
   deletedAt: null, createdAt: new Date(), updatedAt: new Date(),
 });
-const member = (rank: number, address: string): InstallationGroup => ({
-  id: "group-1", rank, size: 2, rendezvousPort: 29500, addresses: [{ subnet: "192.168.100.0/24", address }], generation: 1,
+const member = (rank: number, address: string, generation = 1): InstallationGroup => ({
+  id: "group-1", rank, size: 2, rendezvousPort: 29500, addresses: [{ subnet: "192.168.100.0/24", address }], generation,
 });
 
 describe("toDesiredState", () => {
-  test("gives every member of a group rank 0's addresses to meet at and how far each member is", () => {
+  test("gives every member of a group rank 0's address on its own subnet and how far each member is in this attempt", () => {
     const masterHost = { machineName: "asus-7", addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.1" }] };
-    const leader = row("m0", "node-a", member(0, "192.168.100.254"));
-    const follower = row("m1", "node-b", member(1, "192.168.100.253"));
+    const leader = row("m0", "node-a", member(0, "192.168.100.254", 2));
+    const follower = row("m1", "node-b", member(1, "192.168.100.253", 2));
     const [installation] = toDesiredState(
       "node-b",
       [follower],
-      [{ ...follower, stage: "preparing", stageGeneration: 1 }, { ...leader, stage: "admitted", stageGeneration: 1 }],
+      [{ ...follower, stage: "failed", stageGeneration: 1 }, { ...leader, stage: "admitted", stageGeneration: 2 }],
       new Map([["group-1", masterHost]]),
     ).installations;
     expect(installation!.group).toEqual({
-      ...member(1, "192.168.100.253"),
-      masterAddresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }],
-      masterHost,
-      members: [{ rank: 0, stage: "admitted", generation: 1 }, { rank: 1, stage: "preparing", generation: 1 }],
+      ...member(1, "192.168.100.253", 2),
+      masterAddress: "192.168.100.254",
+      masterHost: { machineName: "asus-7", address: "192.168.100.1" },
+      members: [{ rank: 0, stage: "admitted" }, { rank: 1, stage: null }],
     });
   });
 

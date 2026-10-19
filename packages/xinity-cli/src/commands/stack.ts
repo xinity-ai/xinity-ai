@@ -29,6 +29,7 @@ import { runDoctor, buildSummaryLine, type DoctorReport } from "../lib/doctor/do
 import { describeCouplingIssue, describePortIssue, deriveInterconnectOverview, rdmaEndpoints, type Coupling, type InterconnectPort, type IssueDescription, type PortRef, type RdmaEndpoint } from "common-env";
 import { testRdmaPath } from "../lib/doctor/rdma-test.ts";
 import { checkGroup, type HostedMember } from "../lib/doctor/group-check.ts";
+import type { CheckResult } from "../lib/doctor/doctor-probes.ts";
 import type { Host } from "../lib/core/host.ts";
 import { fetchRelease, listReleases, type ReleaseListEntry } from "../lib/up/github.ts";
 import { loadStackState, findOrphanHosts } from "../lib/stack/stack-state.ts";
@@ -721,11 +722,7 @@ async function handleDoctor(name: string, fleetName?: string): Promise<void> {
       totalFailed += entry.report.summary.fail;
       for (const component of entry.report.components) {
         for (const check of component.checks) {
-          if (check.status === "fail") {
-            fail(`${component.component} · ${check.label}`, check.message);
-          } else if (check.status === "warn") {
-            warn(`${component.component} · ${check.label}`, check.message);
-          }
+          printCheck(`${component.component} · ${check.label}`, check);
         }
       }
       log.info(buildSummaryLine(entry.report.summary));
@@ -769,6 +766,19 @@ const withDocsLink = ({ text, docsUrl }: IssueDescription) => `${text} (${docsUr
 
 // Couplings span hosts, so they are judged across the whole set after the per-host checks. A port
 // problem is a warning, but a coupling that looks usable and fails a real transfer is an error.
+function printCheck(label: string, { status, message }: Pick<CheckResult, "status" | "message">, printPass?: (line: string) => void): number {
+  if (status === "fail") {
+    fail(label, message);
+    return 1;
+  }
+  if (status === "warn") {
+    warn(label, message);
+  } else {
+    printPass?.(`${label}: ${message}`);
+  }
+  return 0;
+}
+
 async function reportInterconnect(nodes: InterconnectNode[], hosts: Map<string, Host>): Promise<number> {
   const { couplings, portIssues } = deriveInterconnectOverview(nodes);
   if (couplings.length === 0 && portIssues.length === 0) {
@@ -793,14 +803,7 @@ async function reportInterconnect(nodes: InterconnectNode[], hosts: Map<string, 
     }
     for (const { server, client } of rdmaTestPairs(coupling, nodes)) {
       const result = await testRdmaPath(testSide(server), testSide(client));
-      if (result.status === "fail") {
-        failed++;
-        fail(result.label, result.message);
-      } else if (result.status === "warn") {
-        warn(result.label, result.message);
-      } else {
-        log.success(`${result.label}: ${result.message}`);
-      }
+      failed += printCheck(result.label, result, log.success);
     }
   }
   return failed;
@@ -814,14 +817,7 @@ async function reportGroups(members: HostedMember[], hosts: Map<string, Host>): 
   let failed = 0;
   for (const group of Map.groupBy(members, (member) => member.group.id).values()) {
     for (const result of await checkGroup(group, (hostName) => hosts.get(hostName)!)) {
-      if (result.status === "fail") {
-        failed++;
-        fail(result.label, result.message);
-      } else if (result.status === "warn") {
-        warn(result.label, result.message);
-      } else {
-        log.info(`${result.label}: ${result.message}`);
-      }
+      failed += printCheck(result.label, result, log.info);
     }
   }
   return failed;

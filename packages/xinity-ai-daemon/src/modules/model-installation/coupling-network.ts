@@ -39,6 +39,5 @@ export function memberGroupFrom(group: DesiredGroup, localPaths: CoupledPath[]):
     }
     return { ...local, address };
   });
-  const master = group.masterAddresses.find(({ subnet }) => subnet === paths[0]!.subnet)!;
-  return { kind: "member", size: group.size, rank: group.rank, masterAddr: master.address, masterPort: group.rendezvousPort, paths };
+  return { kind: "member", size: group.size, rank: group.rank, masterAddr: group.masterAddress, masterPort: group.rendezvousPort, paths };
 }

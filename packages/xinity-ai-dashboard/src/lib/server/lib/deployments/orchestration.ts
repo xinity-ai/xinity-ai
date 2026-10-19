@@ -10,7 +10,7 @@ import { config } from "$lib/server/config";
 import { buildClusterState, chargeCapacity, chargeOf, freeGbOn, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";
 import { ENGINE_SCHEDULERS } from "./engines";
 import type { MemberSlot, NodeSlot, PlacementRequest } from "./engines/engine";
-import type { Placement } from "./placement";
+import { firstFreePort, type Placement } from "./placement";
 import { requirementsForDeployments, type ModelRequirementTable } from "./requirements";
 import type { Capacity, DeploymentStrategy } from "./strategy";
 
@@ -45,7 +45,6 @@ export function collectExcessInstallations(requiredModels: ModelRequirementTable
   return toUninstall;
 }
 
-/** Returns all installations that can and should be released */
 function releaseReplicas(state: ClusterState, release: (replica: ModelInstallation[], requirementKey: string) => boolean): string[] {
   const toUninstall: string[] = [];
   for (const [key, installs] of state.installationsByRequirement) {
@@ -99,20 +98,18 @@ export type PlacementConstraints = {
   requiredFeatures?: string[];
 };
 
-export function findServerForModel(
-  placement: Placement,
-  driver: Provider,
-  need: Omit<PlacementRequest, "strategy">,
-  state: ClusterState,
-  pending: NewInstallation[],
-  strategy: DeploymentStrategy,
-  constraints: PlacementConstraints = {},
-): string | null {
-  for (const server of rankServers(strategy, state)) {
-    const cap = state.serverCapacity.get(server.id);
-    if (!cap) continue;
+export type PlacementQuery = {
+  placement: Placement;
+  driver: Provider;
+  need: Omit<PlacementRequest, "strategy">;
+  strategy: DeploymentStrategy;
+  constraints?: PlacementConstraints;
+};
 
-    if (nodeExcludesPlacement(server.id, driver, placement, state, pending)) {
+export function findServerForModel(query: PlacementQuery, state: ClusterState, pending: NewInstallation[]): string | null {
+  const { placement, driver, need, strategy, constraints = {} } = query;
+  for (const server of rankServers(strategy, state)) {
+    if (!state.serverCapacity.has(server.id) || nodeExcludesPlacement(server.id, driver, placement, state, pending)) {
       continue;
     }
 
@@ -130,7 +127,7 @@ export function findServerForModel(
       requiredFeatures: constraints.requiredFeatures,
     };
     const nodeCap: NodeCapability = {
-      free: cap.total - cap.used,
+      free: freeGbOn(state, server.id),
       driverVersions: server.driverVersions,
       driverFeatures: server.driverFeatures ?? {},
       gpus: server.gpus,
@@ -150,9 +147,9 @@ function nodeCouldServe(server: AiNode, driver: Provider, constraints: Placement
   ) === null;
 }
 
-export type GroupPlacement = { coupling: Coupling; members: MemberSlot[] };
+type GroupPlacement = { coupling: Coupling; members: MemberSlot[] };
 
-export type ReplicaPlacement = { members: MemberSlot[]; coupling?: Coupling };
+type ReplicaPlacement = { members: MemberSlot[]; coupling?: Coupling };
 
 const ranksOf = (members: MemberSlot[]) => members.reduce((total, member) => total + Math.max(member.gpuIds.length, 1), 0);
 
@@ -161,15 +158,8 @@ const GROUP_PREFERENCE: Record<OptimizationGoal, (a: GroupPlacement, b: GroupPla
   speed: (a, b) => ranksOf(b.members) - ranksOf(a.members) || a.members.length - b.members.length,
 };
 
-export function findGroupForModel(
-  placement: Placement,
-  driver: Provider,
-  need: Omit<PlacementRequest, "strategy">,
-  state: ClusterState,
-  pending: NewInstallation[],
-  strategy: DeploymentStrategy,
-  constraints: PlacementConstraints = {},
-): GroupPlacement | null {
+function findGroupForModel(query: PlacementQuery, state: ClusterState, pending: NewInstallation[]): GroupPlacement | null {
+  const { placement, driver, need, strategy, constraints = {} } = query;
   const groupsAcrossNodes = ENGINE_SCHEDULERS[driver].groupsAcrossNodes;
   if (!groupsAcrossNodes) {
     return null;
@@ -188,22 +178,15 @@ export function findGroupForModel(
   return groups.sort(GROUP_PREFERENCE[need.goal])[0] ?? null;
 }
 
-export function findPlacement(
-  placement: Placement,
-  driver: Provider,
-  need: Omit<PlacementRequest, "strategy">,
-  state: ClusterState,
-  pending: NewInstallation[],
-  strategy: DeploymentStrategy,
-  constraints: PlacementConstraints = {},
-): ReplicaPlacement | null {
-  const nodeId = findServerForModel(placement, driver, need, state, pending, strategy, constraints);
+export function findPlacement(query: PlacementQuery, state: ClusterState, pending: NewInstallation[]): ReplicaPlacement | null {
+  const { driver, need, strategy } = query;
+  const nodeId = findServerForModel(query, state, pending);
   const slot = nodeId ? ENGINE_SCHEDULERS[driver].placeOnNode(resourcesOf(state, nodeId), { ...need, strategy }) : undefined;
   const single = nodeId && slot ? { members: [{ nodeId, ...slot }] } : null;
   if (single && need.goal === "space") {
     return single;
   }
-  const group = findGroupForModel(placement, driver, need, state, pending, strategy, constraints);
+  const group = findGroupForModel(query, state, pending);
   if (!group || (single && ranksOf(single.members) >= ranksOf(group.members))) {
     return single;
   }
@@ -218,11 +201,7 @@ function installationsOn(nodeId: string, state: ClusterState, pending: NewInstal
 
 function rendezvousPort(nodeId: string, state: ClusterState, pending: NewInstallation[]): number {
   const used = new Set(installationsOn(nodeId, state, pending).flatMap((i) => (i.group?.rank === 0 ? [i.group.rendezvousPort] : [])));
-  let port = RENDEZVOUS_PORT_BASE;
-  while (used.has(port)) {
-    port++;
-  }
-  return port;
+  return firstFreePort(RENDEZVOUS_PORT_BASE, used);
 }
 
 function takenCouplingAddresses(state: ClusterState, pending: NewInstallation[]): Set<string> {
@@ -276,15 +255,17 @@ export type ShortfallReason = "catalog_unavailable" | "not_found" | "no_compatib
 
 export type Shortfall = { specifier: string; missing: number; reason: ShortfallReason; constraints?: PlacementConstraints & { driver: Provider }; need?: CapacityNeed };
 
-export type InstallationPlan = { toInstall: NewInstallation[]; shortfalls: Shortfall[]; partsOf: FootprintPart[][] };
+type PlannedMember = { installation: NewInstallation; parts: FootprintPart[] };
+
+type InstallationPlan = { toInstall: NewInstallation[]; replicas: PlannedMember[][]; shortfalls: Shortfall[] };
 
 function anyNodeCouldServe(state: ClusterState, driver: Provider, constraints: PlacementConstraints): boolean {
   return state.availableServers.some((server) => nodeCouldServe(server, driver, constraints));
 }
 
-export type MachineNeed = { machine: string; neededGb: number; freeGb: number; sharedMemory: boolean; parts: FootprintPart[] };
+type MachineNeed = { machine: string; neededGb: number; freeGb: number; sharedMemory: boolean; parts: FootprintPart[] };
 
-export type CapacityNeed = { machines: number; perMachine: MachineNeed[] };
+type CapacityNeed = { machines: number; perMachine: MachineNeed[] };
 
 const withNothingInstalled = (state: ClusterState): ClusterState => {
   const unused = <T extends Capacity>(capacity: T): T => ({ ...capacity, used: 0 });
@@ -298,14 +279,8 @@ const withNothingInstalled = (state: ClusterState): ClusterState => {
   };
 };
 
-export function capacityNeed(
-  placement: Placement,
-  state: ClusterState,
-  driver: Provider,
-  need: Omit<PlacementRequest, "strategy">,
-  constraints: PlacementConstraints,
-  strategy: DeploymentStrategy,
-): CapacityNeed | undefined {
+export function capacityNeed(query: PlacementQuery, state: ClusterState): CapacityNeed | undefined {
+  const { driver, need, strategy, constraints = {} } = query;
   const empty = withNothingInstalled(state);
   const machineNeed = (nodeId: string, slot: NodeSlot): MachineNeed => {
     const server = state.availableServers.find((candidate) => candidate.id === nodeId)!;
@@ -327,7 +302,7 @@ export function capacityNeed(
     });
   const members = alone.length > 0
     ? []
-    : (findGroupForModel(placement, driver, need, empty, [], strategy, constraints)?.members ?? []).map((member) => machineNeed(member.nodeId, member));
+    : (findGroupForModel(query, empty, [])?.members ?? []).map((member) => machineNeed(member.nodeId, member));
   const perMachine = (alone.length > 0 ? alone : members).toSorted((a, b) => (a.neededGb - a.freeGb) - (b.neededGb - b.freeGb));
   return perMachine.length > 0 ? { machines: Math.max(members.length, 1), perMachine } : undefined;
 }
@@ -341,7 +316,7 @@ async function planNewInstallations(
   strategy: DeploymentStrategy,
 ): Promise<InstallationPlan> {
   const toInstall: NewInstallation[] = [];
-  const partsOf: FootprintPart[][] = [];
+  const replicas: PlannedMember[][] = [];
   const shortfalls: Shortfall[] = [];
   let usedVram = totalVramUsed(state);
 
@@ -373,15 +348,16 @@ async function planNewInstallations(
     const need = { model: modelInfo, kvCacheGb: effectiveKvCache, goal: resolveOptimizeFor(requirement.settings) };
 
     const constraints = { minVersion, blockedVersions, requiredPlatforms, requiredFeatures };
+    const query = { placement: { deploymentId: requirement.deploymentId, specifier }, driver, need, strategy, constraints };
     for (let i = 0; i < needed; i++) {
-      const replica = findPlacement({ deploymentId: requirement.deploymentId, specifier }, driver, need, state, toInstall, strategy, constraints);
+      const replica = findPlacement(query, state, toInstall);
       const groups = replica?.coupling ? memberGroups(replica.coupling, replica.members, state, toInstall) : undefined;
       if (!replica || (replica.coupling && !groups)) {
         log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
         const reason = anyNodeCouldServe(state, driver, constraints) ? "no_capacity" : "no_compatible_node";
         shortfalls.push({
           specifier, missing: needed - i, reason, constraints: { ...constraints, driver },
-          need: reason === "no_capacity" ? capacityNeed({ deploymentId: requirement.deploymentId, specifier }, state, driver, need, constraints, strategy) : undefined,
+          need: reason === "no_capacity" ? capacityNeed(query, state) : undefined,
         });
         break;
       }
@@ -396,7 +372,7 @@ async function planNewInstallations(
         break;
       }
 
-      replica.members.forEach((member, rank) => {
+      replicas.push(replica.members.map((member, rank) => {
         const installation: NewInstallation = {
           nodeId: member.nodeId,
           deploymentId: requirement.deploymentId,
@@ -412,25 +388,20 @@ async function planNewInstallations(
           group: groups?.[rank] ?? null,
         };
         toInstall.push(installation);
-        partsOf.push(member.parts ?? []);
         chargeCapacity(state, installation, member);
-      });
+        return { installation, parts: member.parts ?? [] };
+      }));
       usedVram += gpuGb;
     }
   }
 
-  return { toInstall, shortfalls, partsOf };
+  return { toInstall, replicas, shortfalls };
 }
 
 type ModelLookup = (specifier: string, driver: Provider) => Promise<SchedulableModel | null>;
 
-/** Whether some available node could actually take over this installation, checked the same way
- * real placement is: driver, capacity, driver version, GPU platform, and required features
- * (`findServerForModel`, the same function `planNewInstallations` uses). Of the installations
- * sitting on now-unavailable nodes, only these are soft-deleted; the rest are left alone, since
- * with few nodes in a cluster, a node going offline is far more likely to be transient than a
- * real removal, and their installation rows need to survive so the models are still considered
- * desired once the node returns. */
+// Only an installation another node could take over is moved off a node that went away. A node going offline
+// is usually transient, and the installations it keeps stay desired for when it returns.
 async function hasReassignmentTarget(install: ModelInstallation, state: ClusterState, lookupModel: ModelLookup): Promise<boolean> {
   const modelInfo = await lookupModel(install.specifier, install.driver as Provider);
   if (!modelInfo) return false;
@@ -441,7 +412,7 @@ async function hasReassignmentTarget(install: ModelInstallation, state: ClusterS
     ? [...state.installationsByServer.values()].flat().filter((other) => other.group?.id === install.group!.id)
     : [];
   liveMembers.forEach((member) => releaseInstallationFromState(state, member));
-  const target = findPlacement(install, install.driver, need, state, [], "first-fit", modelInfo);
+  const target = findPlacement({ placement: install, driver: install.driver, need, strategy: "first-fit", constraints: modelInfo }, state, []);
   for (const member of liveMembers) {
     chargeCapacity(state, member, chargeOf(member));
     state.installationsByServer.get(member.nodeId)?.push(member);
@@ -459,7 +430,7 @@ export async function collectReassignableOrphans(
   return replicas.filter((_, i) => reassignable[i]).flat();
 }
 
-export function collectGroupsOf(installations: ModelInstallation[], state: ClusterState): string[] {
+function collectGroupsOf(installations: ModelInstallation[], state: ClusterState): string[] {
   const groupIds = new Set(installations.flatMap((install) => (install.group ? [install.group.id] : [])));
   return releaseReplicas(state, (replica) => groupIds.has(replica[0]!.group?.id ?? ""));
 }
@@ -501,22 +472,26 @@ async function persistCharges(before: ModelInstallation[], after: ModelInstallat
     .where(sql`${modelInstallationT.id} = ${install.id}`)));
 }
 
-export type PlannedMachine = { machineName: string; cards: number; gpuGb: number; hostGb: number; sharedMemory: boolean; parts: FootprintPart[] };
+type PlannedMachine = { machineName: string; cards: number; gpuGb: number; hostGb: number; sharedMemory: boolean; parts: FootprintPart[] };
 
-export type PlannedReplica = { specifier: string; machines: PlannedMachine[] };
+type PlannedReplica = { specifier: string; machines: PlannedMachine[] };
 
-export type PlacementPreview = { replicas: PlannedReplica[]; shortfalls: Shortfall[] };
+type PlacementPreview = { replicas: PlannedReplica[]; shortfalls: Shortfall[] };
 
 const lookupSchedulable: ModelLookup = async (specifier, driver) => {
   const resolution = await resolveSchedulable(specifier, driver);
   return resolution.status === "found" ? resolution.model : null;
 };
 
-export async function currentClusterState(replacedDeploymentId?: string): Promise<{ state: ClusterState; servers: AiNode[] }> {
-  const [existing, servers]: [ModelInstallation[], AiNode[]] = await Promise.all([
+async function installationsAndLiveNodes(): Promise<[ModelInstallation[], AiNode[]]> {
+  return Promise.all([
     getDB().select().from(modelInstallationT).where(sql`${modelInstallationT.deletedAt} IS NULL`),
     getDB().select().from(aiNodeT).where(nodeIsLive),
   ]);
+}
+
+export async function currentClusterState(replacedDeploymentId?: string): Promise<{ state: ClusterState; servers: AiNode[] }> {
+  const [existing, servers] = await installationsAndLiveNodes();
   const liveIds = new Set(servers.map((server) => server.id));
   const others = existing.filter((install) => liveIds.has(install.nodeId) && install.deploymentId !== replacedDeploymentId);
   return { state: buildClusterState(await chargeUnchargedInstallations(others, servers, lookupSchedulable), servers), servers };
@@ -524,21 +499,21 @@ export async function currentClusterState(replacedDeploymentId?: string): Promis
 
 export async function previewPlacement(requirements: ModelRequirementTable, replacedDeploymentId?: string): Promise<PlacementPreview> {
   const { state, servers } = await currentClusterState(replacedDeploymentId);
-  const { toInstall, shortfalls, partsOf } = await planNewInstallations(requirements, state, maxVramGb(), config.compute.deploymentStrategy());
+  const { replicas, shortfalls } = await planNewInstallations(requirements, state, maxVramGb(), config.compute.deploymentStrategy());
   const machineName = (nodeId: string) => {
     const server = servers.find((candidate) => candidate.id === nodeId);
     return server?.machineName ?? server?.host ?? nodeId;
   };
   return {
-    replicas: replicasOf(toInstall.map((install, index) => ({ ...install, id: String(index), group: install.group ?? null }))).map((members) => ({
-      specifier: members[0]!.specifier,
-      machines: members.map((install) => ({
+    replicas: replicas.map((members) => ({
+      specifier: members[0]!.installation.specifier,
+      machines: members.map(({ installation: install, parts }) => ({
         machineName: machineName(install.nodeId),
         cards: Math.max(install.gpuIds?.length ?? 0, 1),
         gpuGb: install.estCapacity,
         hostGb: install.hostCapacity ?? 0,
         sharedMemory: resourcesOf(state, install.nodeId).unified,
-        parts: partsOf[Number(install.id)] ?? [],
+        parts,
       })),
     })),
     shortfalls,
@@ -567,10 +542,7 @@ async function installationsThatDoNotFit(): Promise<Set<string>> {
 
 async function runSyncDeployedModels() {
   const requiredModels = await assembleModelRequirementTable();
-  const [existing, availableServers]: [ModelInstallation[], AiNode[]] = await Promise.all([
-    getDB().select().from(modelInstallationT).where(sql`${modelInstallationT.deletedAt} IS NULL`),
-    getDB().select().from(aiNodeT).where(nodeIsLive),
-  ]);
+  const [existing, availableServers] = await installationsAndLiveNodes();
 
   const availableServerIds = new Set(availableServers.map(s => s.id));
   const orphanedCandidates = existing.filter(i => !availableServerIds.has(i.nodeId));

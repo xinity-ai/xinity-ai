@@ -3,7 +3,7 @@ import { kvCacheFloorGb } from "./kv-cache-floor";
 import { engineProfile } from "../deployment-footprint";
 
 const single = { ranks: 1, speculativeTokens: 0 };
-const paging = engineProfile("vllm", "0.31.1").paging;
+const paging = engineProfile("0.31.1").paging;
 
 // Floors bracketed on a GB10 by starting vLLM 0.31 just below and at the value, as recorded in the
 // catalog: the derived floor has to fall between the one that aborted and the one that started.

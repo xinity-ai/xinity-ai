@@ -1,8 +1,8 @@
 import { aiNodeT, inArray, type ModelInstallation } from "common-db";
-import { rdmaPathsOf, type DesiredGroup, type InstallationGroup, type InterconnectPort } from "common-env";
+import { rdmaPathsOf, type InstallationGroup, type InterconnectPort } from "common-env";
 import { getDB } from "./db";
 
-export type MasterHost = DesiredGroup["masterHost"];
+export type MasterHost = { machineName: string; addresses: InstallationGroup["addresses"] };
 
 type LeaderNode = { machineName: string | null; host: string; interconnect: InterconnectPort[] };
 

@@ -748,12 +748,12 @@ describe("perCardSizing", () => {
 });
 
 describe("members of a group served across nodes", () => {
-  const group = (stages: (GroupStage | null)[], generations: (number | null)[] = stages.map((stage) => (stage ? 1 : null))) => ({
+  const group = (stages: (GroupStage | null)[]) => ({
     id: "group-1", rank: 1, size: 2, rendezvousPort: 29500, generation: 1,
     addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.253" }],
-    masterAddresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }],
-    masterHost: { machineName: "asus-7", addresses: [] as { subnet: string; address: string }[] },
-    members: stages.map((stage, rank) => ({ rank, stage, generation: generations[rank]! })),
+    masterAddress: "192.168.100.254",
+    masterHost: { machineName: "asus-7", address: null as string | null },
+    members: stages.map((stage, rank) => ({ rank, stage })),
   });
   const lastState = (id: string) => stateWrites.filter(([written]) => written === id).at(-1);
 
@@ -776,8 +776,7 @@ describe("members of a group served across nodes", () => {
   });
 
   test("copies a member's model from rank 0's machine over the coupling, and says so", async () => {
-    const leaderAddress = { subnet: "192.168.100.0/24", address: "192.168.100.1" };
-    const member = { ...makeInstallation("copying-member"), group: { ...group([null, null]), masterHost: { machineName: "asus-7", addresses: [leaderAddress] } } };
+    const member = { ...makeInstallation("copying-member"), group: { ...group([null, null]), masterHost: { machineName: "asus-7", address: "192.168.100.1" } } };
     downloadModelSpy.mockClear();
     await syncSettled([member], createMockOps({ checkHealth: mock(() => Promise.resolve(true)) }));
     expect(downloadModelSpy.mock.calls[0]![3]).toEqual({ source: expect.objectContaining({ name: "asus-7" }) });
@@ -791,14 +790,6 @@ describe("members of a group served across nodes", () => {
     await syncSettled([member], ops);
     expect(lastState(member.id)?.[1]).toBe("failed");
     expect(lastState(member.id)?.[2]).toMatchObject({ errorMessage: "Coupling address 192.168.100.253 is already in use on its network", groupStage: "failed" });
-  });
-
-  test("does not count a member admitted for an attempt the group has left", async () => {
-    const member = { ...makeInstallation("stale-member"), group: { ...group(["admitted", "admitted"], [1, 1]), generation: 2 } };
-    const ops = createMockOps({ checkHealth: mock(() => Promise.resolve(true)) });
-    await syncSettled([member], ops);
-    expect(ops.start).not.toHaveBeenCalled();
-    expect(lastState(member.id)?.[2]).toMatchObject({ groupStage: "admitted", groupGeneration: 2 });
   });
 
   test("starts a member with its group once every member is admitted or already running, and counts a headless rank up while it runs", async () => {
@@ -816,7 +807,7 @@ describe("members of a group served across nodes", () => {
   });
 
   test("stops a running member once its group moved on to the next attempt, and starts it for that attempt", async () => {
-    const member = { ...makeInstallation("restarted-member"), group: { ...group(["admitted", "admitted"], [2, 2]), generation: 2 } };
+    const member = { ...makeInstallation("restarted-member"), group: { ...group(["admitted", "admitted"]), generation: 2 } };
     mockLocalStates.set(member.id, { lifecycleState: "ready", groupGeneration: 1 });
     const ops = createMockOps({ listRunning: mock(() => Promise.resolve([member.id])), isAlive: mock(() => Promise.resolve(true)) });
     await syncSettled([member], ops);
@@ -852,7 +843,7 @@ describe("members of a group served across nodes", () => {
   });
 
   test("tries a failed member again once its group moved on to the next attempt, but not before", async () => {
-    const failedMember = (generation: number) => ({ ...makeInstallation("failed-member"), group: { ...group(["admitted", "admitted"], [generation, generation]), generation } });
+    const failedMember = (generation: number) => ({ ...makeInstallation("failed-member"), group: { ...group(["admitted", "admitted"]), generation } });
     const stillFailed = failedMember(1);
     mockLocalStates.set(stillFailed.id, { lifecycleState: "failed", groupGeneration: 1 });
     const retried = failedMember(2);

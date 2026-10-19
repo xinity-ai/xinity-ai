@@ -92,7 +92,7 @@ if (state.dockerImage) process.env.VLLM_DOCKER_IMAGE = state.dockerImage;
 
 const [
   { buildDockerRunArgs, buildSystemdEnvFile, buildSystemdDropIn, buildSystemdServeArgv, SINGLE_NODE },
-  { computeGpuUtilization, buildVllmExtraArgs, hostMemoryLimitBytes, loadingAllowanceGb },
+  { launchConfig, loadingAllowanceGb, perCardSizing },
   { buildHardwareProfile },
   { NO_HOST_DEVICES, unpinnedDevicesFor },
 ] = await Promise.all([
@@ -106,24 +106,22 @@ function buildVllmInstanceConfig(resolved: ResolvedVllmModel, state: State, load
   const profile = buildHardwareProfile(state.gpus as DetectedGpu[], state.systemRamMb);
   const devices = unpinnedDevicesFor(profile.gpus, NO_HOST_DEVICES);
   const charge = chargeOnNode(resolved, profile.gpus, { cardsPerNode: devices.tensorParallelSize, nodes: 1, node: 0 }, undefined);
-  const gpuMemoryUtilization = charge && computeGpuUtilization({ specifier: resolved.vllmProviderName, gpuGb: charge.gpuGbPerCard }, profile);
-
-  return {
-    model: resolved.vllmProviderName,
+  const share = perCardSizing(
+    { specifier: resolved.vllmProviderName, estCapacity: resolved.estCapacity, kvCacheCapacity: resolved.kvCacheGb },
+    resolved.model.sizing,
+    devices.tensorParallelSize,
+  );
+  return launchConfig({
+    model: resolved,
     port: state.port,
-    kvCacheBytes: `${resolved.kvCacheGb}g`,
-    trustRemoteCode: resolved.trustRemoteCode,
-    gpuMemoryUtilization,
-    extraArgs: buildVllmExtraArgs(
-      resolved.modelType,
-      resolved.hasToolsTag,
-      resolved.args,
-      maxNumSeqs(resolved.model, profile.gpus, resolved.kvCacheGb),
-    ),
+    share,
+    charge,
+    maxNumSeqs: maxNumSeqs(resolved.model, profile.gpus, resolved.kvCacheGb),
+    loadingGb,
+    profile,
     devices,
     group: SINGLE_NODE,
-    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, loadingGb),
-  };
+  });
 }
 
 const parsedModels = await loadYaml(values.models, ModelFileSchema, "model");

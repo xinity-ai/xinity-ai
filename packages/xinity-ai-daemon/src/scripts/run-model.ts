@@ -23,13 +23,12 @@ import {
   describeIncompatibility,
   RunModelError,
   chargeOnNode,
-  type NodeCharge,
   type ResolvedVllmModel,
   type VllmDriverState,
 } from "./lib/vllm-run";
 import type { NodeGroup, VllmInstanceConfig } from "../modules/model-installation/vllm-ops";
-import type { GpuDevices } from "../modules/model-installation/gpu-devices";
 import type { HardwareProfile } from "../modules/hardware-detect";
+import type { CardShare, NodeCharge } from "../modules/model-installation/vllm";
 
 const DEFAULT_PORT = 8000;
 const DEFAULT_MASTER_PORT = 29500;
@@ -45,7 +44,6 @@ function die(msg: string, code?: string): never {
   process.exit(1);
 }
 
-/** Prints a structured record on stdout. A no-op outside --json mode. */
 function emit(record: Record<string, unknown>): void {
   if (jsonMode) console.log(JSON.stringify(record));
 }
@@ -167,8 +165,8 @@ if (values["cache-dir"]) process.env.VLLM_HF_CACHE_DIR = values["cache-dir"];
 if (values["hf-token"]) process.env.VLLM_HF_TOKEN = values["hf-token"];
 
 const [
-  { buildDockerRunArgs, buildSystemdServeArgv, couplingNetworkCreateArgs, ensureCouplingNetworks, ensureVllmNetwork, groupTensorParallelSize, SINGLE_NODE, VLLM_NETWORK },
-  { computeGpuUtilization, buildVllmExtraArgs, fittedGpuGb, hostMemoryLimitBytes, loadingAllowanceGb, perCardSizing },
+  { buildDockerRunArgs, buildSystemdServeArgv, couplingNetworkCreateArgs, ensureCouplingNetworks, ensureVllmNetwork, groupTensorParallelSize, pathCidr, SINGLE_NODE, VLLM_NETWORK },
+  { launchConfig, loadingAllowanceGb, perCardSizing },
   { detectHardwareProfile },
   { detectVllmFeatures },
   { readHostDevices, unpinnedDevicesFor },
@@ -238,29 +236,6 @@ async function resolveGroup(): Promise<NodeGroup> {
   return { kind: "member", size: nodeCount, rank: nodeRank, masterAddr: memberAddress(paths[0]!.subnet, 0), masterPort, paths };
 }
 
-type CardShare = { weightGb: number; kvCacheGb: number };
-
-function buildConfig(resolved: ResolvedVllmModel, profile: HardwareProfile, devices: GpuDevices, group: NodeGroup, share: CardShare, charge: NodeCharge | undefined, loadingGb: number): VllmInstanceConfig {
-  const gpuGb = charge?.gpuGbPerCard ?? fittedGpuGb(share.weightGb, share.kvCacheGb);
-  const gpuMemoryUtilization = gpuUtilOverride ?? computeGpuUtilization({ specifier: resolved.vllmProviderName, gpuGb }, profile);
-  return {
-    model: resolved.vllmProviderName,
-    port,
-    kvCacheBytes: `${share.kvCacheGb}g`,
-    trustRemoteCode: resolved.trustRemoteCode,
-    gpuMemoryUtilization,
-    extraArgs: buildVllmExtraArgs(
-      resolved.modelType,
-      resolved.hasToolsTag,
-      resolved.args,
-      maxNumSeqs(resolved.model, profile.gpus, resolved.kvCacheGb),
-    ),
-    devices,
-    group,
-    hostMemoryLimitBytes: charge && hostMemoryLimitBytes(charge.hostGb, loadingGb),
-  };
-}
-
 function serveArgv(config: VllmInstanceConfig): string[] {
   if (backend !== "docker") return buildSystemdServeArgv(config);
   return buildDockerRunArgs(id, config, "preview");
@@ -300,16 +275,18 @@ async function ensureDownloaded(resolved: ResolvedVllmModel): Promise<void> {
 async function startServer(config: VllmInstanceConfig): Promise<never> {
   const argv = serveArgv(config);
 
+  const memberPaths = config.group.kind === "member" ? config.group.paths : [];
+  for (const { address } of memberPaths) {
+    if (await addressInUse(address)) {
+      die(`${address} is already in use on the coupling, so this member cannot take it`);
+    }
+  }
+
   // docker run -d returns once the container is created; print the follow/stop hints and exit.
   if (backend === "docker") {
     await ensureVllmNetwork();
-    if (config.group.kind === "member") {
-      for (const { address } of config.group.paths) {
-        if (await addressInUse(address)) {
-          die(`${address} is already in use on the coupling, so this member cannot take it`);
-        }
-      }
-      await ensureCouplingNetworks(config.group.paths);
+    if (memberPaths.length > 0) {
+      await ensureCouplingNetworks(memberPaths);
     }
     console.error(`Starting (docker, ${dockerNetworksOf(config.group).note}):\n  ${quoteShellArgv(argv)}\n`);
     const proc = Bun.spawn(argv, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
@@ -322,13 +299,8 @@ async function startServer(config: VllmInstanceConfig): Promise<never> {
     process.exit(0);
   }
 
-  const memberAddresses = config.group.kind === "member"
-    ? config.group.paths.map((path) => ({ address: `${path.address}/${path.subnet.split("/")[1]}`, interface: path.interface }))
-    : [];
-  for (const { address, interface: device } of memberAddresses) {
-    if (await addressInUse(address.split("/")[0]!)) {
-      die(`${address} is already in use on the coupling, so this member cannot take it`);
-    }
+  const memberAddresses = memberPaths.map((path) => ({ address: pathCidr(path), device: path.interface }));
+  for (const { address, device } of memberAddresses) {
     await $`ip addr replace ${address} dev ${device}`;
   }
 
@@ -343,7 +315,7 @@ async function startServer(config: VllmInstanceConfig): Promise<never> {
 
   const code = await proc.exited;
   await $`rm -f ${pidFile}`.nothrow();
-  for (const { address, interface: device } of memberAddresses) {
+  for (const { address, device } of memberAddresses) {
     await $`ip addr del ${address} dev ${device}`.nothrow();
   }
   process.exit(code);
@@ -543,7 +515,18 @@ async function main(): Promise<void> {
   );
   const charge = chargeOnNode(resolved, profile.gpus, { cardsPerNode: devices.tensorParallelSize, nodes: nodeCount, node: nodeRank }, driver.version);
   const loadingGb = await loadingAllowanceGb(resolved.vllmProviderName, driver.version);
-  const config = buildConfig(resolved, profile, devices, group, share, charge, loadingGb);
+  const config = launchConfig({
+    model: resolved,
+    port,
+    share,
+    charge,
+    maxNumSeqs: maxNumSeqs(resolved.model, profile.gpus, resolved.kvCacheGb),
+    loadingGb,
+    profile,
+    devices,
+    group,
+    gpuMemoryUtilization: gpuUtilOverride,
+  });
   // Every node in a group downloads the whole model but only holds its own cards' share of it.
   const gpuOnThisNode = (charge?.gpuGbPerCard ?? share.weightGb + share.kvCacheGb) * devices.tensorParallelSize;
   const onThisNode: ResolvedVllmModel = {

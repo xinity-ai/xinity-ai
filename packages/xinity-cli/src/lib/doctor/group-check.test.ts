@@ -11,8 +11,8 @@ const member = (rank: number, stage: GroupStage | null, generation = 1): HostedM
   group: {
     id: "group-1", rank, size: 2, rendezvousPort: 29500, generation,
     addresses: [{ subnet: "192.168.100.0/24", address: `192.168.100.${254 - rank}` }],
-    masterAddresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }],
-    masterHost: { machineName: "spark-0", addresses: [] },
+    masterAddress: "192.168.100.254",
+    masterHost: { machineName: "spark-0", address: null },
   },
 });
 

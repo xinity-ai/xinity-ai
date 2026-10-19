@@ -7,11 +7,11 @@ import { rootLogger } from "../../logger";
 import { lastInterconnectCheck } from "../statekeeper";
 import type { SyncInstallation } from "../db-sync";
 import { resolveInstallationEntry } from "./catalog";
-import { cachedRepoDir, getFileSize, stallWatchdog, streamToFile, type FileRequest, type FileSource } from "./vllm-download";
+import { cachedRepoDir, getFileSize, streamResumed, type FileRequest, type FileSource } from "./vllm-download";
 
 const log = rootLogger.child({ name: "peer-share" });
 
-export const PEER_SHARE_PORT = 29400;
+const PEER_SHARE_PORT = 29400;
 
 const BLOB_PATH = /^\/blobs\/(.+)\/([0-9a-f]{40,64})$/;
 
@@ -110,7 +110,6 @@ export async function sharePeerFilesFor(installations: SyncInstallation[]): Prom
   peerShare.share(sharedModels.size > 0 ? [...new Set(addresses)] : []);
 }
 
-
 const PEER_POLL_MS = 5_000;
 
 async function copyFromPeer(
@@ -122,42 +121,40 @@ async function copyFromPeer(
   let peerBytes = -1;
   let grewAt = Date.now();
   // The peer serves only files it has finished, so one it is still downloading is waited for while it grows.
+  const request = (fromByte: number, signal: AbortSignal) => fetch(`${url}${blobPath}`, {
+    headers: {
+      authorization: signRequest(config.tether.secret, { method: "GET", path: blobPath }),
+      ...(fromByte > 0 ? { Range: `bytes=${fromByte}-` } : {}),
+    },
+    signal,
+  });
   while (Date.now() - grewAt < stallMs) {
-    const existingBytes = await getFileSize(incompletePath);
-    const stall = stallWatchdog(stallMs);
+    let outcome: Awaited<ReturnType<typeof streamResumed>>;
     try {
-      const response = await fetch(`${url}${blobPath}`, {
-        headers: {
-          authorization: signRequest(config.tether.secret, { method: "GET", path: blobPath }),
-          ...(existingBytes > 0 ? { Range: `bytes=${existingBytes}-` } : {}),
-        },
-        signal: stall.signal,
-      });
-      if (response.ok && response.body) {
-        await streamToFile(incompletePath, response.body, existingBytes > 0 && response.status === 206, stall.signal, (bytes) => {
-          stall.reset();
-          return onBytes(bytes);
-        });
-        if (await matchesHash(incompletePath, sha256, expectedSize)) {
-          return true;
-        }
-        await unlink(incompletePath);
-        log.warn({ model, etag, peer: machine }, "File copied from the peer does not match its hash, downloading it instead");
-        return false;
-      }
-      const peerFile = response.status === 404 ? (await response.json().catch(() => undefined)) as PeerFileState | undefined : undefined;
-      if (peerFile?.state !== "downloading") {
-        return false;
-      }
-      if (peerFile.bytes > peerBytes) {
-        peerBytes = peerFile.bytes;
-        grewAt = Date.now();
-      }
+      outcome = await streamResumed(incompletePath, stallMs, onBytes, request);
     } catch (err) {
       log.warn({ err, model, etag, peer: machine }, "Copy from the peer failed, downloading the file instead");
       return false;
-    } finally {
-      stall.stop();
+    }
+    if (outcome === "stalled") {
+      log.warn({ model, etag, peer: machine }, "Copy from the peer stalled, downloading the file instead");
+      return false;
+    }
+    if (outcome === "written") {
+      if (await matchesHash(incompletePath, sha256, expectedSize)) {
+        return true;
+      }
+      await unlink(incompletePath);
+      log.warn({ model, etag, peer: machine }, "File copied from the peer does not match its hash, downloading it instead");
+      return false;
+    }
+    const peerFile = outcome.status === 404 ? (await outcome.json().catch(() => undefined)) as PeerFileState | undefined : undefined;
+    if (peerFile?.state !== "downloading") {
+      return false;
+    }
+    if (peerFile.bytes > peerBytes) {
+      peerBytes = peerFile.bytes;
+      grewAt = Date.now();
     }
     await Bun.sleep(Math.min(PEER_POLL_MS, stallMs / 4));
   }
@@ -183,10 +180,9 @@ export function peerSourceFor(group: DesiredGroup | null | undefined): FileSourc
   if (!group || group.rank === 0) {
     return undefined;
   }
-  const { machineName, addresses } = group.masterHost;
-  const address = addresses.find(({ subnet }) => subnet === group.addresses[0]!.subnet) ?? addresses[0];
-  return address && {
+  const { machineName, address } = group.masterHost;
+  return address ? {
     name: machineName,
-    fetch: (request) => copyFromPeer(`http://${address.address}:${PEER_SHARE_PORT}`, machineName, request),
-  };
+    fetch: (request) => copyFromPeer(`http://${address}:${PEER_SHARE_PORT}`, machineName, request),
+  } : undefined;
 }

@@ -21,7 +21,7 @@ const couplingIssueSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("speed-mismatch"), speedsMbps: z.array(z.number()) }),
   z.object({ kind: z.literal("no-shared-subnet"), between: z.tuple([portRefSchema, portRefSchema]) }),
 ]);
-export type CouplingIssue = z.infer<typeof couplingIssueSchema>;
+type CouplingIssue = z.infer<typeof couplingIssueSchema>;
 
 const couplingSchema = z.object({
   nodeIds: z.array(z.string()),
@@ -173,7 +173,7 @@ function segments(ports: LocatedPort[]): LocatedPort[][] {
 
 const formatIpv4 = (value: number) => [24, 16, 8, 0].map((shift) => (value >>> shift) & 0xff).join(".");
 
-export type RdmaPath = { subnet: string; address: string; interface: string };
+type RdmaPath = { subnet: string; address: string; interface: string };
 
 export function rdmaPathsOf(port: AddressedPort): RdmaPath[] {
   return rdmaAddresses(port).map(({ network, prefix, endpoint }) => ({
@@ -190,7 +190,7 @@ export function inSubnet(address: string, subnet: string): boolean {
   return ofAddress !== null && ofSubnet !== null && ofAddress.network === ofSubnet.network;
 }
 
-export type SharedSubnet = { subnet: string; addresses: Record<string, string> };
+type SharedSubnet = { subnet: string; addresses: Record<string, string> };
 
 export function sharedRdmaSubnets(ports: readonly { nodeId: string; port: InterconnectPort }[], nodeIds: readonly string[]): SharedSubnet[] {
   const byNode = nodeIds.map((nodeId) => {
@@ -258,7 +258,7 @@ export function deriveInterconnectOverview(nodes: readonly CouplingNode[]): Inte
 }
 
 // Anchors of the troubleshooting headings in docs/features/node-coupling.md
-export type CouplingDocsSection =
+type CouplingDocsSection =
   | "no-ipv4-address"
   | "address-rdma-cannot-use"
   | "address-keeps-vanishing"

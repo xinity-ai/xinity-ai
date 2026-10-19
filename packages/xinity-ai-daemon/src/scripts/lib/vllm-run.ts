@@ -9,7 +9,6 @@
 import {
   blockedVersionRules,
   checkNodeCompatibility,
-
   requiredFeaturesForEngine,
   type Model,
   type NodeCapability,
@@ -17,6 +16,7 @@ import {
   type IncompatibilityReason,
 } from "common-env/model-catalog";
 import { deploymentFootprint, engineProfile, imagesInFlight, type GpuInfo } from "common-env";
+import type { NodeCharge } from "../../modules/model-installation/vllm";
 
 /** Minimal machine description the resolver needs; a subset of HardwareProfile. */
 export type MachineProfile = {
@@ -43,8 +43,6 @@ export type ResolvedVllmModel = {
   requiredFeatures: string[];
 }
 
-export type NodeCharge = { gpuGbPerCard: number; hostGb: number };
-
 export function chargeOnNode(
   resolved: Pick<ResolvedVllmModel, "model" | "kvCacheGb">,
   gpus: GpuInfo[],
@@ -57,7 +55,7 @@ export function chargeOnNode(
     layout,
     kvCacheGb,
     imagesInFlight: imagesInFlight(entry, gpus, kvCacheGb),
-    profile: engineProfile("vllm", engineVersion),
+    profile: engineProfile(engineVersion),
   });
   const rank = footprint?.ranks.find((candidate) => candidate.node === layout.node);
   return footprint && rank && { gpuGbPerCard: rank.gpuGb, hostGb: footprint.nodes[layout.node]!.hostGb };

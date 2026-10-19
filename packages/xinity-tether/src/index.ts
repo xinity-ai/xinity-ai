@@ -219,24 +219,38 @@ async function handleSSEStream(req: Request): Promise<Response> {
   });
 }
 
-async function handleStatus(req: Request): Promise<Response> {
-  const refused = verifySignature(req, STATUS_PATH);
+type SignedReport = { nodeId: string; signature: string };
+
+async function verifiedReport<T extends SignedReport>(
+  req: Request,
+  endpoint: "status" | "interconnect",
+  path: string,
+  schema: z.ZodType<T>,
+  canonical: (report: T, authorization: string) => string,
+): Promise<{ report: T } | { refusal: Response }> {
+  const refused = verifySignature(req, path);
   if (refused) {
-    return rejectUnsigned("status", refused);
+    return { refusal: rejectUnsigned(endpoint, refused) };
   }
-
-  const parsed = installationStateReportSchema.safeParse(await req.json().catch(() => null));
+  const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
-    return refuse("status", "invalid_payload", parsed.error.message, 400);
+    return { refusal: refuse(endpoint, "invalid_payload", parsed.error.message, 400) };
   }
-
-  const { nodeId, states, signature } = parsed.data;
-
+  const { nodeId, signature } = parsed.data;
   const publicKey = connectedPublicKey(nodeId) ?? await readPinnedPublicKey(nodeId);
-  if (!publicKey || !verifyNodeSignature(publicKey, canonicalStateReport(parsed.data, req.headers.get("authorization") ?? ""), signature)) {
-    log.warn({ nodeId, pinned: !!publicKey }, "Status report is not signed by this node");
-    return refuse("status", "invalid_signature", "Report signature is invalid", 401);
+  if (!publicKey || !verifyNodeSignature(publicKey, canonical(parsed.data, req.headers.get("authorization") ?? ""), signature)) {
+    log.warn({ nodeId, pinned: !!publicKey, endpoint }, "Report is not signed by this node");
+    return { refusal: refuse(endpoint, "invalid_signature", "Report signature is invalid", 401) };
   }
+  return { report: parsed.data };
+}
+
+async function handleStatus(req: Request): Promise<Response> {
+  const verified = await verifiedReport(req, "status", STATUS_PATH, installationStateReportSchema, canonicalStateReport);
+  if ("refusal" in verified) {
+    return verified.refusal;
+  }
+  const { nodeId, states } = verified.report;
 
   const { owned, foreign } = await partitionOwnedStates(nodeId, states);
   if (foreign.length > 0) {
@@ -252,22 +266,11 @@ async function handleStatus(req: Request): Promise<Response> {
 }
 
 async function handleInterconnect(req: Request): Promise<Response> {
-  const refused = verifySignature(req, INTERCONNECT_PATH);
-  if (refused) {
-    return rejectUnsigned("interconnect", refused);
+  const verified = await verifiedReport(req, "interconnect", INTERCONNECT_PATH, interconnectReportSchema, canonicalInterconnectReport);
+  if ("refusal" in verified) {
+    return verified.refusal;
   }
-
-  const parsed = interconnectReportSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) {
-    return refuse("interconnect", "invalid_payload", parsed.error.message, 400);
-  }
-
-  const { nodeId, interconnect, signature } = parsed.data;
-  const publicKey = connectedPublicKey(nodeId) ?? await readPinnedPublicKey(nodeId);
-  if (!publicKey || !verifyNodeSignature(publicKey, canonicalInterconnectReport(parsed.data, req.headers.get("authorization") ?? ""), signature)) {
-    log.warn({ nodeId, pinned: !!publicKey }, "Interconnect report is not signed by this node");
-    return refuse("interconnect", "invalid_signature", "Report signature is invalid", 401);
-  }
+  const { nodeId, interconnect } = verified.report;
 
   await writeInterconnect(nodeId, interconnect);
   return Response.json({ ok: true });

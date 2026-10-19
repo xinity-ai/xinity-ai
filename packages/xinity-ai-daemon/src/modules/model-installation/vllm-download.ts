@@ -190,34 +190,20 @@ async function downloadFileToCache(
       return etag;
     }
 
-    const stall = stallWatchdog(stallMs);
-    try {
-      const { response: dlRes, existingBytes: resumeBytes } = await fetchBlobResumable(
-        resolveUrl,
-        incompletePath,
-        existingBytes,
-        stall.signal,
-      );
-      if (!dlRes.body) throw new Error(`No response body for ${filePath}`);
-      await streamToFile(incompletePath, dlRes.body, resumeBytes > 0 && dlRes.status === 206, stall.signal, (bytes) => {
-        stall.reset();
-        return onBytes(bytes);
-      });
+    const outcome = await streamResumed(incompletePath, stallMs, onBytes, (fromByte, signal) => fetchBlobFrom(resolveUrl, fromByte, signal));
+    if (outcome === "written") {
       await rename(incompletePath, blobPath);
       return etag;
-    } catch (err) {
-      if (!stall.signal.aborted) {
-        throw err;
-      }
-      // A connection that dies without closing never ends the read, so only a timeout notices it.
-      attemptsWithoutBytes = (await getFileSize(incompletePath)) > existingBytes ? 0 : attemptsWithoutBytes + 1;
-      if (attemptsWithoutBytes >= STALLED_ATTEMPTS) {
-        throw new Error(`Download of ${filePath} stalled: no data for ${stallMs / 1000}s, ${STALLED_ATTEMPTS} times in a row`, { cause: err });
-      }
-      log.warn({ model, filePath, stallMs }, "Download stalled, resuming");
-    } finally {
-      stall.stop();
     }
+    if (outcome !== "stalled") {
+      throw new Error(`No response body for ${filePath}`);
+    }
+    // A connection that dies without closing never ends the read, so only a timeout notices it.
+    attemptsWithoutBytes = (await getFileSize(incompletePath)) > existingBytes ? 0 : attemptsWithoutBytes + 1;
+    if (attemptsWithoutBytes >= STALLED_ATTEMPTS) {
+      throw new Error(`Download of ${filePath} stalled: no data for ${stallMs / 1000}s, ${STALLED_ATTEMPTS} times in a row`);
+    }
+    log.warn({ model, filePath, stallMs }, "Download stalled, resuming");
   }
 }
 
@@ -228,7 +214,7 @@ export type FileSource = { name: string; fetch: (request: FileRequest) => Promis
 
 const STALLED_ATTEMPTS = 5;
 
-export function stallWatchdog(stallMs: number) {
+function stallWatchdog(stallMs: number) {
   const controller = new AbortController();
   let timer = setTimeout(() => controller.abort(), stallMs);
   return {
@@ -241,26 +227,48 @@ export function stallWatchdog(stallMs: number) {
   };
 }
 
-async function fetchBlobResumable(
-  resolveUrl: string,
-  incompletePath: string,
-  existingBytes: number,
-  signal: AbortSignal,
-): Promise<{ response: Response; existingBytes: number }> {
-  let response = await hfFetch(resolveUrl, {
-    headers: existingBytes > 0 ? { Range: `bytes=${existingBytes}-` } : {},
+// A range the server cannot serve starts the file over, which a 200 answer then overwrites.
+async function fetchBlobFrom(resolveUrl: string, fromByte: number, signal: AbortSignal): Promise<Response> {
+  const response = await hfFetch(resolveUrl, {
+    headers: fromByte > 0 ? { Range: `bytes=${fromByte}-` } : {},
     redirect: "follow",
     signal,
   });
-
-  if (response.status === 416) {
-    await response.body?.cancel();
-    await unlink(incompletePath);
-    existingBytes = 0;
-    response = await hfFetch(resolveUrl, { redirect: "follow", signal });
+  if (response.status !== 416) {
+    return response;
   }
+  await response.body?.cancel();
+  return hfFetch(resolveUrl, { redirect: "follow", signal });
+}
 
-  return { response, existingBytes };
+// Asks for the bytes after what incompletePath holds and appends them, or writes the file anew when the
+// answer is the whole file. An answer without a body to write is handed back unread.
+export async function streamResumed(
+  incompletePath: string,
+  stallMs: number,
+  onBytes: (bytes: number) => Promise<void>,
+  request: (fromByte: number, signal: AbortSignal) => Promise<Response>,
+): Promise<"written" | "stalled" | Response> {
+  const existingBytes = await getFileSize(incompletePath);
+  const stall = stallWatchdog(stallMs);
+  try {
+    const response = await request(existingBytes, stall.signal);
+    if (!response.ok || !response.body) {
+      return response;
+    }
+    await streamToFile(incompletePath, response.body, existingBytes > 0 && response.status === 206, stall.signal, (bytes) => {
+      stall.reset();
+      return onBytes(bytes);
+    });
+    return "written";
+  } catch (err) {
+    if (stall.signal.aborted) {
+      return "stalled";
+    }
+    throw err;
+  } finally {
+    stall.stop();
+  }
 }
 
 export async function getFileSize(filePath: string): Promise<number> {
@@ -268,7 +276,7 @@ export async function getFileSize(filePath: string): Promise<number> {
   catch { return 0; }
 }
 
-export async function streamToFile(
+async function streamToFile(
   filePath: string,
   body: ReadableStream<Uint8Array>,
   append: boolean,
