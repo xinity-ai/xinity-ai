@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectIncompleteGroups, collectReassignableOrphans, collectReplicasThatDoNotFit, capacityNeed, findPlacement, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
-import { buildClusterState, rankServers, resourcesOf } from "../src/lib/server/lib/deployments/cluster-state";
+import { buildClusterState, freeGbOn, rankServers, resourcesOf } from "../src/lib/server/lib/deployments/cluster-state";
 import { layoutForVllm, vllmScheduler } from "../src/lib/server/lib/deployments/engines/vllm";
 import { requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
 import type { DeploymentStrategy } from "../src/lib/server/lib/deployments/strategy";
@@ -758,7 +758,7 @@ describe("orchestration: serving across coupled nodes", () => {
     const busy = (nodeId: string, gb: number) => makeInstallation({ id: `busy-${nodeId}`, nodeId, specifier: "other", driver: "vllm", estCapacity: gb, gpuIds: [`${nodeId}-gpu`] });
     const state = buildClusterState([busy("node-a", 30), busy("node-b", 35)], pair());
 
-    const small = capacityNeed(state, "vllm", need(20), constraints, FF)!;
+    const small = capacityNeed(placement, state, "vllm", need(20), constraints, FF)!;
     expect(small.machines).toBe(1);
     expect(small.perMachine.map(({ freeGb }) => freeGb)).toEqual([45 - 30, 45 - 35]);
     const [closest] = small.perMachine;
@@ -768,7 +768,7 @@ describe("orchestration: serving across coupled nodes", () => {
     const gpuParts = closest!.parts.filter(({ part }) => FOOTPRINT_PART_MEMORY[part] === "gpu").reduce((sum, { gb }) => sum + gb, 0);
     expect(gpuParts).toBeCloseTo(closest!.neededGb);
 
-    const spanning = capacityNeed(state, "vllm", need(60), constraints, FF)!;
+    const spanning = capacityNeed(placement, state, "vllm", need(60), constraints, FF)!;
     expect(spanning.machines).toBe(2);
     expect(spanning.perMachine).toHaveLength(2);
     spanning.perMachine.forEach(({ neededGb }) => {
@@ -776,7 +776,12 @@ describe("orchestration: serving across coupled nodes", () => {
       expect(neededGb).toBeLessThan(45);
     });
 
-    expect(capacityNeed(state, "vllm", need(200), constraints, FF)).toBeUndefined();
+    expect(capacityNeed(placement, state, "vllm", need(200), constraints, FF)).toBeUndefined();
+  });
+
+  test("names no group need across machines that no cable couples", () => {
+    const state = buildClusterState([], [coupled("node-a", "aa", "cc", "192.168.100.1/24"), coupled("node-b", "bb", "dd", "192.168.100.2/24")]);
+    expect(capacityNeed(placement, state, "vllm", need(60), { requiredPlatforms: [] }, FF)).toBeUndefined();
   });
 
   test("measures each machine of a mixed setup against its own charge, counting host memory only where it shares the pool", () => {
@@ -784,7 +789,7 @@ describe("orchestration: serving across coupled nodes", () => {
     const unified = { ...other!, machineName: "spark", estCapacity: 60, hostMemoryGb: 64, gpus: [{ vendor: "nvidia", name: "NVIDIA GB10", vramMb: 0, uuid: "spark-gpu" }] };
     const busy = makeInstallation({ id: "busy-discrete", nodeId: discrete!.id, specifier: "other", driver: "vllm", estCapacity: 40, gpuIds: [`${discrete!.id}-gpu`] });
     const state = buildClusterState([busy, makeInstallation({ id: "busy-spark", nodeId: unified.id, specifier: "other", driver: "vllm", estCapacity: 55 })], [{ ...discrete!, machineName: "l40s" }, unified]);
-    const found = capacityNeed(state, "vllm", need(20), { requiredPlatforms: [] }, FF)!;
+    const found = capacityNeed(placement, state, "vllm", need(20), { requiredPlatforms: [] }, FF)!;
     const byMachine = Object.fromEntries(found.perMachine.map((machine) => [machine.machine, machine]));
     const hostParts = byMachine.spark!.parts.filter(({ part }) => FOOTPRINT_PART_MEMORY[part] === "host").reduce((sum, { gb }) => sum + gb, 0);
     expect(byMachine.spark!.sharedMemory).toBe(true);
@@ -836,5 +841,13 @@ describe("orchestration: serving across coupled nodes", () => {
     expect(collectReplicasThatDoNotFit(new Set(["m1"]), buildClusterState(members, pair())).sort()).toEqual(["m0", "m1"]);
     const lonely = [member("m0", "node-a", 0)];
     expect(collectIncompleteGroups(lonely, buildClusterState(lonely, pair()))).toEqual(["m0"]);
+  });
+});
+
+describe("freeGbOn", () => {
+  test("counts every installation against the node, an Ollama one that occupies no card too", () => {
+    const node = makeNode({ id: "node-o", estCapacity: 45 });
+    const state = buildClusterState([makeInstallation({ id: "ollama-1", nodeId: "node-o", specifier: "small", driver: "ollama", estCapacity: 8 })], [node]);
+    expect(freeGbOn(state, "node-o")).toBe(37);
   });
 });

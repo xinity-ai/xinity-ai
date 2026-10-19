@@ -1,6 +1,6 @@
 import type { ModelDeployment } from "./schema/models";
 
-export function calcCanaryProgress(deployment: ModelDeployment): number {
+export function calcCanaryProgress(deployment: Pick<ModelDeployment, "progress" | "earlySpecifier" | "canaryProgressFrom" | "canaryProgressUntil">): number {
   const { progress, earlySpecifier, canaryProgressFrom, canaryProgressUntil } = deployment;
   const notCanary = progress === 100 || !earlySpecifier;
   if (notCanary) {

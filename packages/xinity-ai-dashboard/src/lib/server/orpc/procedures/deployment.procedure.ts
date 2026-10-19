@@ -5,8 +5,7 @@ import z from "zod";
 import { DeploymentDto, DeploymentWithStatusDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
-import { requirementKey } from "$lib/server/lib/deployments/placement";
-import type { ModelRequirement } from "$lib/server/lib/deployments/requirements";
+import { requirementsForDeployments, type DeploymentPlan } from "$lib/server/lib/deployments/requirements";
 import { deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
 import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { rootLogger } from "$lib/server/logging";
@@ -125,25 +124,25 @@ const SHORTFALL_REASONS: Record<ShortfallReason, (shortfall: Shortfall) => strin
 
 const DRAFT_DEPLOYMENT_ID = "draft";
 
-// A deployment being changed is planned without its own installations, which the change replaces.
-async function checkDeploymentCapacity(input: z.infer<typeof CapacityCheckInput>, deploymentId?: string): Promise<CapacityCheckResult> {
-  const isCanary = input.progress < 100 && !!input.earlySpecifier;
-  const requirement = (specifier: string, replicas: number, kvCacheSize: number | null | undefined): ModelRequirement => ({
-    deploymentId: deploymentId ?? DRAFT_DEPLOYMENT_ID,
-    specifier,
-    replicas,
-    kvCacheSize: kvCacheSize ?? null,
-    preferredDriver: input.preferredDriver ?? null,
-    settings: input.settings ?? { version: 1 },
-  });
-  const requirements = isCanary
-    ? [
-        requirement(input.specifier, Math.ceil(input.replicas * (input.progress / 100)), input.kvCacheSize),
-        requirement(input.earlySpecifier!, Math.ceil(input.replicas * ((100 - input.progress) / 100)), input.earlyKvCacheSize ?? input.kvCacheSize),
-      ]
-    : [requirement(input.specifier, input.replicas, input.kvCacheSize)];
+function draftPlan(draft: z.infer<typeof CapacityCheckInput>): DeploymentPlan {
+  return {
+    id: draft.deploymentId ?? DRAFT_DEPLOYMENT_ID,
+    specifier: draft.specifier,
+    earlySpecifier: draft.earlySpecifier ?? null,
+    replicas: draft.replicas,
+    progress: draft.progress,
+    kvCacheSize: draft.kvCacheSize ?? null,
+    earlyKvCacheSize: draft.earlyKvCacheSize ?? null,
+    preferredDriver: draft.preferredDriver ?? null,
+    settings: draft.settings ?? { version: 1 },
+    canaryProgressFrom: null,
+    canaryProgressUntil: null,
+  };
+}
 
-  const { replicas, shortfalls } = await previewPlacement(Object.fromEntries(requirements.map((r) => [requirementKey(r), r])), deploymentId);
+// A deployment being changed is planned without its own installations, which the change replaces.
+async function checkDeploymentCapacity(deployment: DeploymentPlan, replacedDeploymentId?: string): Promise<CapacityCheckResult> {
+  const { replicas, shortfalls } = await previewPlacement(requirementsForDeployments([deployment]), replacedDeploymentId);
   const blocking = shortfalls.find((shortfall) => shortfall.reason !== "catalog_unavailable");
   const shortfall = blocking ?? shortfalls[0];
   return {
@@ -491,7 +490,7 @@ export const createDeployment = rootOs
     if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
 
     if (input.enabled) {
-      const result = await checkDeploymentCapacity(input);
+      const result = await checkDeploymentCapacity(draftPlan(input));
       if (!result.deployable) {
         throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
       }
@@ -539,7 +538,7 @@ const checkCapacity = rootOs
   .input(CapacityCheckInput)
   .output(CapacityCheckOutput)
   .handler(async ({ input }): Promise<CapacityCheckResult> =>  {
-    return checkDeploymentCapacity(input, input.deploymentId);
+    return checkDeploymentCapacity(draftPlan(input), input.deploymentId);
   });
 
 export const deploymentRouter = rootOs.prefix("/deployment").router({

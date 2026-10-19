@@ -1,5 +1,6 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
-import { currentClusterState, freeGbOn } from "$lib/server/lib/deployments/orchestration";
+import { currentClusterState } from "$lib/server/lib/deployments/orchestration";
+import { freeGbOn } from "$lib/server/lib/deployments/cluster-state";
 import { rootLogger } from "$lib/server/logging";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
 import z from "zod";
