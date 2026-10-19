@@ -1,5 +1,6 @@
 import { describe, test, expect, mock, beforeEach, afterEach, spyOn } from "bun:test";
 import { mockDaemonConfig } from "../../mock-config";
+import type { FileSource } from "./vllm-download";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -177,7 +178,7 @@ describe("downloadModel resume edge cases", () => {
   async function downloadFrom(
     files: Record<string, Uint8Array>,
     respond: (file: string, attempt: number) => Response | undefined = () => undefined,
-    stallMs?: number,
+    { stallMs, source }: { stallMs?: number; source?: FileSource } = {},
   ) {
     const gets: { file: string; headers: RequestInit["headers"] }[] = [];
     const progress: number[] = [];
@@ -206,7 +207,7 @@ describe("downloadModel resume edge cases", () => {
     try {
       await downloadModel(model, async (value) => {
         progress.push(value);
-      }, [], stallMs);
+      }, [], { stallMs, source });
     } finally {
       fetchSpy.mockRestore();
     }
@@ -253,7 +254,7 @@ describe("downloadModel resume edge cases", () => {
     const { gets, progress } = await downloadFrom(
       { "model.safetensors": contents },
       (_file, attempt) => (attempt === 1 ? hangingAfter(contents.subarray(0, 4)) : new Response(contents.subarray(4), { status: 206 })),
-      50,
+      { stallMs: 50 },
     );
 
     expect(gets).toHaveLength(2);
@@ -263,7 +264,7 @@ describe("downloadModel resume edge cases", () => {
   });
 
   test("gives up on a file that stalls without sending anything, rather than waiting forever", async () => {
-    const attempt = downloadFrom({ "model.safetensors": contents }, () => hangingAfter(new Uint8Array(0)), 50);
+    const attempt = downloadFrom({ "model.safetensors": contents }, () => hangingAfter(new Uint8Array(0)), { stallMs: 50 });
     await expect(attempt).rejects.toThrow("Download of model.safetensors stalled: no data for 0.05s, 5 times in a row");
     expect(fs.existsSync(blobPath("model.safetensors"))).toBe(false);
   });
@@ -278,6 +279,24 @@ describe("downloadModel resume edge cases", () => {
     expect(gets[0]?.headers).toEqual(expect.objectContaining({ Range: "bytes=4-" }));
     expect(new Uint8Array(fs.readFileSync(blobPath("model.safetensors")))).toEqual(contents);
     expect(progress.at(-1)).toBe(1);
+  });
+  test("takes a file from the source tried first, without asking HuggingFace for it", async () => {
+    const source: FileSource = { name: "elsewhere", fetch: async ({ incompletePath }) => {
+      fs.writeFileSync(incompletePath, contents);
+      return true;
+    } };
+    const { gets, progress } = await downloadFrom({ "model.safetensors": contents }, undefined, { source });
+
+    expect(gets).toHaveLength(0);
+    expect(new Uint8Array(fs.readFileSync(blobPath("model.safetensors")))).toEqual(contents);
+    expect(progress.at(-1)).toBe(1);
+  });
+
+  test("downloads a file from HuggingFace when the source tried first declines it", async () => {
+    const { gets } = await downloadFrom({ "model.safetensors": contents }, undefined, { source: { name: "elsewhere", fetch: async () => false } });
+
+    expect(gets).toHaveLength(1);
+    expect(new Uint8Array(fs.readFileSync(blobPath("model.safetensors")))).toEqual(contents);
   });
 });
 

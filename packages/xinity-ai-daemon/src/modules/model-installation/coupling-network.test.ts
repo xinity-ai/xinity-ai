@@ -9,6 +9,7 @@ const group = {
   id: "group-1", rank: 1, size: 2, rendezvousPort: 29501, generation: 1, members: [],
   addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.253" }, { subnet: "192.168.101.0/24", address: "192.168.101.253" }],
   masterAddresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }, { subnet: "192.168.101.0/24", address: "192.168.101.254" }],
+  masterHost: { machineName: "asus-7", addresses: [] },
 };
 
 describe("memberGroupFrom", () => {

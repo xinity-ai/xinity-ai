@@ -74,6 +74,7 @@ export type InstallationGroup = z.infer<typeof installationGroupSchema>;
 
 export const desiredGroupSchema = installationGroupSchema.extend({
   masterAddresses: z.array(couplingAddressSchema).min(1),
+  masterHost: z.object({ machineName: z.string(), addresses: z.array(couplingAddressSchema) }),
   members: z.array(z.object({ rank: z.number().int().nonnegative(), stage: z.enum(GROUP_STAGES).nullable(), generation: z.number().int().positive().nullable() })),
 });
 export type DesiredGroup = z.infer<typeof desiredGroupSchema>;

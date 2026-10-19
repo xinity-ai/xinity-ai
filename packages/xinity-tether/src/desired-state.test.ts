@@ -20,12 +20,19 @@ const member = (rank: number, address: string): InstallationGroup => ({
 
 describe("toDesiredState", () => {
   test("gives every member of a group rank 0's addresses to meet at and how far each member is", () => {
+    const masterHost = { machineName: "asus-7", addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.1" }] };
     const leader = row("m0", "node-a", member(0, "192.168.100.254"));
     const follower = row("m1", "node-b", member(1, "192.168.100.253"));
-    const [installation] = toDesiredState("node-b", [follower], [{ ...follower, stage: "preparing", stageGeneration: 1 }, { ...leader, stage: "admitted", stageGeneration: 1 }]).installations;
+    const [installation] = toDesiredState(
+      "node-b",
+      [follower],
+      [{ ...follower, stage: "preparing", stageGeneration: 1 }, { ...leader, stage: "admitted", stageGeneration: 1 }],
+      new Map([["group-1", masterHost]]),
+    ).installations;
     expect(installation!.group).toEqual({
       ...member(1, "192.168.100.253"),
       masterAddresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }],
+      masterHost,
       members: [{ rank: 0, stage: "admitted", generation: 1 }, { rank: 1, stage: "preparing", generation: 1 }],
     });
   });

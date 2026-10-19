@@ -14,7 +14,7 @@ export function hfUrl(pathname: string): string {
 type HfFileEntry = {
   path: string;
   size: number;
-  lfs: { size: number } | null;
+  lfs: { size: number; oid?: string } | null;
 }
 
 function authHeaders(): Record<string, string> {
@@ -56,7 +56,7 @@ export async function downloadModel(
   model: string,
   onProgress: (progress: number) => Promise<void>,
   userPatterns: readonly string[] = [],
-  stallMs = 60_000,
+  { stallMs = 60_000, source }: { stallMs?: number; source?: FileSource } = {},
 ): Promise<void> {
   const repoDir = cachedRepoDir(model);
   const blobsDir = path.join(repoDir, "blobs");
@@ -98,7 +98,7 @@ export async function downloadModel(
 
   for (const file of files) {
     let streamedBytes = 0;
-    const etag = await downloadFileToCache(model, file.path, blobsDir, commitHash, fileSize(file), stallMs, (bytes) => {
+    const etag = await downloadFileToCache(model, file.path, blobsDir, commitHash, fileSize(file), { stallMs, source, sha256: file.lfs?.oid }, (bytes) => {
       streamedBytes += bytes;
       return onProgress((completedBytes + streamedBytes) / totalBytes);
     });
@@ -113,7 +113,7 @@ export async function downloadModel(
   log.info({ model }, "Model download complete");
 }
 
-function cachedRepoDir(model: string): string {
+export function cachedRepoDir(model: string): string {
   return path.join(config.vllm.hfCacheDir, "hub", `models--${model.replace("/", "--")}`);
 }
 
@@ -161,7 +161,7 @@ async function downloadFileToCache(
   blobsDir: string,
   commitHash: string,
   expectedSize: number,
-  stallMs: number,
+  { stallMs, source, sha256 }: { stallMs: number; source?: FileSource; sha256?: string },
   onBytes: (bytes: number) => Promise<void>,
 ): Promise<string> {
   const resolveUrl = hfUrl(`/${model}/resolve/${commitHash}/${filePath}`);
@@ -177,6 +177,10 @@ async function downloadFileToCache(
   if (await Bun.file(blobPath).exists()) return etag;
 
   const incompletePath = `${blobPath}.incomplete`;
+  if (source && (await source.fetch({ model, etag, sha256, incompletePath, expectedSize, stallMs, onBytes }))) {
+    await rename(incompletePath, blobPath);
+    return etag;
+  }
   let attemptsWithoutBytes = 0;
 
   for (;;) {
@@ -217,9 +221,14 @@ async function downloadFileToCache(
   }
 }
 
+export type FileRequest = { model: string; etag: string; sha256?: string; incompletePath: string; expectedSize: number; stallMs: number; onBytes: (bytes: number) => Promise<void> };
+
+// Tried for every file before HuggingFace. It either leaves the whole file in incompletePath and says so, or declines.
+export type FileSource = { name: string; fetch: (request: FileRequest) => Promise<boolean> };
+
 const STALLED_ATTEMPTS = 5;
 
-function stallWatchdog(stallMs: number) {
+export function stallWatchdog(stallMs: number) {
   const controller = new AbortController();
   let timer = setTimeout(() => controller.abort(), stallMs);
   return {
@@ -254,12 +263,12 @@ async function fetchBlobResumable(
   return { response, existingBytes };
 }
 
-async function getFileSize(filePath: string): Promise<number> {
+export async function getFileSize(filePath: string): Promise<number> {
   try { return (await stat(filePath)).size; }
   catch { return 0; }
 }
 
-async function streamToFile(
+export async function streamToFile(
   filePath: string,
   body: ReadableStream<Uint8Array>,
   append: boolean,
