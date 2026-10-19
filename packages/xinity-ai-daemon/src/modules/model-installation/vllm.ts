@@ -28,7 +28,7 @@ import {
 import { rootLogger } from "../../logger";
 import { getHardwareProfile } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
-import { DOES_NOT_FIT_ON_NODE, chargedAgainstHostMemory, engineProfile, sharesHostMemory, gpuId, maxNumSeqs, tensorParallelLayouts, type DesiredGroup, type GpuInfo, type GroupStage, type GroupMemberHealth } from "common-env";
+import { DOES_NOT_FIT_ON_NODE, chargedAgainstHostMemory, engineProfile, engineArgValue, sharesHostMemory, gpuId, maxNumSeqs, tensorParallelLayouts, type DesiredGroup, type GpuInfo, type GroupStage, type GroupMemberHealth } from "common-env";
 import { downloadModel, largestWeightFileBytes } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
 import type { ModelSizingFields } from "common-env/model-catalog";
@@ -418,7 +418,7 @@ export function buildVllmExtraArgs(
   args: readonly string[],
   maxNumSeqs?: number,
 ): string[] {
-  const capConcurrency = maxNumSeqs !== undefined && !args.includes("--max-num-seqs");
+  const capConcurrency = maxNumSeqs !== undefined && engineArgValue(args, "--max-num-seqs") === undefined;
   return [
     ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
     ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),

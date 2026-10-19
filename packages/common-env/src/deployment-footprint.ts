@@ -131,9 +131,17 @@ export type FootprintRequest = {
   profile: EngineProfile;
 };
 
+// vLLM takes a flag's value either as the next argument or after an equals sign.
+export function engineArgValue(args: readonly string[], flag: string): string | undefined {
+  const index = args.findIndex((arg) => arg === flag || arg.startsWith(`${flag}=`));
+  if (index === -1) {
+    return undefined;
+  }
+  return args[index] === flag ? (args[index + 1] ?? "") : args[index]!.slice(flag.length + 1);
+}
+
 export function maxNumSeqs(entry: Pick<FootprintEntry, "sizing" | "engineArgs">, gpus: GpuInfo[], kvCacheGb: number): number {
-  const args = entry.engineArgs ?? [];
-  const stated = args.includes("--max-num-seqs") ? Number(args[args.indexOf("--max-num-seqs") + 1]) : NaN;
+  const stated = Number(engineArgValue(entry.engineArgs ?? [], "--max-num-seqs") ?? NaN);
   if (Number.isInteger(stated) && stated > 0) {
     return stated;
   }
@@ -167,7 +175,7 @@ export function deploymentFootprint(entry: FootprintEntry, request: FootprintReq
   }
 
   const hostWeightGb = sizing.hostWeightGb ?? 0;
-  const speculative = entry.engineArgs?.includes("--speculative-config") ?? false;
+  const speculative = engineArgValue(entry.engineArgs ?? [], "--speculative-config") !== undefined;
   const vision = entry.tags.includes("vision");
   const communicators = sizing.activeWeightGb === undefined ? 1 : 2;
 

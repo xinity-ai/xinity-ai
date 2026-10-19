@@ -683,6 +683,7 @@ describe("buildVllmExtraArgs", () => {
   test("yields to an entry that sets the flag itself, rather than passing it twice", () => {
     expect(buildVllmExtraArgs(undefined, false, ["--max-num-seqs", "256"], 17))
       .toEqual(["--max-num-seqs", "256"]);
+    expect(buildVllmExtraArgs(undefined, false, ["--max-num-seqs=256"], 17)).toEqual(["--max-num-seqs=256"]);
   });
 
   test("keeps the runner and tool flags it already derived", () => {
