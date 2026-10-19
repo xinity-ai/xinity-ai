@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { aiApiKeyT, aiApplicationT, aiNodeT, modelDeploymentT, modelInstallationStateT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
+import { aiApiKeyT, aiApplicationT, aiNodeT, apiResponseT, inferenceCallT, modelDeploymentT, modelInstallationStateT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
 import { getAvailablePort, readProcessOutput, waitForHttp } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
@@ -18,33 +18,29 @@ const createdDeploymentIds: string[] = [];
 const createdNodeIds: string[] = [];
 const createdInstallationIds: string[] = [];
 
-/**
- * Soft-deletes (or hard-deletes where no deletedAt exists) all test data
- * created via the helper functions. Safe to call even if some deletes fail.
- */
+// Hard deletes, children first. A soft-deleted deployment or application still holds its organization,
+// which then cannot be deleted, and every later run would start with one more organization.
 export async function cleanupTestData(): Promise<void> {
   const database = getDB();
-  const now = new Date();
-
-  // Reverse order of dependencies: installations → nodes → deployments → keys → apps → orgs
-  const softDeletes: Array<[any, string[]]> = [
+  const createdRows: Array<[any, string[]]> = [
     [modelInstallationT, createdInstallationIds],
     [aiNodeT, createdNodeIds],
     [modelDeploymentT, createdDeploymentIds],
     [aiApiKeyT, createdApiKeyIds],
     [aiApplicationT, createdAppIds],
+    [organizationT, createdOrgIds],
   ];
-  for (const [table, ids] of softDeletes) {
-    for (const id of ids) {
-      try { await database.update(table).set({ deletedAt: now }).where(sql`${table.id} = ${id}`); } catch {}
-    }
-  }
+  // A call's reference to its message bodies has no cascade, so the calls go before the organization.
   for (const id of createdOrgIds) {
-    try { await database.delete(organizationT).where(sql`${organizationT.id} = ${id}`); } catch {}
+    await database.delete(inferenceCallT).where(sql`${inferenceCallT.organizationId} = ${id}`);
+    await database.delete(apiResponseT).where(sql`${apiResponseT.organizationId} = ${id}`);
   }
-
-  for (const [, ids] of softDeletes) ids.length = 0;
-  createdOrgIds.length = 0;
+  for (const [table, ids] of createdRows) {
+    for (const id of ids) {
+      await database.delete(table).where(sql`${table.id} = ${id}`);
+    }
+    ids.length = 0;
+  }
 }
 
 function getDB() {

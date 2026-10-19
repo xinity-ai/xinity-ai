@@ -81,7 +81,7 @@ describe("deployment placement preview", () => {
     const vllmNodes = liveNodes.filter((node) => node.driverVersions.vllm !== undefined).length;
     const body = await preview({ specifier: MODEL, replicas: vllmNodes + 1 });
     expect(body.deployable).toBe(false);
-    expect(body.reason).toBe(`"${MODEL}" needs more capacity than is currently available`);
+    expect(body.reason).toBe(`"${MODEL}" does not fit in the free memory`);
     expect(body.replicas.some((replica) => replica.machines.some((candidate) => candidate.machineName === machineName))).toBe(true);
   });
 
