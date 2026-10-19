@@ -56,6 +56,11 @@ export function resourcesOf(state: ClusterState, nodeId: string): NodeResources 
   };
 }
 
+export function freeGbOn(state: ClusterState, nodeId: string): number {
+  const capacity = state.serverCapacity.get(nodeId);
+  return capacity ? Math.max(0, capacity.total - capacity.used) : 0;
+}
+
 export function poolCharge(node: Pick<NodeResources, "unified">, charge: Charge): number {
   return chargedAgainstCards({ gpuGb: charge.estCapacity, hostGb: charge.hostCapacity }, node.unified);
 }
