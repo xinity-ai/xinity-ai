@@ -1,4 +1,4 @@
-import { sql, organizationT, aiApplicationT, modelDeploymentT } from "common-db";
+import { sql, organizationT, aiApplicationT, modelDeploymentT, inferenceCallT, apiResponseT } from "common-db";
 import { getDB } from "$lib/server/db";
 
 export async function findOrgName(organizationId: string): Promise<string | null> {
@@ -65,5 +65,12 @@ export async function purgeSoftDeletedOrgDependents(organizationId: string): Pro
       `)
       .returning({ id: modelDeploymentT.id });
     return applications.length + deployments.length;
+  });
+}
+
+export async function deleteOrgCallLogs(organizationId: string): Promise<void> {
+  await getDB().transaction(async (tx) => {
+    await tx.delete(inferenceCallT).where(sql`${inferenceCallT.organizationId} = ${organizationId}`);
+    await tx.delete(apiResponseT).where(sql`${apiResponseT.organizationId} = ${organizationId}`);
   });
 }
