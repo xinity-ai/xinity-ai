@@ -10,7 +10,7 @@ import { memberT, userT, organizationT, invitationT, sql } from "common-db";
 import { isInstanceAdmin, isRoleAvailable, RoleSchema } from "$lib/server/roles";
 import { hasFeature } from "$lib/server/license";
 import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
-import { findOrgName, findOrgDeleteBlockers, purgeSoftDeletedOrgDependents } from "$lib/server/lib/org-queries";
+import { findOrgName, findOrgDeleteBlockers, purgeSoftDeletedOrgDependents, deleteOrgCallLogs } from "$lib/server/lib/org-queries";
 
 const log = rootLogger.child({ name: "organization.procedure" });
 const tags = ["Organization"];
@@ -293,6 +293,7 @@ const deleteOrganization = rootOs
     if (purged > 0) {
       rlog.info({ organizationId: context.activeOrganizationId, purged }, "Purged soft-deleted applications and deployments");
     }
+    await deleteOrgCallLogs(context.activeOrganizationId);
 
     try {
       await auth.api.deleteOrganization({
