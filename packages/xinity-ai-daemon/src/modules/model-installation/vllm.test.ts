@@ -77,6 +77,7 @@ let mockHostMemoryGb: number | undefined;
 
 mock.module("../statekeeper", () => ({
   getAuthToken: () => "mock-token",
+  lastInterconnectCheck: () => [],
   getHardwareProfile: () => Promise.resolve({
     gpus: [{ vendor: "nvidia", name: "Test GPU", vramMb: 24576 }],
     gpuCount: 1,
@@ -750,6 +751,7 @@ describe("members of a group served across nodes", () => {
     id: "group-1", rank: 1, size: 2, rendezvousPort: 29500, generation: 1,
     addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.253" }],
     masterAddresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }],
+    masterHost: { machineName: "asus-7", addresses: [] as { subnet: string; address: string }[] },
     members: stages.map((stage, rank) => ({ rank, stage, generation: generations[rank]! })),
   });
   const lastState = (id: string) => stateWrites.filter(([written]) => written === id).at(-1);
@@ -770,6 +772,15 @@ describe("members of a group served across nodes", () => {
     expect((ops.start as ReturnType<typeof mock>).mock.calls.map(([id]) => id)).toEqual([single.id]);
     expect(stateWrites.find(([id]) => id === member.id)?.[2]?.groupStage).toBe("preparing");
     expect(lastState(member.id)).toEqual([member.id, "installing", { statusMessage: "Waiting for the other machines of its group", groupStage: "admitted", groupGeneration: 1 }]);
+  });
+
+  test("copies a member's model from rank 0's machine over the coupling, and says so", async () => {
+    const leaderAddress = { subnet: "192.168.100.0/24", address: "192.168.100.1" };
+    const member = { ...makeInstallation("copying-member"), group: { ...group([null, null]), masterHost: { machineName: "asus-7", addresses: [leaderAddress] } } };
+    downloadModelSpy.mockClear();
+    await syncSettled([member], createMockOps({ checkHealth: mock(() => Promise.resolve(true)) }));
+    expect(downloadModelSpy.mock.calls[0]![3]).toEqual({ source: expect.objectContaining({ name: "asus-7" }) });
+    expect(stateWrites.find(([id, state]) => id === member.id && state === "downloading")?.[2]?.statusMessage).toBe("Copying from asus-7");
   });
 
   test("fails a member whose coupling address something else on its network already holds", async () => {

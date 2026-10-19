@@ -34,6 +34,7 @@ import { devicesFor, readHostDevices, resolvePinnedCards } from "./gpu-devices";
 import type { ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
 import { addressInUse, coupledPaths, memberGroupFrom } from "./coupling-network";
+import { peerSourceFor, sharePeerFilesFor } from "./peer-share";
 import { resolveInstallationEntry } from "./catalog";
 import { updateInstallationState, getLocalInstallationState, getLocalInstallationStates } from "./state";
 
@@ -263,12 +264,13 @@ async function downloadAndStart(installation: SyncInstallation, running: SyncIns
   const perCard = perCardSizing(installation, entry.sizing, devices.tensorParallelSize * (installation.group?.size ?? 1));
 
   if (!downloaded.has(installation.id)) {
-    await updateInstallationState(installation.id, "downloading", { statusMessage: "Downloading model", progress: 0, ...groupReport(installation, "preparing") });
-    await downloadModel(
-      providerModel,
-      throttledDownloadProgress(installation.id, 5000),
-      entry.downloadFilter,
-    );
+    const source = peerSourceFor(installation.group);
+    await updateInstallationState(installation.id, "downloading", {
+      statusMessage: source ? `Copying from ${source.name}` : "Downloading model",
+      progress: 0,
+      ...groupReport(installation, "preparing"),
+    });
+    await downloadModel(providerModel, throttledDownloadProgress(installation.id, 5000), entry.downloadFilter, { source });
     downloaded.add(installation.id);
   }
 
@@ -626,6 +628,7 @@ export function syncVllmInstallations$(
   ops: VllmOps = resolveDefaultOps(),
 ): Observable<void> {
   syncedMembers = installations.filter((installation) => installation.group);
+  void sharePeerFilesFor(installations).catch((err) => log.warn({ err }, "Could not update the model files shared with group members"));
   return defer(() => from(ops.ensureSetup())).pipe(
     switchMap(() => from(ops.listRunning())),
     switchMap((activeIds) => {

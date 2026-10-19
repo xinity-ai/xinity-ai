@@ -2,12 +2,18 @@ import { inArray, modelInstallationStateT, modelInstallationT, sql, stateOfInsta
 import { getDB } from "./db";
 import type { DesiredGroup, DesiredState, GroupStage } from "common-env";
 import { rootLogger } from "./logger";
+import { masterHostsOf, type MasterHost } from "./group-peer-host";
 
 const log = rootLogger.child({ name: "desired-state" });
 
 export type GroupMember = ModelInstallation & { stage: GroupStage | null; stageGeneration: number | null };
 
-export function toDesiredState(nodeId: string, rows: ModelInstallation[], groupMembers: GroupMember[]): DesiredState {
+export function toDesiredState(
+  nodeId: string,
+  rows: ModelInstallation[],
+  groupMembers: GroupMember[],
+  masterHosts: ReadonlyMap<string, MasterHost> = new Map(),
+): DesiredState {
   const groupOf = (row: ModelInstallation): DesiredGroup | null | undefined => {
     if (!row.group) {
       return null;
@@ -17,6 +23,7 @@ export function toDesiredState(nodeId: string, rows: ModelInstallation[], groupM
     return leader && {
       ...row.group,
       masterAddresses: leader.group!.addresses,
+      masterHost: masterHosts.get(row.group.id) ?? { machineName: leader.nodeId, addresses: [] },
       members: members.map((member) => ({ rank: member.group!.rank, stage: member.stage, generation: member.stageGeneration })).sort((a, b) => a.rank - b.rank),
     };
   };
@@ -65,7 +72,8 @@ export async function buildDesiredState(nodeId: string): Promise<DesiredState> {
     .from(modelInstallationT)
     .where(sql`${modelInstallationT.nodeId} = ${nodeId} AND ${modelInstallationT.deletedAt} IS NULL`);
 
-  return toDesiredState(nodeId, rows, await membersOf(rows.flatMap((row) => (row.group ? [row.group.id] : []))));
+  const members = await membersOf(rows.flatMap((row) => (row.group ? [row.group.id] : [])));
+  return toDesiredState(nodeId, rows, members, await masterHostsOf(members));
 }
 
 export async function nodesOfGroupsOf(installationIds: string[]): Promise<string[]> {
