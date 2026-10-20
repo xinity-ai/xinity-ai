@@ -24,6 +24,6 @@ describe("memberGroupFrom", () => {
   });
 
   test("refuses a group on a subnet this machine has no coupled port on", () => {
-    expect(() => memberGroupFrom(group, local.slice(0, 1))).toThrow("This machine has no coupled port on 192.168.100.0/24");
+    expect(() => memberGroupFrom(group, local.slice(0, 1))).toThrow("No coupled port on 192.168.100.0/24");
   });
 });

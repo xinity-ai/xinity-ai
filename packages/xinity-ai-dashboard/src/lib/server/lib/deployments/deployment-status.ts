@@ -81,12 +81,14 @@ export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): Deploymen
 
 function replicaStatus(phase: ReplicaMember["phase"], error: string | null, members: Member[]): ReplicaStatus {
   const byRank = members.toSorted((a, b) => a.rank - b.rank);
+  // An error every machine shares, such as a lost coupling, says nothing more for being repeated per machine.
+  const sharedError = byRank.length > 1 && byRank.every((member) => member.error !== null && member.error === byRank[0]!.error);
   return {
     phase: phase as ReplicaStatus["phase"],
     node: byRank[0]!.node,
-    error,
+    error: sharedError ? byRank[0]!.error : error,
     ...(byRank[0]!.group && {
-      members: byRank.map(({ node, phase, error, cards, gpuGb, hostGb }) => ({ node, phase: phase as ReplicaStatus["phase"], error, cards, gpuGb, hostGb })),
+      members: byRank.map(({ node, phase, error, cards, gpuGb, hostGb }) => ({ node, phase: phase as ReplicaStatus["phase"], error: sharedError ? null : error, cards, gpuGb, hostGb })),
       couplingIssues: couplingIssuesOf(byRank),
     }),
   };

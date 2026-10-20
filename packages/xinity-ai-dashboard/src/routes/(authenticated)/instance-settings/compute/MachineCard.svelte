@@ -5,6 +5,7 @@
   import { formatTokens, formatPercent, formatEnergy, formatRelativeTime, gpuSummary, totalVramGb } from "$lib/compute/format";
   import { Zap, ArrowRightLeft, CircleCheck, Trash2, Cpu, Lock, MemoryStick, Cable, TriangleAlert, Info } from "@lucide/svelte";
   import { experimentalGpuVendors, GPU_VENDOR_SUPPORT } from "common-env/model-catalog/definitions/model-primitives";
+  import { GROUP_MEMBER_FEATURE } from "common-env/node-coupling";
 
   let { node, rangeLabel, metrics = null, interconnect, onRemove }: {
     node: NodeSummary;
@@ -22,6 +23,7 @@
   const vramGb = $derived(totalVramGb(node.gpus));
   const experimentalVendorLabels = $derived(experimentalGpuVendors(node.gpus).map((vendor) => GPU_VENDOR_SUPPORT[vendor].label));
   const drivers = $derived(Object.entries(node.driverVersions));
+  const servesCoupled = $derived(node.driverFeatures.vllm?.includes(GROUP_MEMBER_FEATURE) ?? false);
   const lastSeen = $derived(formatRelativeTime(node.lastSeenMs, Date.now()));
   const shortName = (model: NodeSummary["models"][number]) => model.name.split("/").pop();
   const groupPeers = (model: NodeSummary["models"][number]) => model.groupMachines.filter((machine) => machine.nodeId !== node.id).map((machine) => machine.name);
@@ -115,7 +117,7 @@
         <Cpu class="w-3 h-3 text-xinity-purple shrink-0" />
         <span class="font-medium text-gray-700">{driver}</span>
         <span class="font-mono">{version}</span>
-        {#each node.driverFeatures[driver] ?? [] as feature}
+        {#each (node.driverFeatures[driver] ?? []).filter((feature) => feature !== GROUP_MEMBER_FEATURE) as feature}
           <span class="rounded bg-gray-100 px-1 py-px text-[10px] uppercase tracking-wide text-gray-600">{feature}</span>
         {/each}
       </span>
@@ -136,9 +138,17 @@
   {#if interconnect.coupledWith.length > 0 || interconnect.issues.length > 0}
     <div class="flex flex-col gap-1 pt-1 border-t border-gray-100 text-xs">
       {#if interconnect.coupledWith.length > 0}
-        <span class="inline-flex items-center gap-1 text-gray-600">
+        <span
+          class="inline-flex items-center gap-1 text-gray-600"
+          title={servesCoupled ? "Can serve a model together with the machines it is coupled with" : undefined}
+        >
           <Cable class="w-3 h-3 text-xinity-purple shrink-0" />Coupled with {interconnect.coupledWith.join(", ")}
         </span>
+        {#if !servesCoupled}
+          <span class="inline-flex items-start gap-1 text-amber-700">
+            <TriangleAlert class="w-3 h-3 mt-px shrink-0" />Can't serve a model with the machines it is coupled with: needs RDMA devices, and Docker as root when models run in Docker
+          </span>
+        {/if}
       {/if}
       {#each interconnect.issues as issue}
         <span class="inline-flex items-start gap-1 text-amber-700">

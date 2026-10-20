@@ -159,6 +159,22 @@ describe("a replica served across machines", () => {
     expect(deployment!.status!.error).toBe("NCCL communication error");
   });
 
+  test("names an error every machine shares once, on the replica, and keeps errors that differ by machine", () => {
+    const coupling = "No coupled port on 192.168.100.0/24";
+    const [shared] = foldDeploymentStatusRows([
+      member(0, { lifecycleState: "failed", errorMessage: coupling }),
+      member(1, { lifecycleState: "failed", errorMessage: coupling }),
+    ])[0]!.status!.replicas!;
+    expect(shared!.error).toBe(coupling);
+    expect(shared!.members!.map(({ error }) => error)).toEqual([null, null]);
+
+    const [differing] = foldDeploymentStatusRows([
+      member(0, { lifecycleState: "failed", errorMessage: "Stopped, another machine of its group failed" }),
+      member(1, { lifecycleState: "failed", errorMessage: "Stopped, over its host memory budget" }),
+    ])[0]!.status!.replicas!;
+    expect(differing!.members!.map(({ error }) => error)).toEqual(["Stopped, another machine of its group failed", "Stopped, over its host memory budget"]);
+  });
+
   test("is still scheduling while one of its machines left the cluster", () => {
     const [deployment] = foldDeploymentStatusRows([member(0), member(1, {}, null)]);
     expect(deployment!.status!.replicas!.map((replica) => replica.phase)).toEqual(["scheduling"]);
