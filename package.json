@@ -6,7 +6,6 @@
   },
   "private": true,
   "scripts": {
-    "bump": "bumpp --release conventional --git-check --all --commit --tag --push --execute 'bash scripts/update-changelog.sh'",
     "changelog:preview": "bunx git-cliff --unreleased",
     "lint": "bun --bun oxlint",
     "postinstall": "if [ -z \"$CI\" ]; then bunx simple-git-hooks@2; fi",
