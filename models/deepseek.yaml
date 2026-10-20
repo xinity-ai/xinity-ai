@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  deepseek-v4-flash-vllm:
+    name: DeepSeek V4 Flash
+    description: |
+      DeepSeek's 304B mixture-of-experts model, of which only a small fraction runs per
+      token. It is built for reasoning, coding and long agentic work, calls tools, and
+      reads a window of a million tokens.
+
+      Its attention is compressed far beyond most models: a single request at the full
+      million-token window needs only about 6 GB of cache, so long context is cheap here.
+      The weights are what costs, about 160 GB, which spans more than one machine on most
+      hardware.
+
+      Thinking is on by default. Depth is set per request with `reasoning_effort`: `low`,
+      `high` (the default) or `max`, with `minimal` and `medium` treated as `low`. `none`
+      switches thinking off, as does `chat_template_kwargs: {"enable_thinking": false}`.
+    url: https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731
+    license: mit
+    createdAt: 2026-07-31
+    registeredAt: 2026-10-20
+    engine: vllm
+    engineSpecifier: deepseek-ai/DeepSeek-V4-Flash-0731
+    sizing:
+      weightGb: 158.5   # measured resident across two nodes, 2 x 73.81 GiB
+      hostWeightGb: 0
+      # vLLM asks 5.4 GiB per card for one request at the full 1M window, and with one kv head
+      # every card holds the whole cache. 6 GB holds 1,084,821 tokens, 1.03x.
+      kvBytesPerToken: 5530
+      minKvCacheGb: 6
+      maxContextLength: 1048576
+      attentionHeads: 64
+      kvHeads: 1
+      layers: 43
+      attentionLayers: 43
+      nonLayerWeightGb: 2.12
+      activeWeightGb: 12.3
+      largestFileGb: 3.69
+      weightBits: 4
+    type: chat
+    family: DeepSeek
+    tags: [tools]
+    engineArgs:
+      # The checkpoint ships no chat template, the tokenizer mode renders the prompt instead.
+      - --tokenizer-mode
+      - deepseek_v4
+      - --tool-call-parser
+      - deepseek_v4
+      - --reasoning-parser
+      - deepseek_v4
+      - --kv-cache-dtype
+      - fp8
+      - --block-size
+      - "256"
+      - --enable-expert-parallel
+    requestParams:
+      chat_template_kwargs.enable_thinking: boolean
+    engineVersions:
+      min: "0.20.0"   # from the vLLM recipe; verified on 0.31.1 across two GB10 nodes, not bracketed
