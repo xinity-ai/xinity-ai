@@ -35,10 +35,10 @@
     },
     "catalogs": {
       "orpc": {
-        "@orpc/client": "^1.14.3",
-        "@orpc/openapi": "^1.14.3",
-        "@orpc/server": "^1.14.3",
-        "@orpc/zod": "^1.14.3"
+        "@orpc/client": "^1.15.7",
+        "@orpc/openapi": "^1.15.7",
+        "@orpc/server": "^1.15.7",
+        "@orpc/zod": "^1.15.7"
       }
     }
   },
