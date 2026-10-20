@@ -85,7 +85,7 @@ describe("peerShareHandler", () => {
 describe("peerSourceFor", () => {
   const leaderAddress = "192.168.100.1";
   const group = (rank: number, masterHostAddress: string | null) => ({
-    id: "group-1", rank, size: 2, rendezvousPort: 29500, generation: 1,
+    id: "group-1", rank, size: 2, parallelism: "tensor" as const, rendezvousPort: 29500, generation: 1,
     addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.253" }],
     masterAddress: "192.168.100.254",
     masterHost: { machineName: "asus-7", address: masterHostAddress },

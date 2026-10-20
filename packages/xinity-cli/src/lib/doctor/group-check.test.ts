@@ -9,7 +9,7 @@ const member = (rank: number, stage: GroupStage | null, generation = 1): HostedM
   stage,
   stageGeneration: stage ? generation : null,
   group: {
-    id: "group-1", rank, size: 2, rendezvousPort: 29500, generation,
+    id: "group-1", rank, size: 2, parallelism: "tensor" as const, rendezvousPort: 29500, generation,
     addresses: [{ subnet: "192.168.100.0/24", address: `192.168.100.${254 - rank}` }],
     masterAddress: "192.168.100.254",
     masterHost: { machineName: "spark-0", address: null },

@@ -44,7 +44,7 @@ describe("probeDaemonHealth", () => {
   test("reads the coupling from the same answer, and none from a daemon without it", async () => {
     const groupMember = {
       specifier: "qwen3.8-27b", stage: "running" as const, stageGeneration: 1,
-      group: { id: "00000000-0000-4000-8000-000000000001", rank: 1, size: 2, rendezvousPort: 29500, generation: 1, addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.253" }], masterAddress: "192.168.100.254", masterHost: { machineName: "spark-0", address: null } },
+      group: { id: "00000000-0000-4000-8000-000000000001", rank: 1, size: 2, parallelism: "tensor" as const, rendezvousPort: 29500, generation: 1, addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.253" }], masterAddress: "192.168.100.254", masterHost: { machineName: "spark-0", address: null } },
     };
     const { coupling } = await probeDaemonHealth(daemonAnswering({ ready: true, interconnect: [], groupMembers: [groupMember] }), URL);
     expect(coupling.groupMembers).toEqual([groupMember]);

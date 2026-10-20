@@ -323,7 +323,7 @@ describe("queueInstallationStates", () => {
 });
 
 describe("generationAfter", () => {
-  const group = (generation: number) => ({ id: "group-1", rank: 0, size: 2, rendezvousPort: 29500, addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }], generation });
+  const group = (generation: number) => ({ id: "group-1", rank: 0, size: 2, parallelism: "tensor" as const, rendezvousPort: 29500, addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }], generation });
 
   test("starts the next attempt when a member fails the current one", () => {
     expect(generationAfter(group(2), 2)).toBe(3);

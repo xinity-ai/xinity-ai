@@ -133,7 +133,7 @@ describe("foldDeploymentStatusRows", () => {
 });
 
 describe("a replica served across machines", () => {
-  const group = (rank: number) => ({ id: "group-1", rank, size: 2, rendezvousPort: 29500, generation: 1, addresses: [] });
+  const group = (rank: number) => ({ id: "group-1", rank, size: 2, parallelism: "tensor" as const, rendezvousPort: 29500, generation: 1, addresses: [] });
   const member = (rank: number, overrides: Partial<State> = {}, node: DeploymentStatusRow["ai_node"] = { id: `node-${rank}`, interconnect: [], machineName: `gx10-${rank}`, host: `192.0.2.${rank + 1}` }) => row({
     model_installation: installation(`inst-${rank}`, group(rank)),
     model_installation_state: state(overrides),

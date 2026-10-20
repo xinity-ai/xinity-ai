@@ -8,7 +8,7 @@ const path = (iface: string, ipv4: string) => ({
   interface: iface, mac: `mac-${iface}`, carrier: true, mtu: 9000, speedMbps: 200000, linkLayer: "Ethernet",
   ipv4: [ipv4], roceV2Ipv4: [ipv4.split("/")[0]!], addressLosses: 0,
 });
-const group = { id: "group-1", rank: 0, size: 2, rendezvousPort: 29500, generation: 1, addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }] };
+const group = { id: "group-1", rank: 0, size: 2, parallelism: "tensor" as const, rendezvousPort: 29500, generation: 1, addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.254" }] };
 
 describe("masterHostOn", () => {
   test("gives rank 0's own address on the group's subnets, leaving out its other coupled paths", () => {

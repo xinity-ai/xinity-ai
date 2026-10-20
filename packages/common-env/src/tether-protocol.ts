@@ -7,6 +7,8 @@ const lifecycleStateEnum = z.enum(["downloading", "installing", "ready", "failed
 
 export const GROUP_STAGES = ["preparing", "admitted", "running", "failed"] as const;
 export type GroupStage = (typeof GROUP_STAGES)[number];
+// How a group splits the model across its nodes. "tensor" splits every layer across all of their cards.
+export const GROUP_PARALLELISMS = ["tensor"] as const;
 
 export const GROUP_RESTART_BUDGET = 3;
 
@@ -65,6 +67,7 @@ const installationGroupSchema = z.object({
   id: z.uuid(),
   rank: z.number().int().nonnegative(),
   size: z.number().int().min(2),
+  parallelism: z.enum(GROUP_PARALLELISMS),
   rendezvousPort: z.number().int().positive(),
   addresses: z.array(couplingAddressSchema).min(1),
   generation: z.number().int().positive(),
