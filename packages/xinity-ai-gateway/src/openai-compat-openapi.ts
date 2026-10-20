@@ -165,6 +165,21 @@ const TranscriptionResponseSchema = z.looseObject({
 const TranscriptTextDeltaEventSchema = z.looseObject({
   type: z.literal("transcript.text.delta"),
   delta: z.string(),
+  segment_id: z.string().optional(),
+});
+const TranscriptTextSegmentSchema = z.looseObject({
+  type: z.literal("transcript.text.segment"),
+  id: z.string(),
+  start: z.number(),
+  end: z.number(),
+  text: z.string(),
+  speaker: z.string(),
+});
+const DiarizedTranscriptionResponseSchema = z.looseObject({
+  task: z.literal("transcribe"),
+  duration: z.number(),
+  text: z.string(),
+  segments: z.array(TranscriptTextSegmentSchema),
 });
 const TranscriptTextDoneEventSchema = z.looseObject({
   type: z.literal("transcript.text.done"),
@@ -229,7 +244,9 @@ export const openaiCompatSchemas = {
   RerankRequest: toSchema(RerankBodySchema),
   RerankResponse: toSchema(RerankResponseSchema),
   TranscriptionResponse: toSchema(TranscriptionResponseSchema),
+  DiarizedTranscriptionResponse: toSchema(DiarizedTranscriptionResponseSchema),
   TranscriptTextDeltaEvent: toSchema(TranscriptTextDeltaEventSchema),
+  TranscriptTextSegmentEvent: toSchema(TranscriptTextSegmentSchema),
   TranscriptTextDoneEvent: toSchema(TranscriptTextDoneEventSchema),
   CreateResponseRequest: toSchema(CreateResponseBodySchema),
   ResponseObject: toSchema(ResponseObjectSchema),
@@ -359,6 +376,7 @@ export const openaiCompatPaths = {
         "- Only available for deployments whose model type is `transcription` (e.g. Whisper).",
         `- ${APP_HEADER_NOTE}`,
         "- `response_format` `json` (default) and `verbose_json` return JSON; `text`/`srt`/`vtt` return the raw text body.",
+        "- `diarized_json` labels who spoke when, for models that support it: segments carry a `speaker` (`A`, `B`, ...) besides their times. Streamed, each finished segment arrives as a `transcript.text.segment` event and every delta names its `segment_id`.",
       ].join("\n"),
       security: SECURITY,
       // Hand-written: a multipart binary upload can't be derived from a Zod schema.
@@ -374,7 +392,7 @@ export const openaiCompatPaths = {
                 model: { type: "string" },
                 language: { type: "string", description: "Input language as an ISO-639-1 code (optional; improves accuracy)." },
                 prompt: { type: "string", description: "Optional text to guide the model's style or continue a prior segment." },
-                response_format: { type: "string", enum: ["json", "text", "srt", "verbose_json", "vtt"], default: "json" },
+                response_format: { type: "string", enum: ["json", "text", "srt", "verbose_json", "vtt", "diarized_json"], default: "json" },
                 temperature: { type: "number" },
                 stream: { type: "boolean", default: false, description: "Stream the transcription as SSE `transcript.text.delta` then `transcript.text.done` events." },
               },
@@ -386,12 +404,20 @@ export const openaiCompatPaths = {
         "200": {
           description: "Transcription. JSON for `json`/`verbose_json`; the raw `text`/`srt`/`vtt` body; or, when `stream: true`, an SSE stream of `transcript.text.delta` events ending with `transcript.text.done`.",
           content: {
-            "application/json": { schema: { $ref: "#/components/schemas/TranscriptionResponse" } },
+            "application/json": {
+              schema: {
+                oneOf: [
+                  { $ref: "#/components/schemas/TranscriptionResponse" },
+                  { $ref: "#/components/schemas/DiarizedTranscriptionResponse" },
+                ],
+              },
+            },
             "text/plain": { schema: { type: "string" } },
             "text/event-stream": {
               schema: {
                 oneOf: [
                   { $ref: "#/components/schemas/TranscriptTextDeltaEvent" },
+                  { $ref: "#/components/schemas/TranscriptTextSegmentEvent" },
                   { $ref: "#/components/schemas/TranscriptTextDoneEvent" },
                 ],
               },
