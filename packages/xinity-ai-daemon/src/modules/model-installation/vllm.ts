@@ -26,14 +26,14 @@ import {
   type VllmOps,
 } from "./vllm-ops";
 import { rootLogger } from "../../logger";
-import { getHardwareProfile } from "../statekeeper";
+import { getHardwareProfile, lastInterconnectCheck } from "../statekeeper";
 import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
 import { DOES_NOT_FIT_ON_NODE, chargedAgainstHostMemory, engineProfile, engineArgValue, sharesHostMemory, gpuId, maxNumSeqs, tensorParallelLayout, type DeploymentSettings, type DesiredGroup, type GpuInfo, type GroupStage, type GroupMemberHealth } from "common-env";
 import { downloadModel, largestWeightFileBytes } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards, type GpuDevices } from "./gpu-devices";
 import type { ModelSizingFields } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
-import { addressInUse, coupledPaths, memberGroupFrom } from "./coupling-network";
+import { addressInUse, coupledPaths, linkedSubnets, memberGroupFrom } from "./coupling-network";
 import { peerSourceFor, sharePeerFilesFor } from "./peer-share";
 import { resolveInstallationEntry, type InstallationEntry } from "./catalog";
 import { updateInstallationState, getLocalInstallationState, getLocalInstallationStates } from "./state";
@@ -670,9 +670,15 @@ async function syncVllmInstallations(installations: SyncInstallation[], ops: Vll
   const leaving = new Set(installations
     .filter((i) => activeIds.includes(i.id) && !!i.group && (failedInItsAttempt(i.group) || behindItsGroup(i, states.get(i.id)?.groupGeneration)))
     .map((i) => i.id));
-  const activeSet = new Set(activeIds.filter((id) => !leaving.has(id)));
+  const linked = linkedSubnets(lastInterconnectCheck());
+  const uncoupled = installations.flatMap((i) => {
+    const lost = activeIds.includes(i.id) && !leaving.has(i.id) ? i.group?.addresses.find(({ subnet }) => !linked.has(subnet)) : undefined;
+    return lost ? [{ installation: i, subnet: lost.subnet }] : [];
+  });
+  const uncoupledIds = new Set(uncoupled.map(({ installation }) => installation.id));
+  const activeSet = new Set(activeIds.filter((id) => !leaving.has(id) && !uncoupledIds.has(id)));
   const stale = activeIds.filter((id) => !desiredIds.has(id));
-  const candidates = installations.filter((i) => !activeSet.has(i.id));
+  const candidates = installations.filter((i) => !activeSet.has(i.id) && !uncoupledIds.has(i.id));
 
   if (stale.length) {
     log.info({ ids: stale }, "vLLM removing stale instances");
@@ -690,6 +696,14 @@ async function syncVllmInstallations(installations: SyncInstallation[], ops: Vll
     stopWatching(id);
     await ops.stop(id);
     log.info({ id }, "vLLM stopped instance");
+  }
+  // vLLM would only notice a pulled cable once its collectives time out, minutes later.
+  for (const { installation, subnet } of uncoupled) {
+    stopWatching(installation.id);
+    await ops.stop(installation.id);
+    const lostCoupling = `Lost the coupling on ${subnet}`;
+    await updateInstallationState(installation.id, "failed", { errorMessage: lostCoupling, statusMessage: lostCoupling, ...groupReport(installation, "failed") });
+    log.warn({ model: installation.specifier, installationId: installation.id, subnet }, "vLLM member lost its coupling, failing it");
   }
   await startNewInstallations(candidates, installations.filter((i) => activeSet.has(i.id)), ops);
 }

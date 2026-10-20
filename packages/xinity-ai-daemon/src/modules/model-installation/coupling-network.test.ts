@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { memberGroupFrom } from "./coupling-network";
+import { linkedSubnets, memberGroupFrom } from "./coupling-network";
 
 const local = [
   { subnet: "192.168.101.0/24", address: "192.168.101.2", interface: "enP2p1s0f0np0", rdmaDevice: "roceP2p1s0f0" },
@@ -25,5 +25,21 @@ describe("memberGroupFrom", () => {
 
   test("refuses a group on a subnet this machine has no coupled port on", () => {
     expect(() => memberGroupFrom(group, local.slice(0, 1))).toThrow("No coupled port on 192.168.100.0/24");
+  });
+});
+
+describe("linkedSubnets", () => {
+  const port = (carrier: boolean, neighbours: string[]) => ({
+    networkCard: "cx7", port: "p0", neighbours,
+    paths: [{ interface: "enp1s0f0np0", mac: "aa", carrier, mtu: 9000, speedMbps: 200000, linkLayer: "Ethernet", ipv4: ["192.168.100.2/24"], roceV2Ipv4: ["192.168.100.2"], addressLosses: 0 }],
+  });
+
+  test("keeps a subnet while its port has a link, even when the machine at the other end missed a discovery round", () => {
+    expect([...linkedSubnets([port(true, ["peer"])])]).toEqual(["192.168.100.0/24"]);
+    expect([...linkedSubnets([port(true, [])])]).toEqual(["192.168.100.0/24"]);
+  });
+
+  test("drops a subnet once its port has lost the link", () => {
+    expect([...linkedSubnets([port(false, [])])]).toEqual([]);
   });
 });

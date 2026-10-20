@@ -74,10 +74,15 @@ mock.module("./catalog", () => ({
 }));
 
 let mockHostMemoryGb: number | undefined;
+const couplingPort = (carrier: boolean) => ({
+  networkCard: "cx7", port: "p0", neighbours: carrier ? ["peer"] : [],
+  paths: [{ interface: "enp1s0f0np0", mac: "aa", carrier, mtu: 9000, speedMbps: 200000, linkLayer: "Ethernet", ipv4: ["192.168.100.1/24"], roceV2Ipv4: ["192.168.100.1"], addressLosses: 0 }],
+});
+let mockInterconnect = [couplingPort(true)];
 
 mock.module("../statekeeper", () => ({
   getAuthToken: () => "mock-token",
-  lastInterconnectCheck: () => [],
+  lastInterconnectCheck: () => mockInterconnect,
   getHardwareProfile: () => Promise.resolve({
     gpus: [{ vendor: "nvidia", name: "Test GPU", vramMb: 24576 }],
     gpuCount: 1,
@@ -829,6 +834,26 @@ describe("members of a group served across nodes", () => {
       groupStage: "failed",
       groupGeneration: 1,
     }]);
+  });
+
+  test("stops and fails a running member as soon as its coupled port loses its link, naming the subnet", async () => {
+    const member = { ...makeInstallation("unplugged-member"), group: group(["running", "running"]) };
+    mockLocalStates.set(member.id, { lifecycleState: "ready", groupGeneration: 1 });
+    mockInterconnect = [couplingPort(false)];
+    try {
+      const ops = createMockOps({ listRunning: mock(() => Promise.resolve([member.id])) });
+      await syncSettled([member], ops);
+      expect(ops.stop).toHaveBeenCalledWith(member.id);
+      expect(ops.start).not.toHaveBeenCalled();
+      expect(lastState(member.id)).toEqual([member.id, "failed", {
+        errorMessage: "Lost the coupling on 192.168.100.0/24",
+        statusMessage: "Lost the coupling on 192.168.100.0/24",
+        groupStage: "failed",
+        groupGeneration: 1,
+      }]);
+    } finally {
+      mockInterconnect = [couplingPort(true)];
+    }
   });
 
   test("fails a member that exited while its group counts it running, naming the host memory budget, rather than launching it alone", async () => {

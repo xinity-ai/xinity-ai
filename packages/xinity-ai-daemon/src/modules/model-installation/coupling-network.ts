@@ -1,6 +1,6 @@
 import { $ } from "bun";
 import { existsSync } from "node:fs";
-import { rdmaPathsOf, type DesiredGroup } from "common-env";
+import { rdmaPathsOf, type DesiredGroup, type InterconnectPort } from "common-env";
 import { detectInterconnect, rdmaDevicesOf } from "../interconnect-detect";
 import type { CoupledPath, NodeGroup } from "./vllm-ops";
 
@@ -23,6 +23,13 @@ export async function runsGroupMembers(backend: "docker" | "systemd"): Promise<b
   // Rootless Docker cannot create the ipvlan networks a member joins.
   const info = await $`docker info --format {{.SecurityOptions}}`.quiet().nothrow();
   return info.exitCode === 0 && !info.text().includes("rootless");
+}
+
+// Judged by the link alone, so a neighbour that misses one discovery round does not take a serving member down.
+export function linkedSubnets(ports: InterconnectPort[]): Set<string> {
+  return new Set(ports.flatMap((port) => rdmaPathsOf(port)
+    .filter((path) => port.paths.some((candidate) => candidate.interface === path.interface && candidate.carrier))
+    .map(({ subnet }) => subnet)));
 }
 
 export async function coupledPaths(): Promise<CoupledPath[]> {
