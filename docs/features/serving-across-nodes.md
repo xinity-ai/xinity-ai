@@ -35,6 +35,6 @@ A replica is ready only when every machine is. When one machine fails, the repli
 
 ## Failures and Restarts
 
-When one machine of a replica fails, all of its machines stop and the replica starts again as a whole. After three attempts, the replica stays failed. **Retry** on the deployment then replaces the failed replica on all of its machines.
+When one machine of a replica fails, all of its machines stop and the replica starts again as a whole. A coupled port that loses its link, such as a pulled cable, counts as a failure within about half a minute. After three attempts, the replica stays failed. **Retry** on the deployment then replaces the failed replica on all of its machines.
 
 Removing or disabling a deployment stops the replica on every machine.

@@ -42,9 +42,14 @@ async function main() {
   await startServer();
   const registration = await buildRegistration();
   reportedInterconnect = registration.interconnect;
-  interconnectTimer = setInterval(() => void reportInterconnectChange(registration.nodeId), INTERCONNECT_CHECK_MS);
-  metricsSampler = startMetricsSampler();
   const coordinator = dbSync();
+  // A member whose coupling just lost its link is failed by the next sync, so a change starts one.
+  interconnectTimer = setInterval(() => void reportInterconnectChange(registration.nodeId).then((changed) => {
+    if (changed) {
+      coordinator.signal("interconnect");
+    }
+  }), INTERCONNECT_CHECK_MS);
+  metricsSampler = startMetricsSampler();
   subscription = coordinator.start();
 
   const onFatal = (label: string) => (err: unknown) => {
@@ -69,14 +74,15 @@ async function main() {
   await shutdown(1);
 }
 
-async function reportInterconnectChange(nodeId: string): Promise<void> {
+async function reportInterconnectChange(nodeId: string): Promise<boolean> {
   const interconnect = await checkInterconnect();
   if (Bun.deepEquals(interconnect, reportedInterconnect)) {
-    return;
+    return false;
   }
   if (await reportInterconnect({ nodeId, interconnect })) {
     reportedInterconnect = interconnect;
   }
+  return true;
 }
 
 async function shutdown(exitCode = 0) {
