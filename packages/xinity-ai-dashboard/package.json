@@ -30,7 +30,7 @@
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
 		"@tailwindcss/vite": "^4.3.0",
 		"@types/mjml": "^5.0.0",
-		"@types/nodemailer": "^8.0.0",
+		"@types/nodemailer": "^8.0.2",
 		"@types/prismjs": "^1.26.6",
 		"better-auth": "^1.6.23",
 		"bits-ui": "^2.18.1",
@@ -58,8 +58,8 @@
 		"@better-auth/sso": "^1.6.23",
 		"@types/bun": "catalog:",
 		"common-log": "workspace:*",
-		"mjml": "^5.2.1",
-		"nodemailer": "^9.0.5",
+		"mjml": "^5.4.1",
+		"nodemailer": "^10.1.7",
 		"pino": "catalog:",
 		"uqr": "^0.1.3"
 	}

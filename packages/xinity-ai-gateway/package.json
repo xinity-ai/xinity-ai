@@ -26,8 +26,8 @@
     "typescript": "catalog:"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "^2.0.47",
-    "ai": "^6.0.182",
+    "@ai-sdk/openai-compatible": "^2.0.86",
+    "ai": "^6.0.311",
     "cheerio": "^1.2.0",
     "turndown": "^7.2.0",
     "turndown-plugin-gfm": "^1.0.2"
