@@ -65,7 +65,8 @@
               "enum": [
                 "tools",
                 "custom_code",
-                "vision"
+                "vision",
+                "diarization"
               ]
             }
           },
@@ -84,7 +85,8 @@
                   "enum": [
                     "tools",
                     "custom_code",
-                    "vision"
+                    "vision",
+                    "diarization"
                   ]
                 }
               },
@@ -95,7 +97,8 @@
                   "enum": [
                     "tools",
                     "custom_code",
-                    "vision"
+                    "vision",
+                    "diarization"
                   ]
                 }
               }

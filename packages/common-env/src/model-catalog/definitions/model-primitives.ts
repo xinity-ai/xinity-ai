@@ -8,7 +8,7 @@ import { z } from "zod";
 export const EngineEnum = z.enum(["vllm", "ollama"]);
 export type Engine = z.infer<typeof EngineEnum>;
 
-export const TagEnum = z.enum(["tools", "custom_code", "vision"]);
+export const TagEnum = z.enum(["tools", "custom_code", "vision", "diarization"]);
 export type Tag = z.infer<typeof TagEnum>;
 
 export const GpuVendorEnum = z.enum(["nvidia", "amd", "intel"]);

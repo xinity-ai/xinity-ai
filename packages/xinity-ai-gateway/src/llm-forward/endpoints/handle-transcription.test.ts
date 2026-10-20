@@ -46,7 +46,7 @@ const failedRequests = () => recordUsageEvent.mock.calls.filter(([e]) => e.succe
 const { handleTranscription } = await import("./handle-transcription");
 
 let server: any;
-let lastForm: { model: unknown; hasFile: boolean; stream: unknown; language: unknown } | null = null;
+let lastForm: { model: unknown; hasFile: boolean; stream: unknown; language: unknown; responseFormat: unknown } | null = null;
 let nextResponse: Response | null = null;
 
 beforeAll(() => {
@@ -55,13 +55,13 @@ beforeAll(() => {
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/v1/audio/transcriptions") {
+        const form = await req.formData();
+        lastForm = { model: form.get("model"), hasFile: form.get("file") instanceof Blob, stream: form.get("stream"), language: form.get("language"), responseFormat: form.get("response_format") };
         if (nextResponse) {
           const r = nextResponse;
           nextResponse = null;
           return r;
         }
-        const form = await req.formData();
-        lastForm = { model: form.get("model"), hasFile: form.get("file") instanceof Blob, stream: form.get("stream"), language: form.get("language") };
         if (form.get("stream") === "true") {
           // vLLM streams chat-completion-style `transcription.chunk` SSE.
           const sse = [
@@ -255,5 +255,104 @@ describe("handleTranscription", () => {
     const res = await handleTranscription(makeReq({ model: "whisper" }));
     expect(res.status).toBe(503);
     expect(recordUsageEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("diarized transcriptions", () => {
+  const diarizingModel = () => modelFound({ ...transcriptionModel(), tags: ["diarization"] });
+  const chunks = (contents: string[]) => new Response(
+    contents.map((content, index) => `data: ${JSON.stringify({
+      id: "t", object: "transcription.chunk", created: 1, model: "moss",
+      choices: [{ delta: { content }, finish_reason: index === contents.length - 1 ? "stop" : null }],
+    })}\n\n`).join(""),
+    { headers: { "Content-Type": "text/event-stream" } },
+  );
+  const events = async (res: Response) => (await res.text()).split("\n\n").filter(Boolean).map((line) => JSON.parse(line.slice("data: ".length)));
+
+  test("labels speakers A, B, ... in the order they first speak, as OpenAI does", async () => {
+    getModelInfo.mockImplementationOnce(async () => diarizingModel());
+    nextResponse = Response.json({
+      task: "transcribe", duration: 4, text: "Hi Hello Bye",
+      segments: [
+        { type: "transcript.text.segment", id: "seg_0", start: 0, end: 1, text: "Hi", speaker: "S02" },
+        { type: "transcript.text.segment", id: "seg_1", start: 1, end: 2, text: "Hello", speaker: "S01" },
+        { type: "transcript.text.segment", id: "seg_2", start: 2, end: 3, text: "Bye", speaker: "S02" },
+      ],
+    });
+    const res = await handleTranscription(makeReq({ model: "moss", response_format: "diarized_json" }));
+    const body = await res.json() as { segments: { speaker: string }[] };
+    expect(body.segments.map(({ speaker }) => speaker)).toEqual(["A", "B", "A"]);
+    expect(lastForm?.responseFormat).toBe("diarized_json");
+  });
+
+  test("streams segments and their deltas from the model's speaker markup, however the chunks split it", async () => {
+    getModelInfo.mockImplementationOnce(async () => diarizingModel());
+    nextResponse = chunks(["[0.48][S0", "1]Welcome every", "one[1.66][12.26][S02]The new", " pipeline[15.", "0]"]);
+    const res = await handleTranscription(makeReq({ model: "moss", response_format: "diarized_json", stream: "true" }));
+    const sent = await events(res);
+    expect(lastForm?.responseFormat).toBe("json");
+    expect(sent.filter(({ type }) => type === "transcript.text.segment")).toEqual([
+      { type: "transcript.text.segment", id: "seg_0", start: 0.48, end: 1.66, text: "Welcome everyone", speaker: "A" },
+      { type: "transcript.text.segment", id: "seg_1", start: 12.26, end: 15, text: "The new pipeline", speaker: "B" },
+    ]);
+    const deltas = sent.filter(({ type }) => type === "transcript.text.delta");
+    expect(deltas.map(({ delta }) => delta).join("")).toBe("Welcome everyone The new pipeline");
+    expect(new Set(deltas.map(({ segment_id }) => segment_id))).toEqual(new Set(["seg_0", "seg_1"]));
+    expect(sent.at(-1)).toMatchObject({ type: "transcript.text.done", text: "Welcome everyone The new pipeline" });
+  });
+
+  test("refuses diarized_json for a model that does not label speakers", async () => {
+    const res = await handleTranscription(makeReq({ model: "whisper", response_format: "diarized_json" }));
+    expect(res.status).toBe(400);
+    expect(lastForm).toBeNull();
+  });
+
+  test.each(["known_speaker_names", "known_speaker_names[]", "known_speaker_references[]"])("refuses %s, which no model can match voices against", async (field) => {
+    getModelInfo.mockImplementationOnce(async () => diarizingModel());
+    const res = await handleTranscription(makeReq({ model: "moss", response_format: "diarized_json", [field]: "Alice" }));
+    expect(res.status).toBe(400);
+    expect(lastForm).toBeNull();
+  });
+});
+
+describe("a diarizing model's real output", () => {
+  const diarizingModel = () => modelFound({ ...transcriptionModel(), tags: ["diarization"] });
+  // MOSS-Transcribe-Diarize on vLLM 0.31.1, a two-voice dialogue, streamed with response_format json.
+  const deltas: string[] = ["[","0",".","0","6","]","[S","0","1","]"," Good"," morning"," everyone",".[","1",".","3","6","][","1",".","7","2","]","[S","0","1","]"," The"," new"," transcription"," pipeline"," is"," ready"," for"," evaluation",".[","5",".","0","6","][","5",".","4","2","]","[S","0","2","]"," Thanks",".[","6",".","1","2","][","6",".","4","6","]","[S","0","2","]"," How"," long"," does"," it"," take"," to"," process"," a"," full"," meeting"," recording","?[","1","0",".","2","6","][","1","0",".","6","2","]","[S","0","1","]"," About"," two"," minutes"," for"," an"," hour"," of"," audio"," on"," one"," machine",".[","1","4",".","2","2","]",""];
+  const markup = deltas.join("");
+  const plainText = "Good morning everyone. The new transcription pipeline is ready for evaluation. Thanks. How long does it take to process a full meeting recording? About two minutes for an hour of audio on one machine.";
+  const stream = () => new Response(
+    deltas.map((content, index) => `data: ${JSON.stringify({
+      id: "t", object: "transcription.chunk", created: 1, model: "moss",
+      choices: [{ delta: { content }, finish_reason: index === deltas.length - 1 ? "stop" : null }],
+    })}\n\n`).join(""),
+    { headers: { "Content-Type": "text/event-stream" } },
+  );
+  const events = async (res: Response) => (await res.text()).split("\n\n").filter(Boolean).map((line) => JSON.parse(line.slice("data: ".length)));
+
+  test("streams the same segments vLLM's own diarized_json reports for it", async () => {
+    getModelInfo.mockImplementationOnce(async () => diarizingModel());
+    nextResponse = stream();
+    const sent = await events(await handleTranscription(makeReq({ model: "moss", response_format: "diarized_json", stream: "true" })));
+    expect(sent.filter(({ type }) => type === "transcript.text.segment").map(({ start, end, speaker }) => [start, end, speaker])).toEqual([
+      [0.06, 1.36, "A"], [1.72, 5.06, "A"], [5.42, 6.12, "B"], [6.46, 10.26, "B"], [10.62, 14.22, "A"],
+    ]);
+    expect(sent.at(-1)).toMatchObject({ type: "transcript.text.done", text: plainText });
+  });
+
+  test("leaves the speaker markup out of a plain stream", async () => {
+    getModelInfo.mockImplementationOnce(async () => diarizingModel());
+    nextResponse = stream();
+    const sent = await events(await handleTranscription(makeReq({ model: "moss", stream: "true" })));
+    expect(sent.some(({ type }) => type === "transcript.text.segment")).toBe(false);
+    expect(sent.some(({ segment_id }) => segment_id !== undefined)).toBe(false);
+    expect(sent.at(-1)).toMatchObject({ type: "transcript.text.done", text: plainText });
+  });
+
+  test("leaves the speaker markup out of a plain json transcript", async () => {
+    getModelInfo.mockImplementationOnce(async () => diarizingModel());
+    nextResponse = Response.json({ text: markup, usage: { type: "duration", seconds: 15 } });
+    const body = await (await handleTranscription(makeReq({ model: "moss" }))).json() as { text: string };
+    expect(body.text).toBe(plainText);
   });
 });
