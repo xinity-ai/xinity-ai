@@ -476,6 +476,9 @@
                           <p class="pl-6 text-destructive">{member.error}</p>
                         {/if}
                       {/each}
+                      {#if replica.error && !replica.members!.some((member) => member.error)}
+                        <p class="pl-3 text-destructive">{replica.error}</p>
+                      {/if}
                       {#each replica.couplingIssues ?? [] as issue}
                         <p class="flex items-start gap-1 text-amber-700 dark:text-amber-500">
                           <TriangleAlert class="w-3 h-3 mt-px shrink-0" aria-hidden="true" />Coupling: {issue.text}
@@ -492,7 +495,9 @@
                     </div>
                   {/if}
                   {#if (deployment.status.phase === 'failed' || deployment.status.phase === 'partial') && deployment.status.error}
-                    <p class="text-sm text-destructive mt-2">{deployment.status.error}</p>
+                    {#if !(deployment.status.replicas ?? []).some((replica) => replica.members && replica.error === deployment.status!.error)}
+                      <p class="text-sm text-destructive mt-2">{deployment.status.error}</p>
+                    {/if}
                     <a href="/docs/deployment-troubleshooting/" class="text-xs text-muted-foreground hover:underline mt-1 inline-block">Troubleshooting guide</a>
                   {/if}
                   {#if (deployment.status.phase === 'failed' || deployment.status.phase === 'partial') && deployment.status.failureLogs}

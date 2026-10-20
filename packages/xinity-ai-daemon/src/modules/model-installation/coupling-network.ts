@@ -35,7 +35,7 @@ export function memberGroupFrom(group: DesiredGroup, localPaths: CoupledPath[]):
   const paths = group.addresses.map(({ subnet, address }) => {
     const local = localPaths.find((path) => path.subnet === subnet);
     if (!local) {
-      throw new Error(`This machine has no coupled port on ${subnet}`);
+      throw new Error(`No coupled port on ${subnet}`);
     }
     return { ...local, address };
   });
