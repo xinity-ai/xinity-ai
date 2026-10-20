@@ -49,6 +49,7 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
   },
   "$lib/server/lib/deployments/orchestration": {
     assembleModelRequirementTable: asyncNoop,
+    currentClusterState: asyncNoop,
     previewPlacement: asyncNoop,
     syncDeployedModels: asyncNoop,
     startDeploymentSyncService: asyncNoop,
