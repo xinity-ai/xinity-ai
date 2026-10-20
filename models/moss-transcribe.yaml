@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  moss-transcribe-diarize-vllm:
+    name: MOSS Transcribe Diarize
+    description: |
+      A small speech-recognition model that also says who spoke when. It transcribes
+      recordings with several speakers in one pass and labels each segment with its
+      speaker and start and end times, without a separate diarization step. The model card
+      lists more than 50 languages, English and Chinese foremost.
+
+      Ask for `response_format: "diarized_json"` to get the segments, each with its
+      `speaker` (`A`, `B`, ... in the order they first speak), `start` and `end` in seconds.
+      Streamed, every finished segment arrives as its own event. The labels are anonymous:
+      they tell speakers apart within one recording, not across recordings. `json` and
+      `text` return the plain transcript without speaker labels.
+
+      Use `temperature: 0`, as the model card recommends.
+    url: https://huggingface.co/OpenMOSS-Team/MOSS-Transcribe-Diarize
+    license: apache-2.0
+    createdAt: 2026-05-19
+    registeredAt: 2026-10-20
+    engine: vllm
+    engineSpecifier: OpenMOSS-Team/MOSS-Transcribe-Diarize
+    sizing:
+      # Qwen3 text decoder: 28 layers, 8 kv heads, head_dim 128 -> 2 * 28 * 8 * 128 * 2.
+      # The derived floor holds 131,136 tokens, one request at the full window.
+      kvBytesPerToken: 114688
+      attentionHeads: 16
+      kvHeads: 8
+      maxContextLength: 131072
+      weightGb: 1.85   # measured resident, 1.72 GiB
+      layers: 28
+      attentionLayers: 28
+      nonLayerWeightGb: 0.32
+      largestFileGb: 1.82
+      weightBits: 16
+    type: transcription
+    family: MOSS
+    # The repo ships its own processor, which vLLM can only load as remote code.
+    tags: [diarization, custom_code]
+    downloadFilter:
+      - "!*.py"
+    engineVersions:
+      min: "0.31.0"   # verified on 0.31.1, not bracketed
