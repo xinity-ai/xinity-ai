@@ -44,7 +44,7 @@ Breaking changes use `!` after the type: `feat!: remove legacy auth endpoint`.
 
 ## Changelog
 
-New release entries are prepended to [CHANGELOG.md](CHANGELOG.md) by [git-cliff](https://git-cliff.org/) during `bun run bump`. Historical entries are preserved as-is. Do not edit the file by hand. To preview unreleased changes:
+New release entries are prepended to [CHANGELOG.md](CHANGELOG.md) by [git-cliff](https://git-cliff.org/) when the Release workflow cuts a release. Historical entries are preserved as-is. Do not edit the file by hand. To preview unreleased changes:
 
 ```bash
 bun run changelog:preview
