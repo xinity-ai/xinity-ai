@@ -116,9 +116,9 @@
 
         vllmBackend = lib.mkOption {
           type = lib.types.enum [ "systemd" "docker" ];
-          default = "systemd";
+          default = "docker";
           description = ''
-            How vLLM instances are managed. "systemd" launches vLLM as systemd template units (requires vllmPath). "docker" runs vLLM in OCI containers (requires vllmDockerImage).
+            How vLLM instances are managed. "docker" runs vLLM in OCI containers (requires vllmDockerImage). "systemd" launches vLLM as systemd template units (requires vllmPath).
           '';
         };
 
@@ -143,7 +143,7 @@
         vllmDockerImage = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "OCI image reference for vLLM (e.g. vllm/vllm-openai:latest). Setting this enables the vllm-docker driver. Required when vllmBackend is set to \"docker\".";
+          description = "OCI image reference for vLLM (e.g. vllm/vllm-openai:latest, or timothystewart6/vllm-gb10:v0.31.0-gb10.1 on DGX Spark / GB10 devices). Setting this enables the vllm-docker driver. Required when vllmBackend is set to \"docker\".";
         };
 
         vllmHfCacheDir = lib.mkOption {
