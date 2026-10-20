@@ -118,9 +118,9 @@ const pendingStates = new Map<string, InstallationStatePayload>();
 let flushTimer: Timer | null = null;
 let flushing: Promise<void> | null = null;
 let failedFlushes = 0;
-const stageListeners = new Set<(states: InstallationStatePayload[]) => void>();
+const stageListeners = new Set<(states: InstallationStatePayload[]) => Promise<void>>();
 
-export function onGroupStagesChanged(listener: (states: InstallationStatePayload[]) => void): void {
+export function onGroupStagesChanged(listener: (states: InstallationStatePayload[]) => Promise<void>): void {
   stageListeners.add(listener);
 }
 
@@ -168,7 +168,8 @@ async function flushPending(): Promise<void> {
     failedFlushes = 0;
     await restartFailedGroups(batch).catch((err) => log.error({ err }, "Failed to restart a group after a member failed"));
     if (changed.length > 0) {
-      stageListeners.forEach((listener) => listener(changed));
+      // A listener rejecting inside this try would queue an already written batch for a retry.
+      await Promise.allSettled([...stageListeners].map((listener) => listener(changed)));
     }
   } catch (err) {
     failedFlushes++;

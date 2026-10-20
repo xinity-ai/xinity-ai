@@ -57,12 +57,11 @@ const notifyBus = createNotifyBus({
   getConnectedNodeIds,
 });
 
-onGroupStagesChanged((states) => {
+onGroupStagesChanged((states) =>
   nodesOfGroupsOf(states.map((state) => state.installationId)).then(
     (nodeIds) => nodeIds.forEach(notifyBus.queue),
     (err) => rootLogger.error({ err }, "Failed to tell a group's members about a member's stage"),
-  );
-});
+  ));
 
 // Without the subscription a daemon would connect and then never hear about a
 // deployment again, which is worse than refusing to serve at all.
