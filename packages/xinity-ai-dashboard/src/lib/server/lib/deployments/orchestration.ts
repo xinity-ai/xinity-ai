@@ -233,7 +233,7 @@ function memberGroups(coupling: Coupling, members: MemberSlot[], state: ClusterS
   }
   const id = crypto.randomUUID();
   const port = rendezvousPort(members[0]!.nodeId, state, pending);
-  return members.map((_, rank) => ({ id, rank, size: members.length, rendezvousPort: port, addresses: addresses[rank]!, generation: 1 }));
+  return members.map((_, rank) => ({ id, rank, size: members.length, parallelism: "tensor" as const, rendezvousPort: port, addresses: addresses[rank]!, generation: 1 }));
 }
 
 function allocatePort(driver: Provider, nodeId: string, state: ClusterState, pending: NewInstallation[]): number {

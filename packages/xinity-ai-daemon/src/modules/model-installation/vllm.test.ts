@@ -754,7 +754,7 @@ describe("perCardSizing", () => {
 
 describe("members of a group served across nodes", () => {
   const group = (stages: (GroupStage | null)[]) => ({
-    id: "group-1", rank: 1, size: 2, rendezvousPort: 29500, generation: 1,
+    id: "group-1", rank: 1, size: 2, parallelism: "tensor" as const, rendezvousPort: 29500, generation: 1,
     addresses: [{ subnet: "192.168.100.0/24", address: "192.168.100.253" }],
     masterAddress: "192.168.100.254",
     masterHost: { machineName: "asus-7", address: null as string | null },

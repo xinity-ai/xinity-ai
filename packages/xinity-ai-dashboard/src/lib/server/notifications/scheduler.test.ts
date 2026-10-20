@@ -122,7 +122,7 @@ describe("foldDeploymentPhaseRows", () => {
   });
 
   test("counts a group served across machines as one replica, failed rather than partial while one machine failed", () => {
-    const installationGroup = { id: "group-1", rank: 0, size: 2, rendezvousPort: 29500, generation: 1, addresses: [] };
+    const installationGroup = { id: "group-1", rank: 0, size: 2, parallelism: "tensor" as const, rendezvousPort: 29500, generation: 1, addresses: [] };
     const info = foldDeploymentPhaseRows([
       row({ installationId: "inst-0", liveNodeId: "node-0", installationGroup }),
       row({ installationId: "inst-1", liveNodeId: "node-1", installationGroup: { ...installationGroup, rank: 1 }, lifecycleState: "failed", errorMessage: "boom" }),

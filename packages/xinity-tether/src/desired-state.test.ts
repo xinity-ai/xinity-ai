@@ -15,7 +15,7 @@ const row = (id: string, nodeId: string, group: InstallationGroup | null = null)
   deletedAt: null, createdAt: new Date(), updatedAt: new Date(),
 });
 const member = (rank: number, address: string, generation = 1): InstallationGroup => ({
-  id: "group-1", rank, size: 2, rendezvousPort: 29500, addresses: [{ subnet: "192.168.100.0/24", address }], generation,
+  id: "group-1", rank, size: 2, parallelism: "tensor" as const, rendezvousPort: 29500, addresses: [{ subnet: "192.168.100.0/24", address }], generation,
 });
 
 describe("toDesiredState", () => {

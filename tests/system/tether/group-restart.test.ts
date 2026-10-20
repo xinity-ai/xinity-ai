@@ -23,6 +23,7 @@ const groupOf = (rank: number): InstallationGroup => ({
   id: groupId,
   rank,
   size: 2,
+  parallelism: "tensor",
   rendezvousPort: 29500,
   generation: 1,
   addresses: [{ subnet: "192.168.100.0/24", address: `192.168.100.${254 - rank}` }],
