@@ -60,7 +60,7 @@ mock.module("./logger", () => ({
   },
 }));
 
-const { writeRegistration, queueInstallationStates, flushAndStop, readPinnedPublicKey, partitionOwnedStates, generationAfter, stageChanges } =
+const { writeRegistration, queueInstallationStates, flushAndStop, onGroupStagesChanged, readPinnedPublicKey, partitionOwnedStates, generationAfter, stageChanges } =
   await import("./status-writer");
 
 const registration = {
@@ -308,6 +308,25 @@ describe("queueInstallationStates", () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+
+  test("flushAndStop waits for the members of a changed group to be looked up", async () => {
+    mockSelectRows.mockImplementation(() => Promise.resolve([]));
+    const { promise: lookup, resolve: finishLookup } = Promise.withResolvers<void>();
+    onGroupStagesChanged(() => lookup);
+    queueInstallationStates([{ installationId: "inst-member", lifecycleState: "ready", groupStage: "running", groupGeneration: 1 }]);
+
+    let stopped = false;
+    const stopping = flushAndStop().then(() => {
+      stopped = true;
+    });
+    await waitForInserts(1);
+    await Bun.sleep(10);
+    expect(stopped).toBe(false);
+
+    finishLookup();
+    await stopping;
+    expect(stopped).toBe(true);
   });
 
   test("merges reports from different daemons into one batch", async () => {
