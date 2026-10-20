@@ -38,8 +38,8 @@ Each installation runs within the memory the scheduler charged it, a share of it
 
 | Backend | How it works |
 |---|---|
-| `systemd` (default) | Manages `vllm-driver@{id}.service` template units. Uses `VLLM_PATH` if set, otherwise falls back to `/usr/bin/vllm`. |
-| `docker` | Runs in containers on an egress-blocked network. Requires setting `VLLM_BACKEND=docker` explicitly plus `VLLM_DOCKER_IMAGE`; it is not selected automatically just by setting `VLLM_DOCKER_IMAGE`. |
+| `docker` (default) | Runs in containers on an egress-blocked network. Requires `VLLM_DOCKER_IMAGE`. On DGX Spark and other GB10 devices, use `timothystewart6/vllm-gb10:v0.31.0-gb10.1`. |
+| `systemd` | Manages `vllm-driver@{id}.service` template units. Uses `VLLM_PATH` if set, otherwise falls back to `/usr/bin/vllm`. |
 
 The Docker backend blocks all outbound internet from the inference process (IP masquerade disabled, `HF_HUB_OFFLINE=1`). Models are pre-downloaded by the daemon outside the container.
 

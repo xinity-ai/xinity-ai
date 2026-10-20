@@ -81,7 +81,7 @@ const vllm = defineGroup<Vllm>({
   title: "vLLM",
   description: "How this node runs vLLM models.",
   fields: {
-    backend: env("VLLM_BACKEND", z.enum(["systemd", "docker"]).default("systemd")
+    backend: env("VLLM_BACKEND", z.enum(["systemd", "docker"]).default("docker")
       .describe("vLLM backend type")),
     envDir: env("VLLM_ENV_DIR", z.string().default("/etc/vllm")
       .describe("vLLM environment config directory").meta(expert())),
@@ -93,8 +93,8 @@ const vllm = defineGroup<Vllm>({
       .describe(
         "vLLM Docker image (enables vllm-docker driver). "
         + "Options: vllm/vllm-openai (https://hub.docker.com/r/vllm/vllm-openai), "
-        + "timothystewart6/vllm-gb10 (https://hub.docker.com/r/timothystewart6/vllm-gb10, for DGX Spark / GB10 devices), "
-        + "vllm/vllm-openai:cu130-nightly (for DGX Spark / Blackwell devices)",
+        + "timothystewart6/vllm-gb10:v0.31.0-gb10.1 (https://hub.docker.com/r/timothystewart6/vllm-gb10, recommended for DGX Spark / GB10 devices), "
+        + "vllm/vllm-openai:cu130-nightly (CUDA 13 nightly for the newest NVIDIA GPUs)",
       )),
     hfCacheDir: env("VLLM_HF_CACHE_DIR", z.string().default("/var/lib/vllm/hf-cache")
       .describe("HuggingFace cache directory").meta(expert())),
