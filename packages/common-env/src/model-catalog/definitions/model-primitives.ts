@@ -84,21 +84,21 @@ export const ModelDate = z.string()
  * vLLM args that must not appear in model definitions because they are either
  * auto-derived from tags or managed by the system.
  */
-export const BLOCKED_VLLM_ARGS = new Set([
-  "--trust-remote-code",       // controlled by custom_code tag
-  "--enable-auto-tool-choice", // auto-derived from tools tag
-  "--runner",                  // auto-derived from model type (embedding/rerank → pooling)
-  "--task",                    // deprecated in favor of --runner, auto-managed
-  "--host",                    // system-managed
-  "--port",                    // system-managed
-  "--served-model-name",       // system-managed
-  "--kv-cache-memory-bytes",   // system-managed via kvCacheCapacity
-  "--gpu-memory-utilization",  // system-managed, calculated from model needs and total VRAM
-  "--api-key",                 // system-managed
-  "--tensor-parallel-size",    // system-managed, the number of cards the installation is pinned to
-  "-tp",
-  "--pipeline-parallel-size",  // system-managed alongside tensor parallelism
-  "-pp",
+export const BLOCKED_VLLM_ARGS = new Map<string, "switch" | "takes-value">([
+  ["--trust-remote-code", "switch"],            // controlled by custom_code tag
+  ["--enable-auto-tool-choice", "switch"],      // auto-derived from tools tag
+  ["--runner", "takes-value"],                  // auto-derived from model type (embedding/rerank → pooling)
+  ["--task", "takes-value"],                    // deprecated in favor of --runner, auto-managed
+  ["--host", "takes-value"],                    // system-managed
+  ["--port", "takes-value"],                    // system-managed
+  ["--served-model-name", "takes-value"],       // system-managed
+  ["--kv-cache-memory-bytes", "takes-value"],   // system-managed via kvCacheCapacity
+  ["--gpu-memory-utilization", "takes-value"],  // system-managed, calculated from model needs and total VRAM
+  ["--api-key", "takes-value"],                 // system-managed
+  ["--tensor-parallel-size", "takes-value"],    // system-managed, the number of cards the installation is pinned to
+  ["-tp", "takes-value"],
+  ["--pipeline-parallel-size", "takes-value"],  // system-managed alongside tensor parallelism
+  ["-pp", "takes-value"],
 ]);
 
 /**
@@ -131,13 +131,14 @@ export function stripBlockedVllmArgs(args: string[]): string[] {
       continue;
     }
     const [name = arg] = arg.split("=", 1);
-    if (BLOCKED_VLLM_ARGS.has(name)) {
-      const next = args[i + 1];
-      if (name === arg && next && !next.startsWith("--")) {
-        i++;
-      }
-    } else {
+    const blocked = BLOCKED_VLLM_ARGS.get(name);
+    if (!blocked) {
       result.push(arg);
+      continue;
+    }
+    const next = args[i + 1];
+    if (blocked === "takes-value" && name === arg && next && !next.startsWith("--")) {
+      i++;
     }
   }
   return result;
