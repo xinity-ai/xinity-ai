@@ -1,4 +1,8 @@
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect, mock, beforeAll, afterAll } from "bun:test";
+import { $ } from "bun";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { LookupAddress } from "node:dns";
 
 mock.module("../../env", () => ({
@@ -19,7 +23,12 @@ mock.module("node:dns/promises", () => ({
   },
 }));
 
-const { validateUrl, validateResolvedAddresses } = await import("./url-safety");
+const { validateUrl, resolvePublicAddresses, fetchPinned } = await import("./url-safety");
+
+async function blockedReason(hostname: string): Promise<string | null> {
+  const resolved = await resolvePublicAddresses(hostname);
+  return "blocked" in resolved ? resolved.blocked : null;
+}
 
 // ---------------------------------------------------------------------------
 // Protocol validation
@@ -76,7 +85,7 @@ describe("validateUrl -IPv6", () => {
 // Resolved IPv6 addresses
 // ---------------------------------------------------------------------------
 
-describe("validateResolvedAddresses -IPv6", () => {
+describe("resolvePublicAddresses -IPv6", () => {
   const blocked: [string, string][] = [
     ["unspecified", "::"],
     ["loopback", "::1"],
@@ -94,14 +103,14 @@ describe("validateResolvedAddresses -IPv6", () => {
     test(`blocks ${name} (${address})`, async () => {
       const hostname = `${name.replaceAll(/[^a-z0-9]+/g, "-")}.test`;
       resolved[hostname] = [{ address, family: 6 }];
-      expect(await validateResolvedAddresses(hostname)).not.toBeNull();
+      expect(await blockedReason(hostname)).not.toBeNull();
     });
   }
 
   // NAT64 is how IPv6-only hosts reach public IPv4, so only the embedded address decides.
   test("allows NAT64 of a public address (64:ff9b::808:808)", async () => {
     resolved["nat64-public.test"] = [{ address: "64:ff9b::808:808", family: 6 }];
-    expect(await validateResolvedAddresses("nat64-public.test")).toBeNull();
+    expect(await blockedReason("nat64-public.test")).toBeNull();
   });
 });
 
@@ -109,24 +118,24 @@ describe("validateResolvedAddresses -IPv6", () => {
 // Resolver outcomes
 // ---------------------------------------------------------------------------
 
-describe("validateResolvedAddresses -resolver outcomes", () => {
+describe("resolvePublicAddresses -resolver outcomes", () => {
   test("blocks a hostname the resolver cannot find", async () => {
-    expect(await validateResolvedAddresses("missing.test")).toContain("Could not resolve");
+    expect(await blockedReason("missing.test")).toContain("Could not resolve");
   });
 
   test("blocks a hostname that resolves to no addresses", async () => {
     resolved["empty.test"] = [];
-    expect(await validateResolvedAddresses("empty.test")).toContain("no addresses");
+    expect(await blockedReason("empty.test")).toContain("no addresses");
   });
 
   test("blocks when any one of several addresses is private", async () => {
     resolved["mixed.test"] = [{ address: "93.184.215.14", family: 4 }, { address: "10.0.0.5", family: 4 }];
-    expect(await validateResolvedAddresses("mixed.test")).toContain("Blocked IP range");
+    expect(await blockedReason("mixed.test")).toContain("Blocked IP range");
   });
 
   test("allows a hostname with only public addresses", async () => {
     resolved["public.test"] = [{ address: "93.184.215.14", family: 4 }, { address: "2606:2800:21f:cb07:6820:80da:af6b:8b2c", family: 6 }];
-    expect(await validateResolvedAddresses("public.test")).toBeNull();
+    expect(await blockedReason("public.test")).toBeNull();
   });
 });
 
@@ -251,4 +260,50 @@ describe("validateUrl -safe URLs", () => {
     expect(validateUrl("http://8.8.8.8")).toBeNull();
   });
 
+});
+
+// ---------------------------------------------------------------------------
+// Pinned fetch
+// ---------------------------------------------------------------------------
+
+const LOOPBACK: LookupAddress = { address: "127.0.0.1", family: 4 };
+
+function echoRequest(req: Request): Response {
+  const { pathname, search } = new URL(req.url);
+  return Response.json({ host: req.headers.get("host"), path: pathname + search });
+}
+
+describe("fetchPinned", () => {
+  test("connects to the pinned address and keeps the hostname in the Host header", async () => {
+    using server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: echoRequest });
+    const res = await fetchPinned(new URL(`http://pinned.test:${server.port}/page?q=1`), LOOPBACK, {});
+    expect(await res.json()).toEqual({ host: `pinned.test:${server.port}`, path: "/page?q=1" });
+  });
+
+  const openssl = Bun.which("openssl");
+
+  describe.skipIf(!openssl)("over TLS", () => {
+    const certDir = mkdtempSync(join(tmpdir(), "url-safety-tls-"));
+    let cert: string;
+    let key: string;
+
+    beforeAll(async () => {
+      await $`${openssl!} req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=pinned.test -addext subjectAltName=DNS:pinned.test -keyout ${join(certDir, "key.pem")} -out ${join(certDir, "cert.pem")}`.quiet();
+      cert = await Bun.file(join(certDir, "cert.pem")).text();
+      key = await Bun.file(join(certDir, "key.pem")).text();
+    });
+
+    afterAll(() => rmSync(certDir, { recursive: true, force: true }));
+
+    test("checks the certificate against the hostname, not the pinned address", async () => {
+      using server = Bun.serve({ hostname: "127.0.0.1", port: 0, tls: { cert, key }, fetch: echoRequest });
+      const res = await fetchPinned(new URL(`https://pinned.test:${server.port}/`), LOOPBACK, { tls: { ca: cert } });
+      expect(await res.json()).toEqual({ host: `pinned.test:${server.port}`, path: "/" });
+    });
+
+    test("rejects a certificate issued for a different hostname", async () => {
+      using server = Bun.serve({ hostname: "127.0.0.1", port: 0, tls: { cert, key }, fetch: echoRequest });
+      await expect(fetchPinned(new URL(`https://other.test:${server.port}/`), LOOPBACK, { tls: { ca: cert } })).rejects.toThrow();
+    });
+  });
 });

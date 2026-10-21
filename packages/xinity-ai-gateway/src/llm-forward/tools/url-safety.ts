@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises";
 import type { LookupAddress } from "node:dns";
 import { BlockList, isIPv4 } from "node:net";
+import { checkServerIdentity, type PeerCertificate } from "node:tls";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "url-safety" });
@@ -98,27 +99,47 @@ function isBlockedIpv6(ip: string): string | null {
   return blockedIpv6.check(ip, "ipv6") ? `Blocked IPv6 range: ${ip}` : null;
 }
 
-/** Uses the system resolver like fetch does, so /etc/hosts entries are judged too. */
-export async function validateResolvedAddresses(hostname: string): Promise<string | null> {
-  if (isIPv4(hostname)) return null;
+type ResolvedAddresses = { addresses: LookupAddress[] } | { blocked: string };
+
+export async function resolvePublicAddresses(hostname: string): Promise<ResolvedAddresses> {
+  if (isIPv4(hostname)) {
+    return { addresses: [{ address: hostname, family: 4 }] };
+  }
 
   let addresses: LookupAddress[];
   try {
+    // The system resolver, unlike resolve4/resolve6, also answers from /etc/hosts.
     addresses = await lookup(hostname, { all: true });
   } catch (err) {
     log.debug({ err, hostname }, "Hostname lookup failed");
-    return `Could not resolve ${hostname}`;
+    return { blocked: `Could not resolve ${hostname}` };
   }
   if (addresses.length === 0) {
-    return `${hostname} resolved to no addresses`;
+    return { blocked: `${hostname} resolved to no addresses` };
   }
 
   for (const { address, family } of addresses) {
     const blocked = family === 6 ? isBlockedIpv6(address) : isBlockedIpv4(address);
-    if (blocked) return blocked;
+    if (blocked) return { blocked };
   }
 
-  return null;
+  return { addresses };
+}
+
+export function fetchPinned(url: URL, { address, family }: LookupAddress, init: BunFetchRequestInit & { headers?: Record<string, string> }): Promise<Response> {
+  // Resolving the hostname a second time would let a rebinding DNS server answer differently than it did for the check.
+  const pinned = new URL(url);
+  pinned.hostname = family === 6 ? `[${address}]` : address;
+  const { hostname } = url;
+  return fetch(pinned, {
+    ...init,
+    headers: { ...init.headers, host: url.host },
+    tls: {
+      ...init.tls,
+      serverName: hostname,
+      checkServerIdentity: (_pinnedHost: string, cert: PeerCertificate) => checkServerIdentity(hostname, cert),
+    },
+  });
 }
 
 export type SafeFetchOptions = {
@@ -164,6 +185,27 @@ export function validateUrl(rawUrl: string): string | null {
   return isIPv4(bare) ? isBlockedIpv4(bare) : null;
 }
 
+async function fetchFirstReachable(
+  url: URL,
+  addresses: LookupAddress[],
+  init: BunFetchRequestInit & { headers: Record<string, string>; signal: AbortSignal },
+  timeoutMs: number,
+): Promise<Response> {
+  let lastError: unknown;
+  for (const address of addresses) {
+    try {
+      return await fetchPinned(url, address, init);
+    } catch (err) {
+      if (init.signal.aborted) {
+        throw new Error(`Fetch timed out after ${timeoutMs}ms`, { cause: err });
+      }
+      log.debug({ err, url: url.toString(), address: address.address }, "Pinned address unreachable, trying the next one");
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
 /**
  * Fetch a URL with SSRF protection and timeout.
  * Throws on blocked URLs, timeouts, and HTTP errors.
@@ -183,21 +225,14 @@ export async function safeFetch(
       throw new Error(`URL blocked: ${error}`);
     }
 
-    const dnsError = await validateResolvedAddresses(new URL(currentUrl).hostname);
-    if (dnsError) {
-      log.warn({ url: currentUrl, reason: dnsError }, "Blocked outbound request (resolved address)");
-      throw new Error(`URL blocked: ${dnsError}`);
+    const url = new URL(currentUrl);
+    const resolved = await resolvePublicAddresses(url.hostname);
+    if ("blocked" in resolved) {
+      log.warn({ url: currentUrl, reason: resolved.blocked }, "Blocked outbound request (resolved address)");
+      throw new Error(`URL blocked: ${resolved.blocked}`);
     }
 
-    let response: Response;
-    try {
-      response = await fetch(currentUrl, { signal, headers, redirect: "manual" });
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "TimeoutError") {
-        throw new Error(`Fetch timed out after ${timeoutMs}ms`, { cause: e });
-      }
-      throw e;
-    }
+    const response = await fetchFirstReachable(url, resolved.addresses, { signal, headers, redirect: "manual" }, timeoutMs);
 
     const location = response.headers.get("location");
     if (response.status >= 300 && response.status < 400 && location) {
