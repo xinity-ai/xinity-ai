@@ -3,6 +3,7 @@
   import { organization } from "$lib/auth";
   import type { PageData } from "./$types";
   import InviteSection from "./InviteSection.svelte";
+  import UnverifiedEmailNotice from "./UnverifiedEmailNotice.svelte";
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
@@ -53,6 +54,10 @@
       </Tooltip.Root>
     </Tooltip.Provider>
   </div>
+
+  {#if !data.user.emailVerified}
+    <UnverifiedEmailNotice email={data.user.email} mailConfigured={data.mailConfigured} isInstanceAdmin={data.isInstanceAdmin} />
+  {/if}
 
   {#if data.organizations && data.organizations.length > 0}
     <div class="grid gap-6 compact:gap-3 md:grid-cols-2 lg:grid-cols-3">

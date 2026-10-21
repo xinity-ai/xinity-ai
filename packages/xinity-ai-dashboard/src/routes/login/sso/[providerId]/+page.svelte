@@ -12,7 +12,7 @@
   const callbackURL = "/";
 
   let errorMessage = $state(
-    friendlySsoError(page.url.searchParams.get("error") ?? undefined) ?? "",
+    friendlySsoError(page.url.searchParams.get("error") ?? undefined, page.data.providerDomains) ?? "",
   );
   let isLoading = $state(false);
 
@@ -37,7 +37,7 @@
       });
 
       if (error?.message) {
-        errorMessage = error.message;
+        errorMessage = friendlySsoError(error.message) ?? error.message;
       }
     } catch (err) {
       errorMessage =
