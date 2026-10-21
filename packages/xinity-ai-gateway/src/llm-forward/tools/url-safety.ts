@@ -1,4 +1,5 @@
-import { resolve4, resolve6 } from "node:dns/promises";
+import { lookup } from "node:dns/promises";
+import type { LookupAddress } from "node:dns";
 import { BlockList, isIPv4 } from "node:net";
 import { rootLogger } from "../../logger";
 
@@ -97,21 +98,23 @@ function isBlockedIpv6(ip: string): string | null {
   return blockedIpv6.check(ip, "ipv6") ? `Blocked IPv6 range: ${ip}` : null;
 }
 
+/** Uses the system resolver like fetch does, so /etc/hosts entries are judged too. */
 export async function validateResolvedAddresses(hostname: string): Promise<string | null> {
   if (isIPv4(hostname)) return null;
 
-  const [v4Addrs, v6Addrs] = await Promise.all([
-    resolve4(hostname).catch(() => [] as string[]),
-    resolve6(hostname).catch(() => [] as string[]),
-  ]);
-
-  for (const ip of v4Addrs) {
-    const blocked = isBlockedIpv4(ip);
-    if (blocked) return blocked;
+  let addresses: LookupAddress[];
+  try {
+    addresses = await lookup(hostname, { all: true });
+  } catch (err) {
+    log.debug({ err, hostname }, "Hostname lookup failed");
+    return `Could not resolve ${hostname}`;
+  }
+  if (addresses.length === 0) {
+    return `${hostname} resolved to no addresses`;
   }
 
-  for (const ip of v6Addrs) {
-    const blocked = isBlockedIpv6(ip);
+  for (const { address, family } of addresses) {
+    const blocked = family === 6 ? isBlockedIpv6(address) : isBlockedIpv4(address);
     if (blocked) return blocked;
   }
 
