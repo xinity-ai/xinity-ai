@@ -23,6 +23,7 @@ let cachedProfile: HardwareProfile | null = null;
 let cachedNodeId: string | null = null;
 let cachedIdentity: NodeIdentity | null = null;
 let cachedMachineName: string | null = null;
+let ollamaVersionAtStartup: Promise<string | undefined> | null = null;
 
 const monitorInterconnect = createInterconnectMonitor();
 let lastInterconnect: InterconnectPort[] = [];
@@ -64,10 +65,10 @@ export async function getHardwareProfile(): Promise<HardwareProfile> {
   return cachedProfile;
 }
 
-/** Ollama needs no configuration, so its driver is derived from a live probe rather than from env. */
+/** Ollama needs no configuration, so its driver is derived from the startup probe rather than from env. */
 export async function getNodeDrivers(): Promise<string[]> {
   const drivers: string[] = [];
-  if (await detectOllamaVersion(config.ollamaUrl)) {
+  if (await getOllamaVersionAtStartup()) {
     drivers.push("ollama");
   }
   if (config.vllm.dockerImage || config.vllm.path) {
@@ -126,6 +127,12 @@ async function detectOllamaVersion(endpoint: string): Promise<string | undefined
   }
 }
 
+/** The registration is only sent once, so the drivers a sync works with must not drift from what it reported. */
+function getOllamaVersionAtStartup(): Promise<string | undefined> {
+  ollamaVersionAtStartup ??= detectOllamaVersion(config.ollamaUrl);
+  return ollamaVersionAtStartup;
+}
+
 async function detectConfiguredVllmVersion(): Promise<string | undefined> {
   const image = config.vllm.dockerImage;
   if (image) {
@@ -150,7 +157,7 @@ async function detectConfiguredVllmVersion(): Promise<string | undefined> {
 /** Detects driver versions from configured endpoints/binaries. Best-effort: missing = empty. */
 export async function getNodeDriverVersions(): Promise<Record<string, string>> {
   const [ollama, vllm] = await Promise.all([
-    detectOllamaVersion(config.ollamaUrl),
+    getOllamaVersionAtStartup(),
     detectConfiguredVllmVersion(),
   ]);
 
