@@ -1,4 +1,5 @@
 import { describe, test, expect, mock } from "bun:test";
+import type { LookupAddress } from "node:dns";
 
 mock.module("../../env", () => ({
   env: {
@@ -7,10 +8,15 @@ mock.module("../../env", () => ({
   },
 }));
 
-const resolvedIpv6: Record<string, string[]> = {};
+const resolved: Record<string, LookupAddress[]> = {};
 mock.module("node:dns/promises", () => ({
-  resolve4: async () => [],
-  resolve6: async (hostname: string) => resolvedIpv6[hostname] ?? [],
+  lookup: async (hostname: string) => {
+    const addresses = resolved[hostname];
+    if (!addresses) {
+      throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: "ENOTFOUND" });
+    }
+    return addresses;
+  },
 }));
 
 const { validateUrl, validateResolvedAddresses } = await import("./url-safety");
@@ -87,15 +93,40 @@ describe("validateResolvedAddresses -IPv6", () => {
   for (const [name, address] of blocked) {
     test(`blocks ${name} (${address})`, async () => {
       const hostname = `${name.replaceAll(/[^a-z0-9]+/g, "-")}.test`;
-      resolvedIpv6[hostname] = [address];
+      resolved[hostname] = [{ address, family: 6 }];
       expect(await validateResolvedAddresses(hostname)).not.toBeNull();
     });
   }
 
   // NAT64 is how IPv6-only hosts reach public IPv4, so only the embedded address decides.
   test("allows NAT64 of a public address (64:ff9b::808:808)", async () => {
-    resolvedIpv6["nat64-public.test"] = ["64:ff9b::808:808"];
+    resolved["nat64-public.test"] = [{ address: "64:ff9b::808:808", family: 6 }];
     expect(await validateResolvedAddresses("nat64-public.test")).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Resolver outcomes
+// ---------------------------------------------------------------------------
+
+describe("validateResolvedAddresses -resolver outcomes", () => {
+  test("blocks a hostname the resolver cannot find", async () => {
+    expect(await validateResolvedAddresses("missing.test")).toContain("Could not resolve");
+  });
+
+  test("blocks a hostname that resolves to no addresses", async () => {
+    resolved["empty.test"] = [];
+    expect(await validateResolvedAddresses("empty.test")).toContain("no addresses");
+  });
+
+  test("blocks when any one of several addresses is private", async () => {
+    resolved["mixed.test"] = [{ address: "93.184.215.14", family: 4 }, { address: "10.0.0.5", family: 4 }];
+    expect(await validateResolvedAddresses("mixed.test")).toContain("Blocked IP range");
+  });
+
+  test("allows a hostname with only public addresses", async () => {
+    resolved["public.test"] = [{ address: "93.184.215.14", family: 4 }, { address: "2606:2800:21f:cb07:6820:80da:af6b:8b2c", family: 6 }];
+    expect(await validateResolvedAddresses("public.test")).toBeNull();
   });
 });
 
