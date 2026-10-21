@@ -4,6 +4,7 @@ import { redirect } from "@sveltejs/kit";
 import { memberT, organizationT, sql } from "common-db";
 import { getDB } from "$lib/server/db";
 import type { RoleName } from "$lib/roles";
+import { config } from "$lib/server/config";
 
 export const load: PageServerLoad = async ({ params, request, parent }) => {
   const { user, session } = await parent();
@@ -47,5 +48,6 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
     currentUserRole: activeMember?.role as RoleName || null,
     ssoSelfManage: orgRow?.ssoSelfManage ?? false,
     isActiveOrganization: session.activeOrganizationId === organization.id,
+    mailConfigured: !!config.mail,
   };
 };

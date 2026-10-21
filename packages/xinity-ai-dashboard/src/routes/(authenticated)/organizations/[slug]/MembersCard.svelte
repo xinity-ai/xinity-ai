@@ -37,6 +37,7 @@
     activeRole,
     allRoles = true,
     onOpenRolesInfo,
+    mailConfigured,
   }: {
     organizationId: string;
     members: Member[];
@@ -46,6 +47,7 @@
     activeRole: RoleName;
     allRoles?: boolean;
     onOpenRolesInfo?: () => void;
+    mailConfigured: boolean;
   } = $props();
 
   let showInviteForm = $state(false);
@@ -80,7 +82,12 @@
     } else {
       await invalidateAll();
       await permissions.refresh();
-      toastState.add("Invitation sent", "success");
+      toastState.add(
+        mailConfigured
+          ? "Invitation sent"
+          : "Invitation created. Mail is not set up, so copy its link under Pending Invitations and pass it on yourself.",
+        "success",
+      );
       showInviteForm = false;
       inviteEmail = "";
       inviteRole = defaultInviteRole;

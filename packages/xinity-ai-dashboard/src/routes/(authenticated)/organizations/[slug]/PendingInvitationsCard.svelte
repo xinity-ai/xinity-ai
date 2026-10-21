@@ -8,8 +8,10 @@
   import * as Card from "$lib/components/ui/card";
   import * as Avatar from "$lib/components/ui/avatar";
   import { Badge } from "$lib/components/ui/badge";
-  import { X, Mail } from "@lucide/svelte";
+  import { X, Mail, Link } from "@lucide/svelte";
   import { roleLabels } from "$lib/roles";
+  import { copyToClipboard } from "$lib/copy";
+  import { page } from "$app/state";
 
   type Invitation = {
     id: string;
@@ -22,9 +24,11 @@
   let {
     invitations,
     readOnly = false,
+    mailConfigured,
   }: {
     invitations: Invitation[];
     readOnly?: boolean;
+    mailConfigured: boolean;
   } = $props();
 
   const pendingInvitations = $derived(invitations.filter(i => i.status === "pending"));
@@ -79,6 +83,17 @@
               <Badge variant="outline">
                 {roleLabels[invitation.role as keyof typeof roleLabels] || invitation.role}
               </Badge>
+              {#if !mailConfigured}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  title="Copy invitation link"
+                  aria-label="Copy invitation link for {invitation.email}"
+                  onclick={() => copyToClipboard(`${page.url.origin}/organizations/accept-invitation-${invitation.id}/?email=${encodeURIComponent(invitation.email)}`)}
+                >
+                  <Link class="w-4 h-4" />
+                </Button>
+              {/if}
               {#if !readOnly}
                 <Button
                   variant="ghost"
