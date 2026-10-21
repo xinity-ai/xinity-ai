@@ -5,7 +5,7 @@ import {
   usageEventT, usageSummaryT, NIL_APP_UUID, invitationT,
 } from "common-db";
 import type { PageServerLoad } from "./$types";
-import type { ChecklistData, KeyMetrics, ChartsData, TablesData } from "./dashboard.types";
+import type { ChecklistData, KeyMetrics, ChartsData, TablesData, UsageTrendEntry } from "./dashboard.types";
 import { organizationHasRating, resolveRatingTotals } from "$lib/server/lib/calls/call-ratings";
 import { rootLogger } from "$lib/server/logging";
 import { hasOrgPermission, type PermissionSpec } from "$lib/server/lib/auth/permissions";
@@ -20,23 +20,12 @@ const roundOrNull = (n: number | null | undefined): number | null =>
 const isUncategorizedApp = (id: string | null | undefined): boolean =>
   id == null || id === NIL_APP_UUID;
 
-type DailyTrendEntry = { totalCalls: number; loggedCalls: number; inputTokens: number; outputTokens: number };
-
-/** Matches the labels postgres returns for DATE(created_at), which shift out of range under toISOString. */
-const toDateKey = (date: Date): string =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
-function fillDailyTrendSeries(
-  trendData: Array<{ date: string } & DailyTrendEntry>,
-  days: number,
-): DailyTrendEntry[] {
+function fillDailyTrendSeries(trendData: UsageTrendEntry[], days: string[]): UsageTrendEntry[] {
   const trendMap = new Map(trendData.map(d => [d.date, d]));
-  const today = new Date();
-  return Array.from({ length: days }, (_, i) => {
-    const date = new Date(today);
-    date.setDate(date.getDate() - (days - 1 - i));
-    const dayData = trendMap.get(toDateKey(date));
+  return days.map((date) => {
+    const dayData = trendMap.get(date);
     return {
+      date,
       totalCalls: dayData?.totalCalls ?? 0,
       loggedCalls: dayData?.loggedCalls ?? 0,
       inputTokens: dayData?.inputTokens ?? 0,
@@ -183,9 +172,16 @@ async function fetchApplicationNames(db: DB, ids: string[]): Promise<Map<string,
 }
 
 async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
-  const [trendData, topAppsRaw] = await Promise.all([
+  const [trendDays, trendData, topAppsRaw] = await Promise.all([
+    // The day keys come from the database too, so they follow the same clock as DATE(created_at).
+    db.execute<{ date: string }>(sql`
+      SELECT to_char(day, 'YYYY-MM-DD') AS date
+      FROM generate_series(CURRENT_DATE - 29, CURRENT_DATE, INTERVAL '1 day') AS day
+      ORDER BY day
+    `),
+
     db.select({
-      date: sql<string>`DATE(${usageEventT.createdAt})`,
+      date: sql<string>`to_char(DATE(${usageEventT.createdAt}), 'YYYY-MM-DD')`,
       totalCalls: sql<number>`COUNT(*)::int`,
       loggedCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.logged})::int`,
       inputTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens}), 0)::int`,
@@ -216,7 +212,7 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
       .limit(5),
   ]);
 
-  const usageTrend = fillDailyTrendSeries(trendData, 30);
+  const usageTrend = fillDailyTrendSeries(trendData, trendDays.map(row => row.date));
 
   const appIds = topAppsRaw.map(a => a.applicationId).filter((id): id is string => !isUncategorizedApp(id));
   const appNameMap = await fetchApplicationNames(db, appIds);
@@ -391,12 +387,7 @@ function emptyData() {
       trainingData: { datapoints: 0, edited: 0, rated: 0 },
     }),
     charts: Promise.resolve<ChartsData>({
-      usageTrend: Array.from({ length: 30 }, () => ({
-        totalCalls: 0,
-        loggedCalls: 0,
-        inputTokens: 0,
-        outputTokens: 0,
-      })),
+      usageTrend: [],
       topApplications: [],
     }),
     tables: Promise.resolve<TablesData>({

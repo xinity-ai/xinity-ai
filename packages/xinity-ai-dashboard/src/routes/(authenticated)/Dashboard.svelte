@@ -10,13 +10,9 @@
     tables: Promise<TablesData>;
   } = $props();
 
-  function getLast30Days(): string[] {
-    const today = new Date();
-    return Array.from({ length: 30 }, (_, i) => {
-      const date = new Date(today);
-      date.setDate(today.getDate() - (29 - i));
-      return `${date.getDate()}/${date.getMonth() + 1}`;
-    });
+  function dayLabel(dateKey: string): string {
+    const [, month, day] = dateKey.split("-").map(Number);
+    return `${day}/${month}`;
   }
 
   function formatTokenAvg(val: number | null): string {
@@ -135,7 +131,7 @@
             config={{
               type: "line",
               data: {
-                labels: getLast30Days(),
+                labels: usageTrend.map(d => dayLabel(d.date)),
                 datasets: [
                   {
                     label: "Total Calls",
