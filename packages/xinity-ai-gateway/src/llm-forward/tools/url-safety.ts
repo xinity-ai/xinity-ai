@@ -1,29 +1,50 @@
 import { resolve4, resolve6 } from "node:dns/promises";
+import { BlockList, isIPv4 } from "node:net";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "url-safety" });
 
-/**
- * Blocked IP ranges for SSRF protection.
- * Covers private networks, loopback, link-local, and cloud metadata endpoints.
- */
-const BLOCKED_IP_PATTERNS = [
-  /^127\./,                          // IPv4 loopback
-  /^10\./,                           // RFC 1918 Class A
-  /^172\.(1[6-9]|2\d|3[01])\./,     // RFC 1918 Class B
-  /^192\.168\./,                     // RFC 1918 Class C
-  /^169\.254\./,                     // Link-local
-  /^0\./,                            // Current network
-  /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, // Carrier-grade NAT (RFC 6598)
-  /^198\.1[89]\./,                   // Benchmarking (RFC 2544)
-  /^192\.0\.0\./,                    // IETF Protocol Assignments
-  /^192\.0\.2\./,                    // Documentation (TEST-NET-1)
-  /^198\.51\.100\./,                 // Documentation (TEST-NET-2)
-  /^203\.0\.113\./,                  // Documentation (TEST-NET-3)
-  /^224\./,                          // Multicast
-  /^240\./,                          // Reserved
-  /^255\.255\.255\.255$/,            // Broadcast
+const BLOCKED_IPV4_SUBNETS: [string, number][] = [
+  ["0.0.0.0", 8],       // Current network
+  ["10.0.0.0", 8],      // RFC 1918
+  ["100.64.0.0", 10],   // Carrier-grade NAT (RFC 6598)
+  ["127.0.0.0", 8],     // Loopback
+  ["169.254.0.0", 16],  // Link-local, cloud metadata
+  ["172.16.0.0", 12],   // RFC 1918
+  ["192.0.0.0", 24],    // IETF protocol assignments
+  ["192.0.2.0", 24],    // TEST-NET-1
+  ["192.168.0.0", 16],  // RFC 1918
+  ["198.18.0.0", 15],   // Benchmarking (RFC 2544)
+  ["198.51.100.0", 24], // TEST-NET-2
+  ["203.0.113.0", 24],  // TEST-NET-3
+  ["224.0.0.0", 4],     // Multicast
+  ["240.0.0.0", 4],     // Reserved, broadcast
 ];
+
+const BLOCKED_IPV6_SUBNETS: [string, number][] = [
+  ["::", 96],     // Unspecified, loopback, deprecated IPv4-compatible
+  ["fc00::", 7],  // Unique-local (RFC 4193)
+  ["fe80::", 10], // Link-local
+  ["fec0::", 10], // Site-local (deprecated)
+  ["ff00::", 8],  // Multicast
+];
+
+/** The last 32 bits of these prefixes are an IPv4 address that the IPv4 rules must judge. */
+const IPV4_EMBEDDING_PREFIXES = [
+  [0, 0, 0, 0, 0, 0xffff], // IPv4-mapped (::ffff:0:0/96)
+  [0x64, 0xff9b, 0, 0, 0, 0], // NAT64 well-known prefix (64:ff9b::/96)
+];
+
+function subnetBlockList(subnets: [string, number][], type: "ipv4" | "ipv6"): BlockList {
+  const list = new BlockList();
+  for (const [network, prefix] of subnets) {
+    list.addSubnet(network, prefix, type);
+  }
+  return list;
+}
+
+const blockedIpv4 = subnetBlockList(BLOCKED_IPV4_SUBNETS, "ipv4");
+const blockedIpv6 = subnetBlockList(BLOCKED_IPV6_SUBNETS, "ipv6");
 
 const BLOCKED_HOSTNAMES = new Set([
   "localhost",
@@ -44,34 +65,40 @@ const DEFAULT_FETCH_TIMEOUT_MS = 15_000;
 const MAX_REDIRECTS = 5;
 
 function isBlockedIpv4(ip: string): string | null {
-  for (const pattern of BLOCKED_IP_PATTERNS) {
-    if (pattern.test(ip)) {
-      return `Blocked IP range: ${ip}`;
-    }
+  return blockedIpv4.check(ip, "ipv4") ? `Blocked IP range: ${ip}` : null;
+}
+
+/** URL serialisation turns every IPv6 spelling, a dotted IPv4 tail included, into compressed hex. */
+function ipv6Groups(ip: string): number[] {
+  const canonical = new URL(`http://[${ip}]`).hostname.slice(1, -1);
+  const [head, tail] = canonical.split("::");
+  const groups = (part: string | undefined) => (part ? part.split(":").map((group) => parseInt(group, 16)) : []);
+  if (tail === undefined) {
+    return groups(head);
   }
-  return null;
+  const headGroups = groups(head);
+  const tailGroups = groups(tail);
+  return [...headGroups, ...Array.from({ length: 8 - headGroups.length - tailGroups.length }, () => 0), ...tailGroups];
 }
 
 function isBlockedIpv6(ip: string): string | null {
-  const lower = ip.toLowerCase();
-  if (lower === "::1") return `Blocked IPv6 loopback: ${ip}`;
-  // fe80: = link-local, fc/fd = unique-local (RFC 4193, the IPv6 equivalent of RFC 1918)
-  if (lower.startsWith("fe80:")) return `Blocked IPv6 range: ${ip}`;
-  if (lower.startsWith("fc") || lower.startsWith("fd")) return `Blocked IPv6 range: ${ip}`;
+  let groups: number[];
+  try {
+    groups = ipv6Groups(ip);
+  } catch {
+    return `Unparseable IPv6 address: ${ip}`;
+  }
 
-  // IPv6 can embed IPv4 as ::ffff:a.b.c.d, which bypasses IPv4 blocklists unless checked
-  const v4Mapped = lower.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
-  if (v4Mapped?.[1]) return isBlockedIpv4(v4Mapped[1]);
+  if (IPV4_EMBEDDING_PREFIXES.some((prefix) => prefix.every((group, i) => groups[i] === group))) {
+    const [high = 0, low = 0] = groups.slice(6);
+    return isBlockedIpv4([high >> 8, high & 0xff, low >> 8, low & 0xff].join("."));
+  }
 
-  return null;
+  return blockedIpv6.check(ip, "ipv6") ? `Blocked IPv6 range: ${ip}` : null;
 }
 
-function isIpv4Literal(hostname: string): boolean {
-  return /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname);
-}
-
-async function validateResolvedAddresses(hostname: string): Promise<string | null> {
-  if (isIpv4Literal(hostname)) return null;
+export async function validateResolvedAddresses(hostname: string): Promise<string | null> {
+  if (isIPv4(hostname)) return null;
 
   const [v4Addrs, v6Addrs] = await Promise.all([
     resolve4(hostname).catch(() => [] as string[]),
@@ -131,7 +158,7 @@ export function validateUrl(rawUrl: string): string | null {
     return "IPv6 addresses are not allowed";
   }
 
-  return isBlockedIpv4(bare);
+  return isIPv4(bare) ? isBlockedIpv4(bare) : null;
 }
 
 /**

@@ -7,7 +7,13 @@ mock.module("../../env", () => ({
   },
 }));
 
-const { validateUrl } = await import("./url-safety");
+const resolvedIpv6: Record<string, string[]> = {};
+mock.module("node:dns/promises", () => ({
+  resolve4: async () => [],
+  resolve6: async (hostname: string) => resolvedIpv6[hostname] ?? [],
+}));
+
+const { validateUrl, validateResolvedAddresses } = await import("./url-safety");
 
 // ---------------------------------------------------------------------------
 // Protocol validation
@@ -57,6 +63,39 @@ describe("validateUrl -IPv6", () => {
   // Every IPv6 form is rejected by the same colon check.
   test("blocks IPv6 mapped IPv4 [::ffff:127.0.0.1]", () => {
     expect(validateUrl("http://[::ffff:127.0.0.1]/")).toContain("IPv6");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Resolved IPv6 addresses
+// ---------------------------------------------------------------------------
+
+describe("validateResolvedAddresses -IPv6", () => {
+  const blocked: [string, string][] = [
+    ["unspecified", "::"],
+    ["loopback", "::1"],
+    ["unique-local", "fd12:3456::1"],
+    ["link-local outside fe80::/16", "febf::1"],
+    ["site-local", "fec0::1"],
+    ["multicast", "ff02::1"],
+    ["IPv4-mapped loopback, dotted", "::ffff:127.0.0.1"],
+    ["IPv4-mapped loopback, hex", "::ffff:7f00:1"],
+    ["IPv4-mapped metadata, uncompressed", "0:0:0:0:0:ffff:a9fe:a9fe"],
+    ["NAT64 of a private address", "64:ff9b::a00:1"],
+  ];
+
+  for (const [name, address] of blocked) {
+    test(`blocks ${name} (${address})`, async () => {
+      const hostname = `${name.replaceAll(/[^a-z0-9]+/g, "-")}.test`;
+      resolvedIpv6[hostname] = [address];
+      expect(await validateResolvedAddresses(hostname)).not.toBeNull();
+    });
+  }
+
+  // NAT64 is how IPv6-only hosts reach public IPv4, so only the embedded address decides.
+  test("allows NAT64 of a public address (64:ff9b::808:808)", async () => {
+    resolvedIpv6["nat64-public.test"] = ["64:ff9b::808:808"];
+    expect(await validateResolvedAddresses("nat64-public.test")).toBeNull();
   });
 });
 
@@ -145,8 +184,22 @@ describe("validateUrl -blocked IP ranges", () => {
     expect(validateUrl("http://224.0.0.1")).toContain("Blocked IP range");
   });
 
+  test("blocks 239.255.255.250 (multicast upper part)", () => {
+    expect(validateUrl("http://239.255.255.250")).toContain("Blocked IP range");
+  });
+
   test("blocks 240.0.0.1 (reserved)", () => {
     expect(validateUrl("http://240.0.0.1")).toContain("Blocked IP range");
+  });
+
+  test("blocks 250.1.2.3 (reserved upper part)", () => {
+    expect(validateUrl("http://250.1.2.3")).toContain("Blocked IP range");
+  });
+
+  // The URL parser turns these into 127.0.0.1 before the range check sees them.
+  test("blocks decimal and hex spellings of loopback", () => {
+    expect(validateUrl("http://2130706433/")).toContain("Blocked IP range");
+    expect(validateUrl("http://0x7f.0.0.1/")).toContain("Blocked IP range");
   });
 
   test("blocks 255.255.255.255 (broadcast)", () => {
