@@ -49,27 +49,24 @@ describe("readNodeIdFile", () => {
   });
 });
 
-// Ollama takes no configuration to enable, so the driver list has to follow the
-// live endpoint rather than the presence of an env value. Tests run in order:
-// the last one takes the endpoint away for good.
+// The registration reports drivers once, so the driver list must keep the first
+// probe's answer. Tests run in order: each one degrades the endpoint further.
 describe("getNodeDrivers", () => {
   afterAll(() => ollama.stop(true));
 
-  test("lists ollama while the endpoint answers", async () => {
-    ollamaHealthy = true;
+  test("lists ollama when the endpoint answers the first probe", async () => {
     expect(await getNodeDrivers()).toEqual(["ollama"]);
     expect(await getNodeDriverVersions()).toEqual({ ollama: "0.12.3" });
   });
 
-  test("omits ollama when the endpoint rejects the probe", async () => {
+  test("keeps ollama after the endpoint starts rejecting", async () => {
     ollamaHealthy = false;
-    expect(await getNodeDrivers()).toEqual([]);
-    expect(await getNodeDriverVersions()).toEqual({});
+    expect(await getNodeDrivers()).toEqual(["ollama"]);
+    expect(await getNodeDriverVersions()).toEqual({ ollama: "0.12.3" });
   });
 
-  test("omits ollama when nothing is listening", async () => {
-    ollamaHealthy = true;
+  test("keeps ollama after nothing is listening", async () => {
     await ollama.stop(true);
-    expect(await getNodeDrivers()).toEqual([]);
+    expect(await getNodeDrivers()).toEqual(["ollama"]);
   });
 });

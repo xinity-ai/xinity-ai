@@ -137,7 +137,7 @@ export const daemonConfig = defineConfig<DaemonConfig>({
   tls: tlsGroup(),
   log: loggingGroup(),
   ollamaUrl: env("OLLAMA_URL", z.url({ protocol: /^https?$/ }).default("http://localhost:11434")
-    .describe("Ollama API endpoint. The ollama driver is enabled whenever this endpoint answers, so it only needs setting when ollama does not listen on its default local port")
+    .describe("Ollama API endpoint. The ollama driver is enabled if this endpoint answers when the daemon starts, so it only needs setting when ollama does not listen on its default local port")
     .meta(expert())),
   hfEndpoint: env("HF_ENDPOINT", z.url({ protocol: /^https?$/ }).default("https://huggingface.co")
     .describe("Base URL of the Hugging Face Hub, or of a mirror of it, that models are downloaded from")
