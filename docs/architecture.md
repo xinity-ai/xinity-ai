@@ -128,7 +128,7 @@ The tether is the bridge between the database and the daemon fleet. Daemons do n
 
 **Status collection (`POST /api/v1/status`):** Daemons report installation lifecycle state changes (downloading, installing, ready, failed) back to the tether, which batches and upserts them into `modelInstallationState`.
 
-**Liveness:** When a daemon disconnects or fails to respond within `LIVENESS_TIMEOUT_MS` (default 45s), the tether sets `available = false` on the node's `aiNode` row. The gateway's next query will no longer route to that node.
+**Liveness:** While connected, each daemon sends a signed heartbeat (`POST /api/v1/heartbeat`) at the keepalive interval. When a daemon disconnects, or the tether hears neither a heartbeat nor a report from it within `LIVENESS_TIMEOUT_MS` (default 45s), the tether sets `available = false` on the node's `aiNode` row. The gateway's next query will no longer route to that node. If the tether itself stalls, it restarts these timers instead of expiring nodes, so its own stall does not take healthy nodes down.
 
 **Protocol versioning:** A SHA-256 fingerprint of the Zod wire schemas is exchanged on connect. Version-mismatched daemons are rejected with HTTP 409, preventing silent deserialization failures after upgrades.
 

@@ -53,6 +53,7 @@ const {
   getConnectedNodeIds,
   sendShutdownToAll,
   runKeepaliveLoop,
+  markSeen,
 } = await import("./connections");
 
 function makeController(): { controller: ReadableStreamDefaultController; chunks: Uint8Array[]; stream: ReadableStream } {
@@ -255,5 +256,42 @@ describe("keepalive loop", () => {
     clearInterval(timer);
 
     expect(isConnected("node-timeout")).toBe(false);
+  });
+
+  // Keepalive writes into a half-open socket keep succeeding, so they must not count as a sign of life.
+  test("removes a silent daemon although keepalive writes succeed", async () => {
+    const { controller, chunks } = makeController();
+    await addConnection("node-silent", controller, "pub-key");
+
+    const timer = runKeepaliveLoop(20, () => 60);
+    await Bun.sleep(130);
+    clearInterval(timer);
+
+    expect(decodeChunks(chunks)).toContain(": keepalive");
+    expect(isConnected("node-silent")).toBe(false);
+  });
+
+  test("keeps a daemon that keeps reporting", async () => {
+    await addConnection("node-heard", makeController().controller, "pub-key");
+
+    const timer = runKeepaliveLoop(20, () => 60);
+    for (let i = 0; i < 13; i++) {
+      markSeen("node-heard");
+      await Bun.sleep(10);
+    }
+    clearInterval(timer);
+
+    expect(isConnected("node-heard")).toBe(true);
+  });
+
+  test("restarts liveness timers instead of expiring nodes after the tether itself stalled", async () => {
+    await addConnection("node-stall", makeController().controller, "pub-key");
+
+    const timer = runKeepaliveLoop(20, () => 60);
+    Bun.sleepSync(150);
+    await Bun.sleep(30);
+    clearInterval(timer);
+
+    expect(isConnected("node-stall")).toBe(true);
   });
 });

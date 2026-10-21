@@ -104,14 +104,14 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
     components: ["tether"],
     group: "HTTP server",
     schema: configNumber().default(15_000)
-      .describe("SSE keepalive interval in ms").meta(expert()),
+      .describe("Interval in ms between SSE keepalives, also announced to daemons as their heartbeat interval").meta(expert()),
   },
   {
     key: "LIVENESS_TIMEOUT_MS",
     components: ["tether"],
     group: "HTTP server",
     schema: configNumber().default(45_000)
-      .describe("Time before a silent connection is considered dead").meta(expert()),
+      .describe("Time in ms without a heartbeat or report from a daemon before its connection is considered dead").meta(expert()),
   },
   {
     key: "VLLM_HEALTH_TIMEOUT_MS",

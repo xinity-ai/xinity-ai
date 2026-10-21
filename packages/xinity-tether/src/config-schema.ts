@@ -36,9 +36,9 @@ const server = defineGroup<Server>({
   fields: {
     ...serverFields({ host: "0.0.0.0", port: 4020 }),
     keepaliveIntervalMs: dynamic("KEEPALIVE_INTERVAL_MS", configNumber().default(15_000)
-      .describe("SSE keepalive interval in ms").meta(expert())),
+      .describe("Interval in ms between SSE keepalives, also announced to daemons as their heartbeat interval").meta(expert())),
     livenessTimeoutMs: dynamic("LIVENESS_TIMEOUT_MS", configNumber().default(45_000)
-      .describe("Time before a silent connection is considered dead").meta(expert())),
+      .describe("Time in ms without a heartbeat or report from a daemon before its connection is considered dead").meta(expert())),
   },
 });
 

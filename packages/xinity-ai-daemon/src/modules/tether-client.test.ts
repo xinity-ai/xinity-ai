@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mockConfigModule } from "../mock-config";
 import { loadOrCreateIdentity } from "./node-identity-store";
-import { canonicalRegistration, canonicalStateReport, KEEPALIVE_INTERVAL_HEADER, readNodeKeypair, verifyNodeSignature, type NodeRegistration, type UnsignedInstallationStateReport, type UnsignedNodeRegistration } from "common-env";
+import { canonicalHeartbeatReport, canonicalRegistration, canonicalStateReport, HEARTBEAT_PATH, KEEPALIVE_INTERVAL_HEADER, STREAM_PATH, readNodeKeypair, verifyNodeSignature, type NodeRegistration, type UnsignedInstallationStateReport, type UnsignedNodeRegistration } from "common-env";
 
 const stateDir = mkdtempSync(join(tmpdir(), "tether-client-test-"));
 
@@ -176,6 +176,9 @@ test("the connection state follows the tether's answers", async () => {
 test("a stream that stays silent past the announced keepalive is reopened, signed for the new request", async () => {
   const attempts: { authorization: string; signature: string }[] = [];
   const server = serveTether(async (req) => {
+    if (new URL(req.url).pathname !== STREAM_PATH) {
+      return Response.json({ ok: true });
+    }
     attempts.push({
       authorization: req.headers.get("authorization") ?? "",
       signature: ((await req.json()) as NodeRegistration).signature,
@@ -197,6 +200,47 @@ test("a stream that stays silent past the announced keepalive is reopened, signe
     for (const { authorization, signature } of [first!, second!]) {
       expect(verifyNodeSignature(await nodePublicKey(), canonicalRegistration(registration, authorization), signature)).toBe(true);
     }
+  } finally {
+    await stream.close();
+    await server.stop(true);
+  }
+});
+
+test("an open stream sends a signed heartbeat at the announced keepalive interval, and stops with it", async () => {
+  const heartbeats: { authorization: string; nodeId: string; signature: string }[] = [];
+  const server = serveTether(async (req) => {
+    if (new URL(req.url).pathname === HEARTBEAT_PATH) {
+      const body = (await req.json()) as { nodeId: string; signature: string };
+      heartbeats.push({ authorization: req.headers.get("authorization") ?? "", ...body });
+      return Response.json({ ok: true });
+    }
+    const body = new ReadableStream({
+      start(controller) {
+        const keepalive = setInterval(() => {
+          try {
+            controller.enqueue(new TextEncoder().encode(": keepalive\n\n"));
+          } catch {
+            clearInterval(keepalive);
+          }
+        }, 20);
+      },
+    });
+    return new Response(body, { headers: { [KEEPALIVE_INTERVAL_HEADER]: "20" } });
+  });
+  const stream = openStream();
+
+  try {
+    await waitFor(() => heartbeats.length >= 3, 3000);
+    expect(heartbeats.length).toBeGreaterThanOrEqual(3);
+    for (const { authorization, nodeId, signature } of heartbeats) {
+      expect(nodeId).toBe(registration.nodeId);
+      expect(verifyNodeSignature(await nodePublicKey(), canonicalHeartbeatReport({ nodeId }, authorization), signature)).toBe(true);
+    }
+
+    await stream.close();
+    const sentWhileOpen = heartbeats.length;
+    await Bun.sleep(100);
+    expect(heartbeats.length).toBe(sentWhileOpen);
   } finally {
     await stream.close();
     await server.stop(true);

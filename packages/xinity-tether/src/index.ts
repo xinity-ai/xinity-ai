@@ -2,13 +2,13 @@ import "zod/compile";
 
 import { z } from "zod";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, interconnectReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, canonicalInterconnectReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, INTERCONNECT_PATH, KEEPALIVE_INTERVAL_HEADER, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, interconnectReportSchema, heartbeatReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, canonicalInterconnectReport, canonicalHeartbeatReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, INTERCONNECT_PATH, HEARTBEAT_PATH, KEEPALIVE_INTERVAL_HEADER, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
 import { checkMigrations, getDB, subscribe, end as endDB } from "./db";
 import { verifySignature, unauthorizedDetail } from "./auth";
-import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, dropAllConnections, isConnected, getConnectedNodeIds, connectedPublicKey } from "./connections";
+import { addConnection, removeConnection, pushDesiredState, pushConfig, pushConfigToAll, runKeepaliveLoop, sendShutdownToAll, dropAllConnections, isConnected, getConnectedNodeIds, connectedPublicKey, markSeen } from "./connections";
 import { createConfigBroadcast } from "./config-broadcast";
 import { buildDesiredState, nodesOfGroupsOf } from "./desired-state";
 import { createNotifyBus } from "./notify-bus";
@@ -223,7 +223,7 @@ type SignedReport = { nodeId: string; signature: string };
 
 async function verifiedReport<T extends SignedReport>(
   req: Request,
-  endpoint: "status" | "interconnect",
+  endpoint: Exclude<DaemonEndpoint, "stream">,
   path: string,
   schema: z.ZodType<T>,
   canonical: (report: T, authorization: string) => string,
@@ -242,6 +242,7 @@ async function verifiedReport<T extends SignedReport>(
     log.warn({ nodeId, pinned: !!publicKey, endpoint }, "Report is not signed by this node");
     return { refusal: refuse(endpoint, "invalid_signature", "Report signature is invalid", 401) };
   }
+  markSeen(nodeId);
   return { report: parsed.data };
 }
 
@@ -276,6 +277,11 @@ async function handleInterconnect(req: Request): Promise<Response> {
   return Response.json({ ok: true });
 }
 
+async function handleHeartbeat(req: Request): Promise<Response> {
+  const verified = await verifiedReport(req, "heartbeat", HEARTBEAT_PATH, heartbeatReportSchema, canonicalHeartbeatReport);
+  return "refusal" in verified ? verified.refusal : Response.json({ ok: true });
+}
+
 const serveTarget = buildListenTarget(config.server);
 const tls = config.tls && { cert: config.tls.cert, key: config.tls.key };
 
@@ -289,6 +295,7 @@ const server = Bun.serve({
     "/api/v1/stream": httpMetrics.route("/api/v1/stream", handleSSEStream),
     "/api/v1/status": httpMetrics.route("/api/v1/status", handleStatus),
     "/api/v1/interconnect": httpMetrics.route("/api/v1/interconnect", handleInterconnect),
+    "/api/v1/heartbeat": httpMetrics.route("/api/v1/heartbeat", handleHeartbeat),
   },
   fetch: httpMetrics.route("<unmatched>", () => new Response("Not Found", { status: 404 })),
 });
