@@ -42,15 +42,32 @@ function recordClose(conn: ActiveConnection, reason: DisconnectReason): void {
   observeConnectionDuration(reason, (Date.now() - conn.connectedAt) / 1000);
 }
 
-async function markNodeUnavailable(nodeId: string): Promise<void> {
+const pendingAvailabilityWrites = new Map<string, Promise<void>>();
+
+async function writeAvailability(nodeId: string): Promise<void> {
+  const available = connections.has(nodeId);
   try {
     await getDB()
       .update(aiNodeT)
-      .set({ available: false })
+      .set({ available })
       .where(sql`${aiNodeT.id} = ${nodeId}`);
   } catch (err) {
-    log.error({ err, nodeId }, "Failed to mark node unavailable");
+    log.error({ err, nodeId, available }, "Failed to update node availability");
   }
+}
+
+// Writes for one node run in order and each reads the connection map only when it runs, so a slow
+// write from a closed connection can never land after, and undo, the write of the connection replacing it.
+function syncAvailability(nodeId: string): Promise<void> {
+  const previous = pendingAvailabilityWrites.get(nodeId) ?? Promise.resolve();
+  const next = previous.then(() => writeAvailability(nodeId));
+  pendingAvailabilityWrites.set(nodeId, next);
+  void next.then(() => {
+    if (pendingAvailabilityWrites.get(nodeId) === next) {
+      pendingAvailabilityWrites.delete(nodeId);
+    }
+  });
+  return next;
 }
 
 export async function addConnection(
@@ -81,6 +98,7 @@ export async function addConnection(
   incSSEConnections();
 
   log.info({ nodeId, connId }, "Daemon connected");
+  void syncAvailability(nodeId);
   return connId;
 }
 
@@ -103,7 +121,7 @@ export async function removeConnection(nodeId: string, reason: DisconnectReason,
   } catch {}
 
   log.info({ nodeId, connId: conn.id, reason }, "Daemon disconnected");
-  await markNodeUnavailable(nodeId);
+  await syncAvailability(nodeId);
 }
 
 export function pushConfig(nodeId: string, values: Record<string, string>): void {

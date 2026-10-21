@@ -1,13 +1,18 @@
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 
 let dbShouldFail = false;
+let heldWrite: Promise<void> | null = null;
+const writtenAvailability: boolean[] = [];
 const mockUpdate = mock(() => ({
-  set: mock(() => ({
-    where: mock(() => {
-      if (dbShouldFail) {
-        return Promise.reject(new Error("DB connection lost"));
+  set: mock((values: { available: boolean }) => ({
+    where: mock(async () => {
+      if (heldWrite) {
+        await heldWrite;
       }
-      return Promise.resolve();
+      if (dbShouldFail) {
+        throw new Error("DB connection lost");
+      }
+      writtenAvailability.push(values.available);
     }),
   })),
 }));
@@ -190,6 +195,28 @@ describe("connections", () => {
     await removeConnection("node-a", "cancel");
     expect(isConnected("node-a")).toBe(false);
     expect(isConnected("node-b")).toBe(true);
+  });
+
+  test("a slow write from a closed connection cannot undo the connection replacing it", async () => {
+    const first = makeController();
+    const firstConnId = await addConnection("node-race", first.controller, "pub-key");
+    await Bun.sleep(0);
+
+    let releaseWrite!: () => void;
+    heldWrite = new Promise((resolve) => {
+      releaseWrite = resolve;
+    });
+    writtenAvailability.length = 0;
+
+    const removal = removeConnection("node-race", "cancel", firstConnId);
+    await addConnection("node-race", makeController().controller, "pub-key");
+    heldWrite = null;
+    releaseWrite();
+    await removal;
+    await Bun.sleep(0);
+
+    expect(isConnected("node-race")).toBe(true);
+    expect(writtenAvailability.at(-1)).toBe(true);
   });
 
   test("removeConnection succeeds even when DB write fails", async () => {
