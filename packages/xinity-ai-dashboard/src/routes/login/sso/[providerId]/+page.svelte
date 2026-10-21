@@ -9,7 +9,6 @@
   const providerId = $derived(page.params.providerId ?? "");
   const providerLabel = $derived(formatProviderId(providerId));
   const hasProvider = $derived(providerId.length > 0);
-  const callbackURL = "/";
 
   let errorMessage = $state(
     friendlySsoError(page.url.searchParams.get("error") ?? undefined, page.data.providerDomains) ?? "",
@@ -32,8 +31,8 @@
     try {
       const { error } = await signIn.sso({
         providerId,
-        callbackURL,
-        errorCallbackURL: `/login/sso/${providerId}/`,
+        callbackURL: page.data.callbackUrl,
+        errorCallbackURL: `/login/sso/${providerId}/?callbackUrl=${encodeURIComponent(page.data.callbackUrl)}`,
       });
 
       if (error?.message) {

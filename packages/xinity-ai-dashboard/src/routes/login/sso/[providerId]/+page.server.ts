@@ -3,10 +3,12 @@ import { getDB } from "$lib/server/db";
 import { ssoProviderT, sql } from "common-db";
 import { isAccountNotLinked } from "../../friendly-error";
 import { providerEmailDomains } from "$lib/server/lib/auth/sso-domains";
+import { safeCallbackPath } from "../../callback-url";
 
 export const load: PageServerLoad = async ({ params, url }) => {
+  const callbackUrl = safeCallbackPath(url.searchParams.get("callbackUrl"));
   if (!isAccountNotLinked(url.searchParams.get("error") ?? undefined)) {
-    return { providerDomains: [] };
+    return { callbackUrl, providerDomains: [] };
   }
 
   const [provider] = await getDB()
@@ -15,5 +17,5 @@ export const load: PageServerLoad = async ({ params, url }) => {
     .where(sql`${ssoProviderT.providerId} = ${params.providerId}`)
     .limit(1);
 
-  return { providerDomains: providerEmailDomains(provider?.domain ?? "") };
+  return { callbackUrl, providerDomains: providerEmailDomains(provider?.domain ?? "") };
 };

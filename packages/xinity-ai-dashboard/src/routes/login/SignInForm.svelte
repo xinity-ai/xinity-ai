@@ -98,7 +98,7 @@
       </div>
     </div>
     {#each ssoProviders as provider}
-      <Button variant="outline" href="/login/sso/{provider.providerId}/" class="w-full">
+      <Button variant="outline" href="/login/sso/{provider.providerId}/?callbackUrl={encodeURIComponent(callbackUrl)}" class="w-full">
         Sign in with SSO ({provider.domain})
       </Button>
     {/each}
@@ -111,7 +111,7 @@
       signIn.passkey({
         fetchOptions: {
           onSuccess() {
-            goto("/");
+            goto(callbackUrl);
           },
         },
       })}
