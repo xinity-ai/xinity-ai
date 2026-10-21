@@ -14,7 +14,6 @@ import {
   ModelFileSchema,
   estimateThroughput,
   estimateConcurrency,
-  normalizePep440,
   type ConcurrencyEstimate,
 } from "common-env/model-catalog";
 import {
@@ -206,7 +205,7 @@ async function detectVllmVersion(deviceArgs: string[]): Promise<string | undefin
   try {
     const out = await run();
     const match = out.match(/(\d+\.\d+\.\d+\S*)/)?.[1];
-    return match ? normalizePep440(match) : undefined;
+    return match;
   } catch {
     return undefined;
   }

@@ -116,7 +116,7 @@
       <span class="inline-flex items-center gap-1">
         <Cpu class="w-3 h-3 text-xinity-purple shrink-0" />
         <span class="font-medium text-gray-700">{driver}</span>
-        <span class="font-mono">{version}</span>
+        <span class="font-mono" title={version}>{version.split("+")[0]}</span>
         {#each (node.driverFeatures[driver] ?? []).filter((feature) => feature !== GROUP_MEMBER_FEATURE) as feature}
           <span class="rounded bg-gray-100 px-1 py-px text-[10px] uppercase tracking-wide text-gray-600">{feature}</span>
         {/each}
