@@ -38,6 +38,8 @@ export type TrainingData = {
 };
 
 export type UsageTrendEntry = {
+  /** YYYY-MM-DD as the database counts days. */
+  date: string;
   totalCalls: number;
   loggedCalls: number;
   inputTokens: number;
