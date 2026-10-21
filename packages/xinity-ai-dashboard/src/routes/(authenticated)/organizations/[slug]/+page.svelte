@@ -101,11 +101,13 @@
       activeRole={data.currentUserRole}
       allRoles={data.license.features.allRoles}
       onOpenRolesInfo={openRolesInfo}
+      mailConfigured={data.mailConfigured}
     />
 
     <PendingInvitationsCard
       invitations={data.invitations ?? []}
       readOnly={!isActive}
+      mailConfigured={data.mailConfigured}
     />
 
     {#if data.ssoSelfManage && isActive && isOwnerOrAdmin}
