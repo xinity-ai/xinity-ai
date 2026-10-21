@@ -4,17 +4,15 @@ import type { PageServerLoad } from "./$types";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { ssoProviderT, sql } from "common-db";
+import { safeCallbackPath } from "./callback-url";
 
 export const load: PageServerLoad = async ({ request, url }) => {
+  const callbackUrl = safeCallbackPath(url.searchParams.get("callbackUrl"));
   const session = await auth.api.getSession({ headers: request.headers });
   if (session) {
-    redirect(303, "/");
+    redirect(303, callbackUrl);
   }
 
-  const rawCallback = url.searchParams.get("callbackUrl");
-  const callbackUrl = rawCallback && rawCallback.startsWith("/") && !rawCallback.startsWith("//")
-    ? rawCallback
-    : "/";
   const configuredOrigin = new URL(config.origin);
   const hostMismatch =
     config.nodeEnv !== "development" && url.host !== configuredOrigin.host;

@@ -88,7 +88,7 @@ const fetchVersion = timeCache(VERSION_CACHE_TTL_MS, async () => {
 function redirectToLogin(currentUrl: URL): never {
   rootLogger.info({ name: "auth" }, "redirecting");
   const loginUrl = new URL("/login/", currentUrl.origin);
-  loginUrl.searchParams.set("callbackUrl", currentUrl.toString());
+  loginUrl.searchParams.set("callbackUrl", currentUrl.pathname + currentUrl.search);
   const email = currentUrl.searchParams.get("email");
   if (email) {
     loginUrl.searchParams.set("email", email);

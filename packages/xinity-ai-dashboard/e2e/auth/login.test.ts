@@ -61,6 +61,27 @@ describe("Authentication flows", () => {
     }
   });
 
+  test("signing in returns to the page that required it", async () => {
+    const { page, context } = await freshPage();
+    try {
+      await page.goto("/settings/profile/?from=deep-link");
+      await expectURL(page, /\/login\/\?callbackUrl=/);
+      await page.waitForLoadState("networkidle");
+      await page.locator("#in-email").fill(OWNER.email);
+      await page.locator("#in-pass").fill(OWNER.password);
+      await page.locator("#form-signin button[type='submit']").click();
+
+      await page.waitForURL((url) => !url.pathname.startsWith("/login"), {
+        timeout: 30_000,
+      });
+      const landed = new URL(page.url());
+      expect(landed.pathname).toBe("/settings/profile/");
+      expect(landed.searchParams.get("from")).toBe("deep-link");
+    } finally {
+      await context.close();
+    }
+  });
+
   test("sign-up tab switches to registration form", async () => {
     const { page, context } = await freshPage();
     try {
