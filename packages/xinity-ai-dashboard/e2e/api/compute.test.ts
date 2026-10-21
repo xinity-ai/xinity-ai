@@ -24,7 +24,9 @@ type ComputeOverview = {
   totals: { machinesTotal: number; requests: number; inputTokens: number };
 };
 type ComputeHistory = {
+  bucketUnit: "hour" | "day";
   bucketSeconds: number;
+  buckets: number[];
   series: { nodeId: string; points: { t: number; tokens: number }[] }[];
 };
 
@@ -115,12 +117,39 @@ describe("compute API", () => {
     const res = await ownerFetch("/api/compute/history?rangeHours=24");
     expect(res.status).toBe(200);
     const body = (await res.json()) as ComputeHistory;
-    expect(body.bucketSeconds).toBe(1800);
+    expect(body.bucketUnit).toBe("hour");
+    expect(body.bucketSeconds).toBe(3600);
+    expect(body.buckets).toHaveLength(24);
+    expect(body.buckets.slice(1).every((t, i) => t - body.buckets[i] === 3600)).toBe(true);
 
     const series = body.series.find((s) => s.nodeId === nodeId);
     expect(series).toBeTruthy();
+    expect(series!.points.every((p) => body.buckets.includes(p.t))).toBe(true);
     const totalTokens = series!.points.reduce((acc, p) => acc + p.tokens, 0);
     expect(totalTokens).toBe(300 + 120);
+  });
+
+  test("history over a week returns one bucket per local day", async () => {
+    const res = await ownerFetch("/api/compute/history?rangeHours=168&timeZone=Europe/Berlin");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as ComputeHistory;
+    expect(body.bucketUnit).toBe("day");
+    expect(body.buckets).toHaveLength(7);
+
+    const berlinTime = new Intl.DateTimeFormat(undefined, { timeZone: "Europe/Berlin", hour: "numeric", minute: "numeric", hourCycle: "h23" });
+    const isBerlinMidnight = (t: number) => berlinTime.formatToParts(new Date(t * 1000))
+      .filter((part) => part.type === "hour" || part.type === "minute")
+      .every((part) => Number(part.value) === 0);
+    expect(body.buckets.every(isBerlinMidnight)).toBe(true);
+
+    const series = body.series.find((s) => s.nodeId === nodeId)!;
+    const totalTokens = series.points.reduce((acc, p) => acc + p.tokens, 0);
+    expect(totalTokens).toBe(300 + 120 + 9999 * 2);
+  });
+
+  test("history rejects an unknown time zone", async () => {
+    const res = await ownerFetch("/api/compute/history?timeZone=Mars/Olympus");
+    expect(res.status).toBe(400);
   });
 
   test("unauthenticated requests are rejected", async () => {
