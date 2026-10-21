@@ -9,7 +9,7 @@ import {
   stateOfInstallation,
 } from "common-db";
 import { getDB } from "$lib/server/db";
-import { mergeHistorySeries, pickBucketSeconds } from "$lib/server/lib/compute/compute";
+import { BUCKET_SECONDS, mergeHistorySeries, pickBucketUnit } from "$lib/server/lib/compute/compute";
 import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import z from "zod";
@@ -20,6 +20,19 @@ const tags = ["Compute"];
 
 const RangeInputSchema = z.object({
   rangeHours: z.coerce.number().int().min(1).max(90 * 24).default(24),
+});
+
+function isValidTimeZone(timeZone: string): boolean {
+  try {
+    return Boolean(new Intl.DateTimeFormat(undefined, { timeZone }).resolvedOptions().timeZone);
+  } catch {
+    return false;
+  }
+}
+
+const HistoryInputSchema = RangeInputSchema.extend({
+  timeZone: z.string().refine(isValidTimeZone, "Unknown IANA time zone").default("UTC")
+    .describe("IANA time zone that hour and day buckets are aligned to"),
 });
 
 const GpuInfoSchema = gpuSchema.pick({ vendor: true, name: true, vramMb: true });
@@ -87,7 +100,10 @@ const HistoryPointSchema = z.object({
 
 const ComputeHistoryOutput = z.object({
   rangeHours: z.number(),
+  bucketUnit: z.enum(["hour", "day"]),
   bucketSeconds: z.number(),
+  /** Start of every bucket in the window in epoch seconds, empty ones included. The last one is still in progress. */
+  buckets: z.array(z.number()),
   series: z.array(z.object({
     nodeId: z.string(),
     points: z.array(HistoryPointSchema),
@@ -224,20 +240,29 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
   };
 }
 
-export async function buildComputeHistory(rangeHours: number): Promise<ComputeHistory> {
-  const bucketSeconds = pickBucketSeconds(rangeHours);
-  const since = new Date(Date.now() - rangeHours * 60 * 60 * 1000).toISOString();
+export async function buildComputeHistory(rangeHours: number, timeZone: string): Promise<ComputeHistory> {
+  const bucketUnit = pickBucketUnit(rangeHours);
+  const bucketSeconds = BUCKET_SECONDS[bucketUnit];
+  const bucketCount = Math.ceil(rangeHours * 60 * 60 / bucketSeconds);
   const db = getDB();
 
-  // bucketSeconds is server-derived (pickBucketSeconds), never user input, and is
-  // inlined as a literal so the SELECT and GROUP BY expressions are textually
-  // identical. With bound parameters, Postgres treats them as different expressions.
-  const width = sql.raw(String(bucketSeconds));
-  const usageBucket = sql`floor(extract(epoch from ${usageEventT.createdAt}) / ${width}) * ${width}`;
+  // bucketUnit and bucketCount are server-derived, never user input.
+  const unit = sql.raw(`'${bucketUnit}'`);
+  const step = sql.raw(`interval '1 ${bucketUnit}'`);
+  const lookback = sql.raw(`interval '${bucketCount - 1} ${bucketUnit}'`);
+  // The window starts on a bucket boundary, so the first bucket is as complete as the others.
+  const since = sql`date_trunc(${unit}, date_subtract(now(), ${lookback}, ${timeZone}), ${timeZone})`;
+  const usageBucket = sql`extract(epoch from date_trunc(${unit}, ${usageEventT.createdAt}, ${timeZone}))`;
+
+  const bucketRows = db.execute<{ t: string }>(sql`
+    SELECT extract(epoch from bucket) AS t
+    FROM generate_series(${since}, now(), ${step}, ${timeZone}) AS bucket
+    ORDER BY bucket
+  `);
 
   // Join against ai_node so series from deleted machines (e.g. cleaned-up test
   // nodes whose events linger) don't appear as ghost entries in the chart.
-  const usageRows = await db.select({
+  const usageRows = db.select({
     nodeId: sql<string>`${usageEventT.nodeId}`,
     t: sql<number>`${usageBucket}`.mapWith(Number),
     tokens: sql<number>`coalesce(sum(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)`.mapWith(Number),
@@ -253,12 +278,18 @@ export async function buildComputeHistory(rangeHours: number): Promise<ComputeHi
     AND
       ${usageEventT.nodeId} IS NOT NULL
     `)
-    .groupBy(usageEventT.nodeId, usageBucket);
+    // By position, because the bound time zone parameter makes the bucket
+    // expression in GROUP BY textually different from the one in SELECT.
+    .groupBy(sql`1`, sql`2`);
+
+  const [buckets, usage] = await Promise.all([bucketRows, usageRows]);
 
   return {
     rangeHours,
+    bucketUnit,
     bucketSeconds,
-    series: mergeHistorySeries(usageRows),
+    buckets: buckets.map((row) => Number(row.t)),
+    series: mergeHistorySeries(usage),
   };
 }
 
@@ -278,11 +309,11 @@ const computeHistory = rootOs
   .route({
     path: "/history", method: "GET", tags,
     summary: "Get Compute History",
-    description: "Returns bucketed per-node time series of token throughput for charts",
+    description: "Returns bucketed per-node time series of token volume per hour or day, aligned to the given time zone",
   })
-  .input(RangeInputSchema.optional())
+  .input(HistoryInputSchema.optional())
   .output(ComputeHistoryOutput)
-  .handler(({ input }) => buildComputeHistory(input?.rangeHours ?? 24));
+  .handler(({ input }) => buildComputeHistory(input?.rangeHours ?? 24, input?.timeZone ?? "UTC"));
 
 // ─── Live metrics from Prometheus ────────────────────────────────────────────
 

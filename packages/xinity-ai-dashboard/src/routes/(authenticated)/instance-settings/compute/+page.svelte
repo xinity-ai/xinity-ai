@@ -17,6 +17,7 @@
     { label: "30d", hours: 30 * 24 },
   ];
   const POLL_INTERVAL_MS = 12_000;
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const searchParams = createUrlSearchParamsStore();
   const rangeHours = $derived(RANGES.find((r) => String(r.hours) === $searchParams.range)?.hours ?? 24);
@@ -30,7 +31,7 @@
     try {
       const [overviewResult, historyResult, liveMetricsResult] = await Promise.all([
         orpc.compute.overview({ rangeHours: hours }),
-        orpc.compute.history({ rangeHours: hours }),
+        orpc.compute.history({ rangeHours: hours, timeZone }),
         orpc.compute.liveMetrics({}),
       ]);
       if (!overviewResult[0] && overviewResult[1]) overview = overviewResult[1];
@@ -222,8 +223,8 @@
 
     <!-- Activity -->
     <div class="bg-white rounded-lg shadow p-5 compact:p-3 mb-6 compact:mb-3">
-      <h2 class="text-lg font-medium mb-4 compact:mb-2">Activity <span class="text-sm font-normal text-gray-400">tokens per machine · last {rangeLabel}</span></h2>
-      <ActivityChart history={history ?? { rangeHours: 24, bucketSeconds: 3600, series: [] }} {nodeNames} />
+      <h2 class="text-lg font-medium mb-4 compact:mb-2">Activity <span class="text-sm font-normal text-gray-400">tokens per {history?.bucketUnit ?? "hour"}, by machine · last {rangeLabel}</span></h2>
+      <ActivityChart history={history ?? { rangeHours: 24, bucketUnit: "hour", bucketSeconds: 3600, buckets: [], series: [] }} {nodeNames} />
     </div>
 
     <!-- Machines -->

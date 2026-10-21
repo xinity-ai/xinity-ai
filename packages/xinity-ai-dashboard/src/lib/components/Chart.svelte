@@ -20,6 +20,7 @@
 
   $effect(() => {
     if (browser && canvas && chart) {
+      chart.data.labels = config.data.labels;
       chart.data.datasets = config.data.datasets;
       Object.assign(chart.options, config.options);
       chart.update();

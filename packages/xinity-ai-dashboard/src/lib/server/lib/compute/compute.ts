@@ -3,12 +3,16 @@
  * they are unit-testable with plain `bun test`.
  */
 
-/** Chart bucket width scaled to the requested range, keeping point counts reasonable. */
-export function pickBucketSeconds(rangeHours: number): number {
-  if (rangeHours <= 6) return 15 * 60;
-  if (rangeHours <= 24) return 30 * 60;
-  if (rangeHours <= 7 * 24) return 2 * 60 * 60;
-  return 24 * 60 * 60;
+export type BucketUnit = "hour" | "day";
+
+/** Nominal width; a local day around a DST switch is 23 or 25 hours. */
+export const BUCKET_SECONDS: Record<BucketUnit, number> = {
+  hour: 60 * 60,
+  day: 24 * 60 * 60,
+};
+
+export function pickBucketUnit(rangeHours: number): BucketUnit {
+  return rangeHours <= 24 ? "hour" : "day";
 }
 
 export type HistoryUsageRow = {

@@ -9,44 +9,77 @@
   } = $props();
 
   const PALETTE = [
-    "rgba(160, 32, 240, 0.75)", // xinity purple
-    "rgba(214, 51, 132, 0.75)", // magenta
-    "rgba(232, 96, 74, 0.75)", // coral
-    "rgba(124, 58, 237, 0.75)", // violet
-    "rgba(224, 80, 122, 0.75)", // pink
-    "rgba(240, 112, 80, 0.75)", // orange
+    "160, 32, 240", // xinity purple
+    "214, 51, 132", // magenta
+    "232, 96, 74", // coral
+    "124, 58, 237", // violet
+    "224, 80, 122", // pink
+    "240, 112, 80", // orange
   ];
+  const OTHER_COLOR = "156, 163, 175";
+  const MAX_STACKED_SERIES = PALETTE.length;
+  const ALPHA = 0.75;
+  const IN_PROGRESS_ALPHA = 0.3;
 
-  const buckets = $derived.by(() => {
-    const all = new Set<number>();
-    for (const series of history.series) {
-      for (const point of series.points) all.add(point.t);
+  type StackedSeries = { label: string; color: string; tokensByT: Map<number, number> };
+
+  const stackedSeries = $derived.by((): StackedSeries[] => {
+    const ranked = history.series
+      .map((series) => ({
+        label: nodeNames.get(series.nodeId) ?? "removed machine",
+        tokensByT: new Map(series.points.map((p) => [p.t, p.tokens])),
+        total: series.points.reduce((sum, p) => sum + p.tokens, 0),
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    if (ranked.length <= MAX_STACKED_SERIES) {
+      return ranked.map((series, i) => ({ ...series, color: PALETTE[i] }));
     }
-    return [...all].sort((a, b) => a - b);
+
+    const top = ranked.slice(0, MAX_STACKED_SERIES - 1);
+    const rest = ranked.slice(MAX_STACKED_SERIES - 1);
+    const otherByT = new Map<number, number>();
+    for (const series of rest) {
+      for (const [t, tokens] of series.tokensByT) {
+        otherByT.set(t, (otherByT.get(t) ?? 0) + tokens);
+      }
+    }
+    return [
+      ...top.map((series, i) => ({ ...series, color: PALETTE[i] })),
+      { label: `${rest.length} other machines`, color: OTHER_COLOR, tokensByT: otherByT },
+    ];
   });
 
-  function bucketLabel(t: number): string {
+  function tickLabel(t: number): string {
     const date = new Date(t * 1000);
-    if (history.bucketSeconds >= 24 * 3600) {
-      return date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
-    }
-    if (history.bucketSeconds >= 2 * 3600) {
-      return date.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    if (history.bucketUnit === "day") {
+      return date.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
     }
     return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
   }
 
+  function tooltipTitle(index: number): string {
+    const start = new Date(history.buckets[index] * 1000);
+    const day = start.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+    const inProgress = index === history.buckets.length - 1 ? " (so far)" : "";
+    if (history.bucketUnit === "day") {
+      return day + inProgress;
+    }
+    const end = new Date(start.getTime() + history.bucketSeconds * 1000);
+    const time = (date: Date) => date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    return `${day}, ${time(start)} to ${time(end)}${inProgress}`;
+  }
+
   const datasets = $derived(
-    history.series.map((series, i) => {
-      const byT = new Map(series.points.map((p) => [p.t, p.tokens]));
-      return {
-        label: nodeNames.get(series.nodeId) ?? "removed machine",
-        data: buckets.map((t) => byT.get(t) ?? 0),
-        backgroundColor: PALETTE[i % PALETTE.length],
-        borderRadius: 2,
-        stack: "tokens",
-      };
-    }),
+    stackedSeries.map((series) => ({
+      label: series.label,
+      data: history.buckets.map((t) => series.tokensByT.get(t) ?? 0),
+      backgroundColor: history.buckets.map((_, i) =>
+        `rgba(${series.color}, ${i === history.buckets.length - 1 ? IN_PROGRESS_ALPHA : ALPHA})`,
+      ),
+      borderRadius: 2,
+      stack: "tokens",
+    })),
   );
 </script>
 
@@ -56,7 +89,7 @@
     config={{
       type: "bar",
       data: {
-        labels: buckets.map(bucketLabel),
+        labels: history.buckets.map(tickLabel),
         datasets,
       },
       options: {
@@ -68,6 +101,7 @@
           legend: { position: "bottom", labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true } },
           tooltip: {
             callbacks: {
+              title: (items) => (items.length > 0 ? tooltipTitle(items[0].dataIndex) : ""),
               label: (ctx) => `${ctx.dataset.label}: ${formatTokens(ctx.parsed.y ?? 0)} tokens`,
             },
           },

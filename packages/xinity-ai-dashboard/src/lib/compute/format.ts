@@ -19,7 +19,7 @@ export type ComputeTotals = {
 };
 export type ComputeOverview = { rangeHours: number; nodes: NodeSummary[]; totals: ComputeTotals; interconnect: InterconnectOverview };
 export type HistoryPoint = { t: number; tokens: number; requests: number };
-export type ComputeHistory = { rangeHours: number; bucketSeconds: number; series: { nodeId: string; points: HistoryPoint[] }[] };
+export type ComputeHistory = { rangeHours: number; bucketUnit: "hour" | "day"; bucketSeconds: number; buckets: number[]; series: { nodeId: string; points: HistoryPoint[] }[] };
 
 export function formatTokens(value: number): string {
   if (value >= 1_000_000_000) return trimZero((value / 1_000_000_000).toFixed(1)) + "B";
