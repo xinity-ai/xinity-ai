@@ -11,7 +11,7 @@ import { config } from "../config";
 import { networkInterfaces } from "node:os";
 import { detectHardwareProfile, detectNodeName, type HardwareProfile } from "./hardware-detect";
 import { createInterconnectMonitor } from "./interconnect-detect";
-import { experimentalGpuVendors, GPU_VENDOR_SUPPORT, normalizePep440 } from "common-env/model-catalog";
+import { experimentalGpuVendors, GPU_VENDOR_SUPPORT } from "common-env/model-catalog";
 import { rootLogger } from "../logger";
 import { detectVllmFeatures, resolvePythonForVllm } from "./vllm-features";
 import { runsGroupMembers } from "./model-installation/coupling-network";
@@ -97,7 +97,7 @@ async function detectVllmVersion(
       const output = stdout.toString();
       const version = output.match(/(\d+\.\d+\.\d+\S*)/)?.[1];
       if (version) {
-        return normalizePep440(version);
+        return version;
       }
       last = { probe: probe.label, exitCode, stdout: output, stderr: stderr.toString() };
     } catch (err) {

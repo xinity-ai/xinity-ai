@@ -15,7 +15,7 @@ const PEP440_PRE_RELEASE = /(?:a|b|rc)\d+|\.dev\d+/;
  * Also strips leading "v". Pre-release markers are dropped here and accounted
  * for by satisfiesMinVersion.
  */
-export function normalizePep440(version: string): string {
+function normalizePep440(version: string): string {
   let v = version.trim();
   if (v.startsWith("v")) v = v.slice(1);
   // Extract major.minor.patch, dropping PEP440 suffixes (.postN, .devN, +local)
