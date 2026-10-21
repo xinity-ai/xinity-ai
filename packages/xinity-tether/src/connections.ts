@@ -16,7 +16,7 @@ type ActiveConnection = {
   id: number;
   controller: ReadableStreamDefaultController;
   connectedAt: number;
-  lastWriteAt: number;
+  lastSeenAt: number;
   publicKey: string;
 };
 
@@ -31,7 +31,6 @@ function sseEncode(event: string, data: string): string {
 function tryWrite(conn: ActiveConnection, chunk: string): boolean {
   try {
     conn.controller.enqueue(new TextEncoder().encode(chunk));
-    conn.lastWriteAt = Date.now();
     return true;
   } catch {
     return false;
@@ -90,7 +89,7 @@ export async function addConnection(
     id: connId,
     controller,
     connectedAt: Date.now(),
-    lastWriteAt: Date.now(),
+    lastSeenAt: Date.now(),
     publicKey,
   };
   connections.set(nodeId, conn);
@@ -155,12 +154,32 @@ export function pushDesiredState(nodeId: string, state: DesiredState): boolean {
   return ok;
 }
 
+export function markSeen(nodeId: string): void {
+  const conn = connections.get(nodeId);
+  if (conn) {
+    conn.lastSeenAt = Date.now();
+  }
+}
+
+// A tick this late means the tether itself was stalled, so daemon silence during it proves nothing.
+const STALLED_TICK_FACTOR = 2;
+
 export function runKeepaliveLoop(intervalMs: number, livenessTimeoutMs: () => number): Timer {
+  let lastTickAt = Date.now();
   return setInterval(() => {
     const now = Date.now();
+    const stalledMs = now - lastTickAt;
+    lastTickAt = now;
+    if (stalledMs > intervalMs * STALLED_TICK_FACTOR) {
+      log.warn({ stalledMs }, "Keepalive loop ran late, restarting every liveness timer instead of expiring nodes");
+      for (const conn of connections.values()) {
+        conn.lastSeenAt = now;
+      }
+    }
+
     for (const [nodeId, conn] of connections) {
-      if (now - conn.lastWriteAt > livenessTimeoutMs()) {
-        log.warn({ nodeId, silentMs: now - conn.lastWriteAt }, "Liveness timeout");
+      if (now - conn.lastSeenAt > livenessTimeoutMs()) {
+        log.warn({ nodeId, silentMs: now - conn.lastSeenAt }, "Liveness timeout");
         void removeConnection(nodeId, "liveness_timeout");
         continue;
       }

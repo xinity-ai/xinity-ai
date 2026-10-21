@@ -1,8 +1,10 @@
 import {
+  canonicalHeartbeatReport,
   canonicalInterconnectReport,
   canonicalRegistration,
   canonicalStateReport,
   desiredStateSchema,
+  HEARTBEAT_PATH,
   INTERCONNECT_PATH,
   KEEPALIVE_INTERVAL_HEADER,
   serviceUrl,
@@ -15,6 +17,7 @@ import {
   type TetherRefusal,
   type TetherRefusalReason,
   type NodeRegistration,
+  type UnsignedHeartbeatReport,
   type UnsignedInstallationStateReport,
   type UnsignedInterconnectReport,
   type UnsignedNodeRegistration,
@@ -81,9 +84,9 @@ function jsonHeaders(authorization: string): Record<string, string> {
   return { Authorization: authorization, "Content-Type": "application/json" };
 }
 
-function silenceLimitMs(res: Response): number | null {
+function announcedKeepaliveMs(res: Response): number | null {
   const intervalMs = Number(res.headers.get(KEEPALIVE_INTERVAL_HEADER));
-  return intervalMs > 0 ? intervalMs * MISSED_KEEPALIVES_BEFORE_RECONNECT : null;
+  return intervalMs > 0 ? intervalMs : null;
 }
 
 async function pause(ms: number, signal: AbortSignal): Promise<void> {
@@ -98,6 +101,7 @@ export async function* connectSSE(currentRegistration: () => Promise<UnsignedNod
   while (!signal.aborted) {
     const abort = new AbortController();
     let established = false;
+    let heartbeatTimer: Timer | undefined;
     let silenceTimer: Timer | undefined = setTimeout(() => {
       log.warn({ timeoutMs: HANDSHAKE_TIMEOUT_MS }, "Tether did not answer, reconnecting");
       abort.abort();
@@ -136,7 +140,11 @@ export async function* connectSSE(currentRegistration: () => Promise<UnsignedNod
       transition("connected");
       log.info("SSE connection established");
 
-      const limitMs = silenceLimitMs(res);
+      const keepaliveMs = announcedKeepaliveMs(res);
+      const limitMs = keepaliveMs === null ? null : keepaliveMs * MISSED_KEEPALIVES_BEFORE_RECONNECT;
+      if (keepaliveMs !== null) {
+        heartbeatTimer = setInterval(() => void reportHeartbeat({ nodeId: registration.nodeId }), keepaliveMs);
+      }
       if (limitMs === null && !warnedUnannouncedKeepalive) {
         warnedUnannouncedKeepalive = true;
         log.warn("Tether does not announce its keepalive interval, a silently dropped stream will not be detected");
@@ -212,6 +220,7 @@ export async function* connectSSE(currentRegistration: () => Promise<UnsignedNod
       }
     } finally {
       clearTimeout(silenceTimer);
+      clearInterval(heartbeatTimer);
     }
     transition(established ? "connecting" : "unreachable");
 
@@ -246,4 +255,8 @@ export function reportInstallationStates(report: UnsignedInstallationStateReport
 
 export function reportInterconnect(report: UnsignedInterconnectReport): Promise<boolean> {
   return postSigned(INTERCONNECT_PATH, report, canonicalInterconnectReport, "Interconnect");
+}
+
+function reportHeartbeat(report: UnsignedHeartbeatReport): Promise<boolean> {
+  return postSigned(HEARTBEAT_PATH, report, canonicalHeartbeatReport, "Heartbeat");
 }

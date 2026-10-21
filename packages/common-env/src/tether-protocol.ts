@@ -160,6 +160,13 @@ export const interconnectReportSchema = z.object({
 export type InterconnectReport = z.infer<typeof interconnectReportSchema>;
 export type UnsignedInterconnectReport = Omit<InterconnectReport, "signature">;
 
+export const heartbeatReportSchema = z.object({
+  nodeId: z.uuid(),
+  signature: z.string(),
+});
+export type HeartbeatReport = z.infer<typeof heartbeatReportSchema>;
+export type UnsignedHeartbeatReport = Omit<HeartbeatReport, "signature">;
+
 // What the daemon signs with its node key. Positional and sorted rather than derived from the
 // object, because the two ends must produce identical bytes from the same payload. The request's
 // Authorization header is signed along with it, so a captured body cannot be sent again on a
@@ -222,6 +229,10 @@ export function canonicalInterconnectReport(report: UnsignedInterconnectReport, 
   return JSON.stringify([report.nodeId, canonicalInterconnect(report.interconnect), requestAuthorization]);
 }
 
+export function canonicalHeartbeatReport(report: UnsignedHeartbeatReport, requestAuthorization: string): string {
+  return JSON.stringify([report.nodeId, requestAuthorization]);
+}
+
 export const tetherRefusalReasonSchema = z.enum([
   "unauthorized",
   "unauthorized_stale",
@@ -257,6 +268,7 @@ export type GroupMemberHealth = z.infer<typeof groupMemberHealthSchema>;
 export const STREAM_PATH = "/api/v1/stream";
 export const STATUS_PATH = "/api/v1/status";
 export const INTERCONNECT_PATH = "/api/v1/interconnect";
+export const HEARTBEAT_PATH = "/api/v1/heartbeat";
 
 export const KEEPALIVE_INTERVAL_HEADER = "X-Keepalive-Interval-Ms";
 
@@ -274,6 +286,7 @@ export function protocolFingerprint(): string {
     z.toJSONSchema(nodeRegistrationSchema),
     z.toJSONSchema(installationStateReportSchema),
     z.toJSONSchema(interconnectReportSchema),
+    z.toJSONSchema(heartbeatReportSchema),
     SIGNED_FORM_VERSION,
   ]);
   cachedFingerprint = new Bun.CryptoHasher("sha256")
