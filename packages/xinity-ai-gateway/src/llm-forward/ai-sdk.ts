@@ -54,10 +54,7 @@ export function computePrefixHashes(model: string, body: Record<string, unknown>
     // collide and get steered towards whichever host was recorded first.
     hasher.update(JSON.stringify(messages[i] ?? null));
     hasher.update("\n");
-
-    if ((i + 1) % 2 === 0 || i === messages.length - 1) {
-      hashes.push(hasher.copy().digest("hex").slice(0, 16));
-    }
+    hashes.push(hasher.copy().digest("hex").slice(0, 16));
   }
 
   hashes.reverse();

@@ -16,7 +16,7 @@ describe("computePrefixHashes", () => {
     expect(hashes[0]).toHaveLength(16);
   });
 
-  test("three messages produce two hashes (longest first)", () => {
+  test("three messages produce one hash per prefix (longest first)", () => {
     const hashes = computePrefixHashes("model", {
       messages: [
         { role: "system", content: "You are helpful" },
@@ -24,8 +24,8 @@ describe("computePrefixHashes", () => {
         { role: "assistant", content: "Hello!" },
       ],
     });
-    expect(hashes).toHaveLength(2);
-    expect(hashes[0]).not.toBe(hashes[1]);
+    expect(hashes).toHaveLength(3);
+    expect(new Set(hashes).size).toBe(3);
   });
 
   test("cascade finds previous turn: hash of first 2 msgs matches across turns", () => {
@@ -43,7 +43,37 @@ describe("computePrefixHashes", () => {
         { role: "user", content: "u2" },
       ],
     });
-    expect(turn2[turn2.length - 1]).toBe(turn1[0]);
+    expect(turn2).toContain(turn1[0]!);
+  });
+
+  test("cascade finds the previous turn of a chat without a system prompt", () => {
+    const turn1 = computePrefixHashes("model", {
+      messages: [{ role: "user", content: "u1" }],
+    });
+    const turn2 = computePrefixHashes("model", {
+      messages: [
+        { role: "user", content: "u1" },
+        { role: "assistant", content: "a1" },
+        { role: "user", content: "u2" },
+      ],
+    });
+    expect(turn2).toContain(turn1[0]!);
+  });
+
+  test("cascade finds the previous turn after parallel tool results", () => {
+    const toolCall = (id: string) => ({ id, type: "function", function: { name: "search", arguments: "{}" } });
+    const turn1 = computePrefixHashes("model", {
+      messages: [{ role: "user", content: "u1" }],
+    });
+    const turn2 = computePrefixHashes("model", {
+      messages: [
+        { role: "user", content: "u1" },
+        { role: "assistant", content: null, tool_calls: [toolCall("call_1"), toolCall("call_2")] },
+        { role: "tool", tool_call_id: "call_1", content: "r1" },
+        { role: "tool", tool_call_id: "call_2", content: "r2" },
+      ],
+    });
+    expect(turn2).toContain(turn1[0]!);
   });
 
   test("different models produce different hashes", () => {
@@ -110,7 +140,7 @@ describe("computePrefixHashes", () => {
         { role: "user", content: "u2" },
       ],
     });
-    expect(turn2[turn2.length - 1]).toBe(turn1[0]);
+    expect(turn2).toContain(turn1[0]!);
   });
 
   test("hashes a bare string input as a single turn", () => {
