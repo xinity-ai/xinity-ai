@@ -20,6 +20,7 @@ import { notify } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
 import { emitAuthAuditEvent, type AuditAction } from "./orpc/audit";
 import { CLIENT_ADDRESS_HEADER, readClientAddress } from "$lib/server/lib/auth/client-address";
+import { isEmailInProviderDomain } from "$lib/server/lib/auth/sso-domains";
 import EmailVerificationTemplate from "$lib/components/mailTemplates/EmailVerificationTemplate.svelte";
 import EmailForgotPasswordTemplate from "$lib/components/mailTemplates/EmailForgotPasswordTemplate.svelte";
 import EmailInvitationTemplate from "$lib/components/mailTemplates/EmailInvitationTemplate.svelte";
@@ -464,7 +465,16 @@ export const auth = betterAuth({
         defaultRole: "pending" as "member",
       },
       defaultOverrideUserInfo: true,
-      trustEmailVerified: true,
+      provisionUserOnEveryLogin: true,
+      async provisionUser({ user, provider }) {
+        const domainVerified = "domainVerified" in provider && provider.domainVerified === true;
+        if (user.emailVerified || !domainVerified || !isEmailInProviderDomain(user.email, provider.domain)) {
+          return;
+        }
+        await getDB().update(userT).set({ emailVerified: true }).where(sql`${userT.id} = ${user.id}`);
+        // The sso plugin writes this same object into the session cookie cache right after this callback.
+        user.emailVerified = true;
+      },
       domainVerification: {
         enabled: true,
         tokenPrefix: "xinity-sso",

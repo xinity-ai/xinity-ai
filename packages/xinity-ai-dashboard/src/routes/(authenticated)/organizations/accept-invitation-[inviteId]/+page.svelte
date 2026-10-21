@@ -27,6 +27,12 @@
       suggestion:
         "Please contact the organization administrator to request a new invitation.",
     },
+    EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION: {
+      title: "Email Not Verified",
+      description: `Your email address ${data.userEmail} must be verified before you can accept this invitation.`,
+      suggestion:
+        "To verify it, either:\n• Use the link in your verification email, or request a new one from the Organizations page\n• Ask an instance administrator to mark your email as verified",
+    },
     ALREADY_A_MEMBER: {
       title: "Already a Member",
       description: "You're already a member of this organization.",

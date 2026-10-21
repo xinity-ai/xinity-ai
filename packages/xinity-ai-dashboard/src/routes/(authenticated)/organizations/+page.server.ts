@@ -1,6 +1,7 @@
 import type { PageServerLoad } from "./$types";
 import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
+import { config } from "$lib/server/config";
 
 const log = rootLogger.child({ name: "organizations.page" });
 
@@ -15,6 +16,7 @@ export const load: PageServerLoad = async ({ request, parent }) => {
     organizations: organizations ?? [],
     invites,
     activeOrganizationId: session.activeOrganizationId,
+    mailConfigured: !!config.mail,
   };
 };
 

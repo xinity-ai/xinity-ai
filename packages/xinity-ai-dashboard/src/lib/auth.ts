@@ -5,7 +5,7 @@ import { passkeyClient } from "@better-auth/passkey/client";
 import { ssoClient } from "@better-auth/sso/client";
 import { ac, roles } from "$lib/roles";
 
-export const { signIn, signUp, useSession, signOut, twoFactor, passkey, organization, sso } = createAuthClient({
+export const { signIn, signUp, useSession, signOut, sendVerificationEmail, twoFactor, passkey, organization, sso } = createAuthClient({
   plugins: [
     twoFactorClient(),
     passkeyClient(),

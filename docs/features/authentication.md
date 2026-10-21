@@ -18,7 +18,7 @@ Enterprise single sign-on via OIDC identity providers. Providers can be configur
 
 **Domain verification** is required before users can sign in through a provider. After registering a provider, an admin must add a DNS TXT record to the provider's email domain and verify it through the dashboard. This ensures the admin controls the domain whose users will be trusted for account linking. Sign-in is always blocked while a provider's domain remains unverified.
 
-**Account linking:** when a user signs in via SSO with an email that matches an existing account, the accounts are linked automatically only if that existing account's own email is already verified, and either the SSO email's domain matches the provider's verified domain or the identity provider confirms the email as verified.
+**Account linking:** when a user signs in via SSO with an email that matches an existing account, the accounts are linked automatically only if that existing account's own email is already verified and the SSO email's domain matches the provider's verified domain. The identity provider's own `email_verified` claim is not trusted. Users who sign in through a provider with an email in its verified domain have their email marked as verified.
 
 ### Passkeys (WebAuthn/FIDO2)
 
