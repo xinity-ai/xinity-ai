@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { errorResponse, forwardBackendError } from "../util";
+import { errorResponse, forwardBackendError, recordUsage } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
 import { rootLogger } from "../../logger";
 import { config } from "../../config";
@@ -15,11 +15,17 @@ export const RerankBodySchema = z.looseObject({
   return_documents: z.boolean().optional().default(true),
 });
 
+const RerankUsageSchema = z.looseObject({
+  prompt_tokens: z.number().optional(),
+  total_tokens: z.number(),
+});
+
 export const handleRerank = withEndpointGuards({
   modelTypes: ["rerank"],
   bodySchema: RerankBodySchema,
   log,
-  handler: async ({ body, modelInfo, originalModel, req }) => {
+  handler: async ({ auth, body, modelInfo, originalModel, req }) => {
+    const callStartTime = Date.now();
     const signal = AbortSignal.any([req.signal, AbortSignal.timeout(config.inference.backendTimeoutMs())]);
     const backendResponse = await backendPostJson(modelInfo, "/v1/rerank", {
       model: modelInfo.model,
@@ -38,6 +44,19 @@ export const handleRerank = withEndpointGuards({
       result = await backendResponse.json() as Record<string, unknown>;
     } catch {
       return errorResponse("Backend returned an invalid response", 502);
+    }
+
+    const usageResult = RerankUsageSchema.safeParse(result.usage);
+    if (usageResult.success) {
+      recordUsage({
+        usage: { prompt_tokens: usageResult.data.prompt_tokens ?? usageResult.data.total_tokens, completion_tokens: 0 },
+        auth,
+        modelInfo,
+        callStartTime,
+        logCalls: false,
+      });
+    } else {
+      log.warn({ issues: usageResult.error.issues }, "Could not extract usage for rerank");
     }
 
     return Response.json({
