@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  kolibri-1-vllm:
+    name: Kolibri 1
+    description: |
+      Aleph Alpha's reasoning model for German and English. It is built for assistant work,
+      answering questions over an organisation's own documents, drafting, coding and calling
+      tools. A quarter of its training text is German, and its vocabulary is built around
+      German word forms, which most models trained mainly on English lack.
+      It reads up to 262K tokens at once. Only a small part of the model runs for each word
+      it writes, so it answers quickly for its size.
+
+      Thinking is on by default: the model reasons before it answers, and the reasoning comes
+      back separately. Set how much it thinks per request with `reasoning_effort`: `low`,
+      `medium` or `high` (the default), or `none` to answer straight away, which
+      `chat_template_kwargs: {"enable_thinking": false}` also does. With thinking on, leave
+      `max_tokens` generous enough for both the reasoning and the answer.
+
+      Aleph Alpha intends it for work a person reviews before it is acted on, not for systems
+      that act unsupervised.
+    url: https://huggingface.co/Aleph-Alpha/Kolibri-1
+    license: apache-2.0
+    createdAt: 2026-10-03
+    registeredAt: 2026-10-22
+    engine: vllm
+    engineSpecifier: Aleph-Alpha/Kolibri-1
+    sizing:
+      # 10 of the 50 layers attend to the full context, the other 40 to a 513-token
+      # window, all with 4 kv heads at head_dim 128 and an fp8 cache:
+      # 2 * 10 * 4 * 128 per token, and 40 * 2 * 4 * 128 * 513 per request in flight.
+      # minKvCacheGb is authored: vLLM charges each of the four windowed groups whole
+      # blocks on top of the full context, 2.68 GiB in all.
+      # Bracketed: 2.87 aborts, 2.88 starts at 1.00x.
+      kvBytesPerToken: 10240
+      stateBytesPerSequence: 21012480
+      minKvCacheGb: 2.88
+      attentionHeads: 48
+      kvHeads: 4
+      maxContextLength: 262144
+      weightGb: 78.86  # measured resident, 73.45 GiB
+      layers: 50
+      attentionLayers: 10
+      nonLayerWeightGb: 1.31
+      activeWeightGb: 3.84
+      largestFileGb: 3.16
+      weightBits: 8
+    type: chat
+    family: Kolibri
+    tags: [tools]
+    engineArgs:
+      - --kv-cache-dtype
+      - fp8
+      - --tool-call-parser
+      - hermes
+      - --reasoning-parser
+      - qwen3
+    requestParams:
+      chat_template_kwargs.enable_thinking: boolean
+    engineVersions:
+      # Served through the Transformers backend from upstream main (#60827, merged after the
+      # 0.32.0 cut, which also ships too old a transformers). Verified on nightly 0.32.1rc1.dev117.
+      min: "0.33.0"
