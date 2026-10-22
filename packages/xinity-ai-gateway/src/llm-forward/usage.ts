@@ -53,9 +53,6 @@ export const recordUsage = ({
   const tokens = usage && { inputTokens: normalizeInputTokens(usage), outputTokens: normalizeOutputTokens(usage) };
   recordTokenUsage(modelInfo.model, auth.keyId, auth.orgId, tokens, { deployment, durationMs });
   recordModelRequest(modelInfo.model, true, auth.orgId);
-  if (!tokens) {
-    return false;
-  }
 
   const shouldLog = callWillBeLogged(auth, logCalls);
 
@@ -64,7 +61,7 @@ export const recordUsage = ({
     applicationId: auth.applicationId,
     apiKeyId: auth.keyId,
     model: modelInfo.model,
-    ...tokens,
+    ...(tokens ?? { inputTokens: 0, outputTokens: 0 }),
     duration: durationMs,
     logged: shouldLog,
     nodeId: modelInfo.nodeId ?? null,

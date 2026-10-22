@@ -186,9 +186,18 @@ describe("handleTranscription", () => {
     expect(event.outputTokens).toBe(4);
   });
 
-  test("records no usage event when the backend omits usage", async () => {
+  test("records a zero-token usage event when the backend reports usage in audio seconds", async () => {
+    nextResponse = Response.json({ text: "hi", usage: { type: "duration", seconds: 15 } });
     await handleTranscription(makeReq({ model: "whisper" }));
-    expect(recordUsageEvent).not.toHaveBeenCalled();
+    expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+    expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ inputTokens: 0, outputTokens: 0, success: true });
+  });
+
+  test("records a zero-token usage event for a plain text transcription", async () => {
+    nextResponse = new Response("hi", { headers: { "Content-Type": "text/plain" } });
+    await handleTranscription(makeReq({ model: "whisper", response_format: "text" }));
+    expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+    expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ inputTokens: 0, outputTokens: 0, success: true });
   });
 
   test("forwards non-model form fields (language) to the backend", async () => {
