@@ -77,19 +77,22 @@ const CALL_FLUSH_INTERVAL_MS = 200;
 
 let callQueue: InferenceCallRecord[] = [];
 let callTimer: ReturnType<typeof setTimeout> | null = null;
+const pendingCallInserts = new Set<Promise<unknown>>();
 
 export async function flushCallLog(): Promise<void> {
   if (callTimer) {
     clearTimeout(callTimer);
     callTimer = null;
   }
-  if (callQueue.length === 0) return;
-
-  const batch = callQueue;
-  callQueue = [];
-
-  await recordInferenceCalls(batch)
-    .catch((err) => log.error({ err, count: batch.length }, "Inference call batch insert failed"));
+  if (callQueue.length > 0) {
+    const batch = callQueue;
+    callQueue = [];
+    const insert = recordInferenceCalls(batch)
+      .catch((err) => log.error({ err, count: batch.length }, "Inference call batch insert failed"));
+    pendingCallInserts.add(insert);
+    void insert.finally(() => pendingCallInserts.delete(insert));
+  }
+  await Promise.all(pendingCallInserts);
 }
 
 async function enqueueCalls(calls: InferenceCallRecord[]): Promise<void> {

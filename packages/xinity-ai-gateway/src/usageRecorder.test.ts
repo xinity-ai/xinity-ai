@@ -96,4 +96,21 @@ describe("usageRecorder", () => {
     // 1 batch attempt + 3 individual attempts
     expect(insertMock).toHaveBeenCalledTimes(4);
   });
+
+  test("a flush with an empty queue still waits for an insert already in flight", async () => {
+    const { promise: insertDone, resolve: finishInsert } = Promise.withResolvers<void>();
+    insertMock.mockReturnValueOnce(insertDone);
+    for (let i = 0; i < 50; i++) {
+      recordUsageEvent(sampleRecord(i));
+    }
+
+    let flushed = false;
+    const flush = flushUsageEvents().then(() => { flushed = true; });
+    await Bun.sleep(10);
+    expect(flushed).toBe(false);
+
+    finishInsert();
+    await flush;
+    expect(flushed).toBe(true);
+  });
 });

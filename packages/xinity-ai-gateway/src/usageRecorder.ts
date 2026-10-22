@@ -23,17 +23,24 @@ const FLUSH_INTERVAL_MS = 200;
 
 let queue: UsageRecord[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
+const pendingInserts = new Set<Promise<void>>();
 
 export async function flushUsageEvents(): Promise<void> {
   if (timer) {
     clearTimeout(timer);
     timer = null;
   }
-  if (queue.length === 0) return;
+  if (queue.length > 0) {
+    const batch = queue;
+    queue = [];
+    const insert = insertBatch(batch);
+    pendingInserts.add(insert);
+    void insert.finally(() => pendingInserts.delete(insert));
+  }
+  await Promise.all(pendingInserts);
+}
 
-  const batch = queue;
-  queue = [];
-
+async function insertBatch(batch: UsageRecord[]): Promise<void> {
   try {
     await getDB().insert(usageEventT).values(batch);
   } catch (batchErr) {
