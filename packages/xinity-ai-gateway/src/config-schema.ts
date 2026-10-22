@@ -50,7 +50,7 @@ const cache = defineGroup<Cache>({
     applicationTtlSeconds: dynamic("CACHE_APPLICATION_TTL_SECONDS", ttl(300)
       .describe("How long an application name to id lookup is cached")),
     apiKeyTtlSeconds: dynamic("CACHE_API_KEY_TTL_SECONDS", ttl(120)
-      .describe("How long a validated API key is cached, so every request does not hit the database")),
+      .describe("How long a validated API key is cached, so every request does not hit the database. A deactivated or deleted key keeps working until its entry expires")),
     authFailureTtlSeconds: dynamic("CACHE_AUTH_FAILURE_TTL_SECONDS", ttl(10)
       .describe("How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly")),
     modelTtlSeconds: dynamic("CACHE_MODEL_TTL_SECONDS", ttl(60)

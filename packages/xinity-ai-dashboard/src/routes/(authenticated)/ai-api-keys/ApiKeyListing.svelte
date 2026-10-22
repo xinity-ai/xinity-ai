@@ -80,6 +80,9 @@ import { invalidate } from "$app/navigation";
     if (error) {
       toastState.add("Failed to update key status", "error");
     } else {
+      if (!newState) {
+        toastState.add(`Deactivated API key "${key.name}". It can keep working for up to 2 minutes.`, "success");
+      }
       invalidate("resource:apikeys");
     }
   }
@@ -272,7 +275,7 @@ import { invalidate } from "$app/navigation";
 <ConfirmDialog
   open={Boolean(keyToDelete)}
   title="Delete API Key"
-  description="Are you sure you want to delete {keyToDelete?.name ?? 'this key'}? This action cannot be undone."
+  description="Are you sure you want to delete {keyToDelete?.name ?? 'this key'}? This action cannot be undone. The key can keep working for up to 2 minutes."
   confirmLabel="Delete"
   onConfirm={() => void confirmDelete()}
   onCancel={cancelDelete}

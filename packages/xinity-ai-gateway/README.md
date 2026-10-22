@@ -67,7 +67,7 @@ Redis, and the lifetimes of what the gateway keeps in it.
 | `REDIS_URL` | (required) | Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password. Secret. |
 | `RESPONSE_CACHE_TTL_SECONDS` | `3600` | How long an identical completion is served from cache instead of the backend. Can be set to `@dynamic` to take its value from the dashboard. |
 | `CACHE_APPLICATION_TTL_SECONDS` | `300` | How long an application name to id lookup is cached. Can be set to `@dynamic` to take its value from the dashboard. |
-| `CACHE_API_KEY_TTL_SECONDS` | `120` | How long a validated API key is cached, so every request does not hit the database. Can be set to `@dynamic` to take its value from the dashboard. |
+| `CACHE_API_KEY_TTL_SECONDS` | `120` | How long a validated API key is cached, so every request does not hit the database. A deactivated or deleted key keeps working until its entry expires. Can be set to `@dynamic` to take its value from the dashboard. |
 | `CACHE_AUTH_FAILURE_TTL_SECONDS` | `10` | How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly. Can be set to `@dynamic` to take its value from the dashboard. |
 | `CACHE_MODEL_TTL_SECONDS` | `60` | How long a model deployment lookup is cached. Can be set to `@dynamic` to take its value from the dashboard. |
 | `CACHE_DIGEST_MAX_ENTRIES` | `5000` | Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history. Can be set to `@dynamic` to take its value from the dashboard. |

@@ -22,7 +22,7 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
     components: ["gateway"],
     group: "Cache",
     schema: ttl(120)
-      .describe("How long a validated API key is cached, so every request does not hit the database"),
+      .describe("How long a validated API key is cached, so every request does not hit the database. A deactivated or deleted key keeps working until its entry expires"),
   },
   {
     key: "CACHE_APPLICATION_TTL_SECONDS",
