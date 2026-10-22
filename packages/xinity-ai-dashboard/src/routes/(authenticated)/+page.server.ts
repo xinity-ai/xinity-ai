@@ -34,9 +34,18 @@ function fillDailyTrendSeries(trendData: UsageTrendEntry[], days: string[]): Usa
   });
 }
 
-/** Roll up usageEvent rows older than 30 days into usageSummary, then delete them. */
+/**
+ * Moves usageEvent rows older than 30 days into usageSummary. One statement, so overlapping
+ * runs cannot both move the same rows. The summary cannot tell failures apart, so they are
+ * deleted without being counted.
+ */
 async function rollupUsageEvents(db: DB, orgId: string) {
   await db.execute(sql`
+    WITH moved AS (
+      DELETE FROM "call_data"."usage_event"
+      WHERE "organization_id" = ${orgId} AND "created_at" < CURRENT_DATE - INTERVAL '30 days'
+      RETURNING *
+    )
     INSERT INTO "call_data"."usage_summary"
       ("date", "organization_id", "application_id", "api_key_id", "model",
        "total_calls", "logged_calls", "input_tokens", "output_tokens", "total_duration")
@@ -47,8 +56,8 @@ async function rollupUsageEvents(db: DB, orgId: string) {
       COALESCE(SUM("input_tokens"), 0),
       COALESCE(SUM("output_tokens"), 0),
       COALESCE(SUM("duration"), 0)
-    FROM "call_data"."usage_event"
-    WHERE "organization_id" = ${orgId} AND "created_at" < CURRENT_DATE - INTERVAL '30 days'
+    FROM moved
+    WHERE "success"
     GROUP BY DATE("created_at"), "organization_id", "application_id", "api_key_id", "model"
     ON CONFLICT ("date", "organization_id", "application_id", "api_key_id", "model")
     DO UPDATE SET
@@ -58,14 +67,9 @@ async function rollupUsageEvents(db: DB, orgId: string) {
       "output_tokens" = "usage_summary"."output_tokens" + EXCLUDED."output_tokens",
       "total_duration" = "usage_summary"."total_duration" + EXCLUDED."total_duration"
   `);
-
-  await db.delete(usageEventT)
-    .where(sql`
-      ${usageEventT.organizationId} = ${orgId}
-    AND
-      ${usageEventT.createdAt} < CURRENT_DATE - INTERVAL '30 days'
-    `);
 }
+
+const succeededInOrg = (orgId: string) => sql`${usageEventT.organizationId} = ${orgId} AND ${usageEventT.success}`;
 
 async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<KeyMetrics> {
   const [
@@ -82,7 +86,7 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
       avgDuration: sql<number | null>`AVG(${usageEventT.duration})`,
     })
       .from(usageEventT)
-      .where(sql`${usageEventT.organizationId} = ${orgId}`),
+      .where(succeededInOrg(orgId)),
 
     db.select({
       totalCalls: sql<number>`COALESCE(SUM(${usageSummaryT.totalCalls}), 0)::int`,
@@ -97,7 +101,7 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
     })
       .from(usageEventT)
       .where(sql`
-        ${usageEventT.organizationId} = ${orgId}
+        ${succeededInOrg(orgId)}
       AND
         DATE(${usageEventT.createdAt}) = CURRENT_DATE
       `),
@@ -112,7 +116,7 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
     })
       .from(usageEventT)
       .where(sql`
-        ${usageEventT.organizationId} = ${orgId}
+        ${succeededInOrg(orgId)}
       AND
         ${usageEventT.createdAt} > NOW() - INTERVAL '1 hour'
       `),
@@ -189,7 +193,7 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
     })
       .from(usageEventT)
       .where(sql`
-        ${usageEventT.organizationId} = ${orgId}
+        ${succeededInOrg(orgId)}
       AND
         DATE(${usageEventT.createdAt}) >= CURRENT_DATE - INTERVAL '29 days'
       `)
@@ -203,7 +207,7 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
     })
       .from(usageEventT)
       .where(sql`
-        ${usageEventT.organizationId} = ${orgId}
+        ${succeededInOrg(orgId)}
       AND
         ${usageEventT.createdAt} >= CURRENT_DATE - INTERVAL '29 days'
       `)
