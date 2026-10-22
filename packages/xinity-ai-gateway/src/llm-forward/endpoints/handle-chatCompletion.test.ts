@@ -916,7 +916,7 @@ describe("handleChatCompletion, backend response resilience", () => {
     expect(mockLogChatSync).toHaveBeenCalled();
   });
 
-  test("should forward response when usage is missing", async () => {
+  test("should forward, log and count a response whose usage is missing", async () => {
     nextUpstreamResponse = makeRawJsonResponse({
       id: "test-id", object: "chat.completion", created: 123, model: "test-model",
       choices: [{ index: 0, message: { role: "assistant", content: "Hello" }, finish_reason: "stop" }],
@@ -926,6 +926,9 @@ describe("handleChatCompletion, backend response resilience", () => {
     expect(res.status).toBe(200);
     const body = await res.json() as any;
     expect(body.choices[0].message.content).toBe("Hello");
+    expect(mockLogChatSync).toHaveBeenCalled();
+    expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+    expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ inputTokens: 0, outputTokens: 0, success: true });
   });
 
   test("should forward response when usage is malformed", async () => {
@@ -956,7 +959,7 @@ describe("handleChatCompletion, backend response resilience", () => {
     expect(mockLogChatSync).toHaveBeenCalled();
   });
 
-  test("should forward response but skip logging when choices are malformed", async () => {
+  test("should forward and count a response but skip logging when choices are malformed", async () => {
     nextUpstreamResponse = makeRawJsonResponse({
       id: "test-id", object: "chat.completion", created: 123, model: "test-model",
       choices: "not an array",
@@ -968,6 +971,8 @@ describe("handleChatCompletion, backend response resilience", () => {
     const body = await res.json() as any;
     expect(body.choices).toBe("not an array");
     expect(mockLogChatSync).not.toHaveBeenCalled();
+    expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+    expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ inputTokens: 5, outputTokens: 5, logged: false, success: true });
   });
 
   test("should return 502 when backend returns non-JSON body", async () => {

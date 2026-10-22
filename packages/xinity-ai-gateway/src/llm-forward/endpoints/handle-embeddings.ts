@@ -56,18 +56,16 @@ export const handleEmbeddingGeneration = withEndpointGuards({
     raw.model = originalModel;
 
     const usageResult = EmbeddingUsageSchema.safeParse(raw.usage);
-
-    if (usageResult.success) {
-      recordUsage({
-        usage: { prompt_tokens: usageResult.data.prompt_tokens, completion_tokens: 0 },
-        auth,
-        modelInfo,
-        callStartTime,
-        logCalls: false,
-      });
-    } else {
-      log.warn({ issues: usageResult.error?.issues }, "Could not extract usage for embeddings");
+    if (!usageResult.success) {
+      log.warn({ issues: usageResult.error.issues }, "Could not extract usage for embeddings");
     }
+    recordUsage({
+      usage: usageResult.success ? { prompt_tokens: usageResult.data.prompt_tokens, completion_tokens: 0 } : undefined,
+      auth,
+      modelInfo,
+      callStartTime,
+      logCalls: false,
+    });
 
     return Response.json(raw);
   },

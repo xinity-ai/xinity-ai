@@ -93,11 +93,13 @@ describe("handleRerank", () => {
     });
   });
 
-  test("still answers when the backend reports no usage", async () => {
+  test("answers and records a zero-token usage event when the backend reports no usage", async () => {
     upstreamUsage = undefined;
 
     const res = await handleRerank(rerankRequest());
 
     expect(res.status).toBe(200);
+    expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+    expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ inputTokens: 0, outputTokens: 0, success: true });
   });
 });
