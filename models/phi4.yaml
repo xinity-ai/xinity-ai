@@ -1,0 +1,216 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+x-shared:
+  identity: &identity
+    license: mit
+    engine: vllm
+    type: chat
+    family: Phi-4
+    registeredAt: 2026-10-22
+    tags: []
+    engineVersions:
+      min: "0.20.1"   # verified on 0.32.1 only, not bracketed
+  sizing-14b: &sizing-14b
+    # 40 layers, 10 kv heads, head_dim 128 -> 2 * 40 * 10 * 128 * 2
+    kvBytesPerToken: 204800
+    attentionHeads: 40
+    kvHeads: 10
+    maxContextLength: 16384
+    layers: 40
+    attentionLayers: 40
+    nonLayerWeightGb: 2.06
+  sizing-mini: &sizing-mini
+    # 32 layers, 8 kv heads, head_dim 128 -> 2 * 32 * 8 * 128 * 2. The config's
+    # sliding_window of 262144 exceeds the context, so attention is full.
+    kvBytesPerToken: 131072
+    attentionHeads: 24
+    kvHeads: 8
+    maxContextLength: 131072
+    layers: 32
+    attentionLayers: 32
+  mini-args: &mini-args
+    # LongRoPE: vLLM serves only the 4K short window unless asked for more.
+    - --max-model-len
+    - "131072"
+  reasoning-args: &reasoning-args
+    # No Phi-specific parser exists, and deepseek_r1 handles this <think> format.
+    - --reasoning-parser
+    - deepseek_r1
+
+models:
+  phi-4-14b-vllm:
+    <<: *identity
+    name: Phi-4 14B
+    description: |
+      Microsoft's 14B Phi-4, trained heavily on synthetic, reasoning-focused data. It is
+      strong at maths, logic and Python for its size, and answers directly without a
+      visible chain of thought.
+
+      It is built for English. Microsoft state it is not intended for multilingual use,
+      and its code training centres on Python and common standard-library packages. The
+      16K window is short by current standards, so it suits question answering and
+      focused tasks rather than long documents. It was not trained for tool calling.
+
+      For harder multi-step problems, Phi-4 Reasoning trades latency for accuracy. For
+      long context or a smaller footprint, look at Phi-4 Mini.
+    url: https://huggingface.co/microsoft/phi-4
+    createdAt: 2024-12-11
+    engineSpecifier: microsoft/phi-4
+    sizing:
+      <<: *sizing-14b
+      weightGb: 29.42  # measured resident, 27.39 GiB
+      largestFileGb: 4.99
+      weightBits: 16
+
+  phi-4-mini-vllm:
+    <<: *identity
+    name: Phi-4 Mini Instruct
+    description: |
+      The 3.8B member of the Phi-4 family, with a 128K window and a larger, more
+      multilingual vocabulary than the 14B. It is aimed at memory- and latency-bound
+      deployments that still need long context, such as answering over long documents.
+
+      It is weak at exact arithmetic and should not be trusted to calculate. Microsoft
+      trained it for function calling, but its chat template does not take tools from the
+      standard API, so tool use is not offered here.
+
+      The full window costs far more cache per request than the weights do, so plan
+      capacity around the context rather than the parameter count. The FP8 entry cuts the
+      weight memory further at a small cost in accuracy.
+    url: https://huggingface.co/microsoft/Phi-4-mini-instruct
+    createdAt: 2025-02-19
+    engineSpecifier: microsoft/Phi-4-mini-instruct
+    sizing:
+      <<: *sizing-mini
+      weightGb: 7.70  # measured resident, 7.17 GiB
+      largestFileGb: 4.9
+      nonLayerWeightGb: 1.23
+      weightBits: 16
+    engineArgs: *mini-args
+
+  phi-4-mini-fp8-vllm:
+    <<: *identity
+    name: Phi-4 Mini Instruct FP8
+    description: |
+      Phi-4 Mini quantized to FP8 by Red Hat, at a little over half the weight memory of
+      the BF16 entry. On everyday questions it answered as the BF16 build did in testing,
+      with a further small drop on arithmetic, which is already the model's weak spot.
+
+      Same 128K window and the same cache cost per request, so the saving matters most
+      where many shorter requests share a node. Pick the BF16 entry when memory is not
+      the constraint.
+    url: https://huggingface.co/RedHatAI/Phi-4-mini-instruct-FP8-dynamic
+    createdAt: 2025-02-19
+    engineSpecifier: RedHatAI/Phi-4-mini-instruct-FP8-dynamic
+    variantOf: phi-4-mini-vllm
+    sizing:
+      <<: *sizing-mini
+      weightGb: 4.52  # measured resident, 4.21 GiB
+      largestFileGb: 4.45
+      nonLayerWeightGb: 1.23
+      weightBits: 8
+    engineArgs: *mini-args
+
+  phi-4-reasoning-vllm:
+    <<: *identity
+    name: Phi-4 Reasoning
+    description: |
+      Phi-4 fine-tuned by Microsoft to work through a problem step by step before
+      answering, aimed at maths, science and logic. The reasoning is returned separately
+      from the final answer.
+
+      Its chat template carries a fixed system prompt and drops any system message you
+      send, so put instructions in the user turn. Microsoft's recommended sampling
+      (temperature 0.8, top_p 0.95, top_k 50) applies by default, and they advise against
+      changing it. Give it a generous `max_tokens`: even simple questions can take
+      hundreds or thousands of tokens of thought, and a short budget ends with
+      `finish_reason: length` before any answer.
+
+      The window is 32K. Phi-4 Reasoning Plus thinks longer for higher accuracy, and the
+      FP8 entry halves the weight memory.
+    url: https://huggingface.co/microsoft/Phi-4-reasoning
+    createdAt: 2025-04-09
+    engineSpecifier: microsoft/Phi-4-reasoning
+    sizing:
+      <<: *sizing-14b
+      maxContextLength: 32768
+      weightGb: 29.42  # measured resident, 27.39 GiB
+      largestFileGb: 4.99
+      weightBits: 16
+    engineArgs: *reasoning-args
+
+  phi-4-reasoning-fp8-vllm:
+    <<: *identity
+    name: Phi-4 Reasoning FP8
+    description: |
+      Phi-4 Reasoning quantized to FP8 by Red Hat, at about half the weight memory of the
+      BF16 entry. It solved the same test problems correctly and gave no empty replies.
+
+      Everything else matches Phi-4 Reasoning: system messages are dropped, Microsoft's
+      sampling settings apply by default, and it needs a generous `max_tokens` budget.
+    url: https://huggingface.co/RedHatAI/Phi-4-reasoning-FP8-dynamic
+    createdAt: 2025-04-09
+    engineSpecifier: RedHatAI/Phi-4-reasoning-FP8-dynamic
+    variantOf: phi-4-reasoning-vllm
+    sizing:
+      <<: *sizing-14b
+      maxContextLength: 32768
+      weightGb: 15.83  # measured resident, 14.74 GiB
+      largestFileGb: 4.96
+      weightBits: 8
+    engineArgs:
+      - *reasoning-args
+      # Microsoft's sampling defaults include top_k 50, which this requant's
+      # generation_config.json leaves out.
+      - --override-generation-config
+      - '{"top_k": 50}'
+
+  phi-4-reasoning-plus-vllm:
+    <<: *identity
+    name: Phi-4 Reasoning Plus
+    description: |
+      Phi-4 Reasoning with further reinforcement learning, which makes it think for
+      longer and answer more accurately on hard maths and reasoning problems. Microsoft
+      report about half again as much reasoning per answer as Phi-4 Reasoning, so
+      replies take correspondingly longer.
+
+      The template behaves the same: system messages are dropped, so instructions belong
+      in the user turn, and Microsoft's recommended sampling applies by default. Pick
+      Phi-4 Reasoning when latency matters more than the last points of accuracy.
+    url: https://huggingface.co/microsoft/Phi-4-reasoning-plus
+    createdAt: 2025-04-17
+    engineSpecifier: microsoft/Phi-4-reasoning-plus
+    sizing:
+      <<: *sizing-14b
+      maxContextLength: 32768
+      weightGb: 29.42  # measured resident, 27.39 GiB
+      largestFileGb: 4.99
+      weightBits: 16
+    engineArgs: *reasoning-args
+
+  phi-4-multimodal-vllm:
+    <<: *identity
+    name: Phi-4 Multimodal Instruct
+    description: |
+      A 5.6B Phi-4 model that reads images alongside text, built on the Phi-4 Mini base
+      with the same 128K window. It suits describing images, reading charts and
+      screenshots, and general visual questions at a small footprint.
+
+      Microsoft's own serving instructions add separate vision and speech adapters, which
+      this entry runs without. Expect it to get the gist of an image right but slip on
+      fine detail such as legend labels. Audio input is not offered, and as with Phi-4
+      Mini, tool calling is not available through the standard API.
+    url: https://huggingface.co/microsoft/Phi-4-multimodal-instruct
+    createdAt: 2025-02-24
+    engineSpecifier: microsoft/Phi-4-multimodal-instruct
+    sizing:
+      <<: *sizing-mini
+      weightGb: 9.48  # measured resident, 8.83 GiB
+      largestFileGb: 5
+      nonLayerWeightGb: 2.22
+      weightBits: 16
+    # The config and processor are remote code, which the default download filter drops.
+    tags: [vision, custom_code]
+    downloadFilter:
+      - "!*.py"
+    engineArgs: *mini-args
