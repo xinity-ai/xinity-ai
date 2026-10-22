@@ -317,7 +317,7 @@
 <ConfirmDialog
   bind:open={showDeleteModal}
   title="Delete Application"
-  description="Are you sure you want to delete {applicationToDelete?.name ?? 'this application'}? This will not delete associated API keys, but they will become inaccessible."
+  description="Are you sure you want to delete {applicationToDelete?.name ?? 'this application'}? Its API keys keep working but will no longer belong to an application."
   confirmLabel="Delete"
   onConfirm={() => void confirmDeleteApp()}
   onCancel={cancelDeleteApp}

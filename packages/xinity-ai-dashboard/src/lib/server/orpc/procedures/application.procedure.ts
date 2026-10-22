@@ -4,7 +4,7 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { ApplicationDto } from "$lib/orpc/dtos/application.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { aiApplicationT, sql } from "common-db";
+import { aiApiKeyT, aiApplicationT, sql } from "common-db";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 
@@ -107,10 +107,23 @@ const softDeleteApplication = rootOs
     const rlog = log.child({ traceId: context.traceId });
     rlog.info({ id: input.id }, "Soft deleting Application");
 
-    await getDB()
-      .update(aiApplicationT)
-      .set({ deletedAt: new Date() })
-      .where(matchActiveAppInOrg(input.id, context.activeOrganizationId));
+    await getDB().transaction(async (tx) => {
+      const deleted = await tx
+        .update(aiApplicationT)
+        .set({ deletedAt: new Date() })
+        .where(matchActiveAppInOrg(input.id, context.activeOrganizationId))
+        .returning({ id: aiApplicationT.id });
+      if (deleted.length === 0) {
+        return;
+      }
+      await tx
+        .update(aiApiKeyT)
+        .set({ applicationId: null })
+        .where(sql`
+          ${aiApiKeyT.applicationId} = ${input.id}
+          AND ${aiApiKeyT.organizationId} = ${context.activeOrganizationId}
+        `);
+    });
   });
 
 export const applicationRouter = rootOs.prefix("/application").router({
