@@ -23,8 +23,6 @@ import {
 } from "./compose-service.ts";
 import type { ConnectionResult } from "../remote/connectivity.ts";
 
-// ─── Constants ───────────────────────────────────────────────────────────────
-
 const VOLUME_NAME = "xinity-redis-data";
 
 // Image pinned to match the dev compose.yaml and deployment template.
@@ -39,8 +37,6 @@ const REDIS: ComposeStack = {
 };
 
 const { dir: STACK_DIR, composePath: COMPOSE_PATH } = stackPaths(REDIS);
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 async function testRedisWithSpinner(url: string, host: Host): Promise<ConnectionResult> {
   const { testRedisConnection } = await import("../remote/connectivity.ts");
@@ -91,8 +87,6 @@ export function buildComposeFile(port: number, password: string): string {
   ].join("\n");
 }
 
-// ─── Pre-existing state ──────────────────────────────────────────────────────
-
 export function parseRequirePass(composeContent: string): string | undefined {
   return composeContent.match(/"--requirepass", "([^"]+)"/)?.[1];
 }
@@ -104,8 +98,6 @@ function readinessProbe(host: Host, compose: ComposeCmd): () => Promise<boolean>
     return res.success && res.output.includes("PONG");
   };
 }
-
-// ─── Provision via Docker ────────────────────────────────────────────────────
 
 export type RedisProvision = {
   compose: ComposeCmd;
@@ -178,8 +170,6 @@ export async function applyRedisProvision(prov: RedisProvision, host: Host): Pro
   return true;
 }
 
-// ─── Plan / apply model ─────────────────────────────────────────────────────
-
 export type RedisPlan = {
   url: string;
   persist: boolean;
@@ -196,8 +186,6 @@ export function describeRedisPlan(plan: RedisPlan): string[] {
   const head = plan.provision ? describeRedisProvision(plan.provision) : "Store the Redis connection URL";
   return plan.persist ? [head, `  store REDIS_URL in ${SECRETS_DIR}`] : [head];
 }
-
-// ─── Main entry point ───────────────────────────────────────────────────────
 
 function redactRedisUrl(url: string): string {
   try {
@@ -222,12 +210,7 @@ async function persistRedisUrl(host: Host, url: string): Promise<boolean> {
   return true;
 }
 
-export const IN_PROCESS_CACHE = "in-process";
-
-export async function planRedis(
-  host: Host,
-  opts: { offerInProcess: boolean },
-): Promise<RedisPlan | typeof IN_PROCESS_CACHE | undefined> {
+export async function discoverRedis(host: Host): Promise<RedisPlan | undefined> {
   // 1. Check stored secret
   const stored = await readSecrets(host, SECRETS_DIR, ["REDIS_URL"], "Read stored Redis URL");
   if (stored.secrets.REDIS_URL) {
@@ -275,17 +258,16 @@ export async function planRedis(
     }
   }
 
-  // 4. No existing connection found, ask user how to proceed
+  return undefined;
+}
+
+async function planRedis(host: Host): Promise<RedisPlan | undefined> {
+  const discovered = await discoverRedis(host);
+  if (discovered) return discovered;
+
   const choice = await select({
     message: "No existing Redis connection found. Do you already have a Redis instance?",
     options: [
-      ...(opts.offerInProcess
-        ? [{
-          value: IN_PROCESS_CACHE,
-          label: "No, keep the cache in the gateway",
-          hint: "suits a single gateway, add Redis later with xinity up infra-redis",
-        }]
-        : []),
       {
         value: "existing",
         label: "Yes, I have a connection URL",
@@ -304,7 +286,6 @@ export async function planRedis(
     return undefined;
   }
 
-  if (choice === IN_PROCESS_CACHE) return IN_PROCESS_CACHE;
   if (choice === "setup") return planRedisSetup(host);
 
   // Existing instance, prompt for URL then validate connectivity
@@ -388,9 +369,8 @@ export async function infraRedis(host: Host, dryRun: boolean): Promise<string | 
       plan = await planRedisSetup(host);
     }
   } else {
-    // No stored URL, or stored but unreachable: planRedis owns the stale-URL flow.
-    const planned = await planRedis(host, { offerInProcess: false });
-    plan = planned === IN_PROCESS_CACHE ? undefined : planned;
+    // No stored URL, or stored but unreachable: discoverRedis owns the stale-URL flow.
+    plan = await planRedis(host);
   }
 
   if (!plan) return undefined;

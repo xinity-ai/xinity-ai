@@ -17,7 +17,7 @@ import { connectHost, TARGET_HOST_OPTION } from "../lib/remote/remote-host.ts";
 import { type Host, commandExistsOn } from "../lib/core/host.ts";
 import { parseEnvString } from "../lib/config/env-file.ts";
 import { seaweedfsSetup } from "../lib/infra/seaweedfs-setup.ts";
-import { IN_PROCESS_CACHE, infraRedis, planRedis } from "../lib/infra/redis-setup.ts";
+import { discoverRedis, infraRedis } from "../lib/infra/redis-setup.ts";
 import { postgresSetup } from "../lib/infra/postgres-setup.ts";
 import { ollamaSetup } from "../lib/infra/ollama-setup.ts";
 import { prometheusSetup } from "../lib/infra/prometheus-setup.ts";
@@ -133,11 +133,7 @@ async function runDbFlow(opts: { targetVersion: string; dryRun: boolean }, host:
   if (!dbPlan) return false;
 
   heading("redis");
-  const planned = await planRedis(host, { offerInProcess: true });
-  const redisPlan = planned === IN_PROCESS_CACHE ? undefined : planned;
-  if (!planned) {
-    warn("Redis", "No Redis URL configured (can be set up later with xinity up infra-redis)");
-  }
+  const redisPlan = await discoverRedis(host);
 
   const plan: UpPlan = {
     targetVersion: opts.targetVersion,

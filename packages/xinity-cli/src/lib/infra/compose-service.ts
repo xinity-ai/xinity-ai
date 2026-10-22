@@ -31,8 +31,6 @@ export function stackPaths(stack: ComposeStack): { dir: string; composePath: str
   return { dir, composePath: `${dir}/docker-compose.yml` };
 }
 
-// ─── Preflight ───────────────────────────────────────────────────────────────
-
 export async function requireCompose(
   host: Host,
   stack: ComposeStack,
@@ -59,8 +57,6 @@ export async function requireCompose(
   pass("Docker", `Using ${cyan(composeName(compose))}`);
   return compose;
 }
-
-// ─── Pre-existing state ──────────────────────────────────────────────────────
 
 export type ExistingStack = {
   volumeExists: boolean;
@@ -106,8 +102,6 @@ export function parsePublishedPort(composeContent: string, stack: ComposeStack):
   return match ? Number(match[1]) : stack.defaultPort;
 }
 
-// ─── File writing ────────────────────────────────────────────────────────────
-
 export function buildWriteFileCommand(
   stack: ComposeStack,
   path: string,
@@ -137,8 +131,6 @@ export async function writeStackFile(
   }
   return true;
 }
-
-// ─── Start and health ────────────────────────────────────────────────────────
 
 const READY_TIMEOUT_SECONDS = 30;
 const DIAGNOSTIC_LOG_LINES = 30;
