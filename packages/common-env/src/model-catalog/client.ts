@@ -17,6 +17,8 @@ export type CatalogClientConfig = {
   logger?: import("common-log").Logger;
 }
 
+const CATALOG_FETCH_TIMEOUT_MS = 10_000;
+
 export type ModelLookup =
   | { status: "found"; model: ModelWithSpecifier }
   | { status: "not_found" }
@@ -85,6 +87,7 @@ export function createCatalogClient(config: CatalogClientConfig) {
     try {
       const res = await fetch(`${baseUrl}/models/v2.json`, {
         headers: etag ? { "If-None-Match": etag } : {},
+        signal: AbortSignal.timeout(CATALOG_FETCH_TIMEOUT_MS),
       });
 
       if (res.status === 304) {
@@ -107,6 +110,7 @@ export function createCatalogClient(config: CatalogClientConfig) {
       // A reachable-once catalog keeps serving its last good generation rather than
       // going blank because one refresh failed.
       if (models.size > 0) {
+        loadedAt = Date.now();
         config.logger?.warn({ err: message }, "Catalog refresh failed, keeping the last snapshot");
         return null;
       }

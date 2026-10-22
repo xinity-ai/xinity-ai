@@ -343,6 +343,18 @@ describe("createCatalogClient", () => {
     expect((await client.get("llama-vllm"))?.engineSpecifier).toBe("org/llama-vllm");
   });
 
+  it("waits a full TTL before retrying a failed refresh", async () => {
+    const client = makeClient(50);
+    await client.get("llama-vllm");
+
+    failing = true;
+    await Bun.sleep(60);
+    await client.get("llama-vllm");
+    await client.get("llama-vllm");
+
+    expect(requests).toHaveLength(2);
+  });
+
   it("reports unavailable when it never managed to load", async () => {
     failing = true;
     const client = makeClient();
