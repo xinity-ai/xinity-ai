@@ -47,17 +47,18 @@ export const handleRerank = withEndpointGuards({
     }
 
     const usageResult = RerankUsageSchema.safeParse(result.usage);
-    if (usageResult.success) {
-      recordUsage({
-        usage: { prompt_tokens: usageResult.data.prompt_tokens ?? usageResult.data.total_tokens, completion_tokens: 0 },
-        auth,
-        modelInfo,
-        callStartTime,
-        logCalls: false,
-      });
-    } else {
+    if (!usageResult.success) {
       log.warn({ issues: usageResult.error.issues }, "Could not extract usage for rerank");
     }
+    recordUsage({
+      usage: usageResult.success
+        ? { prompt_tokens: usageResult.data.prompt_tokens ?? usageResult.data.total_tokens, completion_tokens: 0 }
+        : undefined,
+      auth,
+      modelInfo,
+      callStartTime,
+      logCalls: false,
+    });
 
     return Response.json({
       ...result,

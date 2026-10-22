@@ -8,6 +8,7 @@ import {
   logChatUsage,
   readSSEStream,
   recordFailedRequest,
+  recordUsage,
   TRUNCATED_STREAM_MESSAGE,
   sseEncoder,
   sseResponse,
@@ -247,15 +248,17 @@ export async function forwardOpenAINonStream<Choice>({
 
   const choicesResult = spec.choicesSchema.safeParse(raw.choices);
   const usageResult = BackendUsageSchema.safeParse(raw.usage);
+  const usage = usageResult.success ? usageResult.data : undefined;
   if (choicesResult.success) {
     logChatUsage({
       ...logFields,
-      usage: usageResult.success ? usageResult.data : undefined,
+      usage,
       outputData: spec.toLogOutput(choicesResult.data, originalModel),
       stream: false,
     });
   } else {
     log.warn({ issues: choicesResult.error.issues }, "Could not extract choices for logging");
+    recordUsage({ ...logFields, usage, logCalls: false, deployment: logFields.publicSpecifier });
   }
   return Response.json(raw);
 }
