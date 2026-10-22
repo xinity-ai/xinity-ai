@@ -18,6 +18,7 @@ import {
   validateModelType,
   type BackendRoute,
   type FailedRequestContext,
+  type UsageData,
 } from "../util";
 import { backendPostForm, createIdleTimeout, type IdleTimeout } from "../backend-fetch";
 import { config } from "../../config";
@@ -131,6 +132,20 @@ function withOpenAISpeakers(body: string): string {
   return JSON.stringify(parsed);
 }
 
+// vLLM reports a non-streamed transcription's usage as audio seconds, which has no token count to record.
+function tokenUsageOf(body: string): UsageData | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  const usage = BackendUsageSchema.safeParse((parsed as { usage?: unknown }).usage);
+  return usage.success && usage.data
+    ? { prompt_tokens: usage.data.prompt_tokens, completion_tokens: usage.data.completion_tokens }
+    : undefined;
+}
+
 /** Translate vLLM's chat-completion-style transcription stream into OpenAI's `transcript.text.delta`/`transcript.text.done` events (no `[DONE]` sentinel). */
 function streamTranscriptionAsOpenAI(
   backendResponse: Response,
@@ -201,13 +216,11 @@ function streamTranscriptionAsOpenAI(
         controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(done)}\n\n`));
         controller.close();
 
-        if (usage) {
-          recordUsage({
-            ...logFields,
-            usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens },
-            logCalls: false,
-          });
-        }
+        recordUsage({
+          ...logFields,
+          usage: usage && { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens },
+          logCalls: false,
+        });
       } catch (e) {
         if (!isAbortError(e)) recordFailedRequest(logFields);
         handleStreamError(e, controller, log);
@@ -314,24 +327,13 @@ export async function handleTranscription(req: Request): Promise<Response> {
     const contentType = backendResponse.headers.get("content-type") ?? "application/json";
     const raw = await backendResponse.text();
     const body = diarized ? withOpenAISpeakers(raw) : diarizing ? plainBody(raw, contentType.includes("application/json")) : raw;
-    if (contentType.includes("application/json")) {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(body);
-      } catch {
-        parsed = undefined;
-      }
-      const usage = BackendUsageSchema.safeParse((parsed as { usage?: unknown } | undefined)?.usage);
-      if (usage.success && usage.data) {
-        recordUsage({
-          usage: { prompt_tokens: usage.data.prompt_tokens, completion_tokens: usage.data.completion_tokens },
-          auth,
-          modelInfo,
-          callStartTime,
-          logCalls: false,
-        });
-      }
-    }
+    recordUsage({
+      usage: contentType.includes("application/json") ? tokenUsageOf(body) : undefined,
+      auth,
+      modelInfo,
+      callStartTime,
+      logCalls: false,
+    });
 
     return new Response(body, {
       status: backendResponse.status,
