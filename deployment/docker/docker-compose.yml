@@ -22,7 +22,9 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     profiles: [redis]
-    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$(cat /run/secrets/redis_password)\""]
+    secrets:
+      - redis_password
     volumes:
       - redis-data:/data
     networks:
@@ -232,6 +234,8 @@ networks:
 secrets:
   db_connection_url:
     file: ./secrets/db_connection_url
+  redis_password:
+    file: ./secrets/redis_password
   redis_url:
     file: ./secrets/redis_url
   better_auth_secret:

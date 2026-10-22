@@ -81,7 +81,6 @@ export function redisCache(url: string): Cache {
 const SWEEP_INTERVAL_MS = 60_000;
 const MEMORY_CACHE_MAX_CHARS = 64 * 1024 * 1024;
 
-// Bounded by the characters held in keys and values. Past the bound the least recently written entries go first.
 export function memoryCache(maxChars = MEMORY_CACHE_MAX_CHARS): Cache {
   const entries = new Map<string, { value: string; expiresAt: number }>();
   let chars = 0;
@@ -105,11 +104,11 @@ export function memoryCache(maxChars = MEMORY_CACHE_MAX_CHARS): Cache {
     remove(key);
     entries.set(key, { value, expiresAt });
     chars += key.length + value.length;
-    for (const oldest of entries.keys()) {
+    for (const leastRecentlyWritten of entries.keys()) {
       if (chars <= maxChars) {
         break;
       }
-      remove(oldest);
+      remove(leastRecentlyWritten);
     }
   };
   const write = (key: string, value: string, ttlSeconds: number) => {
