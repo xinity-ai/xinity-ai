@@ -79,42 +79,65 @@ export function redisCache(url: string): Cache {
 }
 
 const SWEEP_INTERVAL_MS = 60_000;
+const MEMORY_CACHE_MAX_CHARS = 64 * 1024 * 1024;
 
-export function memoryCache(): Cache {
+// Bounded by the characters held in keys and values. Past the bound the least recently written entries go first.
+export function memoryCache(maxChars = MEMORY_CACHE_MAX_CHARS): Cache {
   const entries = new Map<string, { value: string; expiresAt: number }>();
+  let chars = 0;
+
+  const remove = (key: string) => {
+    const entry = entries.get(key);
+    if (entry) {
+      chars -= key.length + entry.value.length;
+      entries.delete(key);
+    }
+  };
   const read = (key: string) => {
     const entry = entries.get(key);
     if (entry && entry.expiresAt <= Date.now()) {
-      entries.delete(key);
+      remove(key);
       return undefined;
     }
     return entry;
   };
+  const store = (key: string, value: string, expiresAt: number) => {
+    remove(key);
+    entries.set(key, { value, expiresAt });
+    chars += key.length + value.length;
+    for (const oldest of entries.keys()) {
+      if (chars <= maxChars) {
+        break;
+      }
+      remove(oldest);
+    }
+  };
   const write = (key: string, value: string, ttlSeconds: number) => {
-    entries.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+    store(key, value, Date.now() + ttlSeconds * 1000);
   };
 
   setInterval(() => {
     const now = Date.now();
     for (const [key, entry] of entries) {
       if (entry.expiresAt <= now) {
-        entries.delete(key);
+        remove(key);
       }
     }
   }, SWEEP_INTERVAL_MS).unref();
 
   return {
-    check: async () => undefined,
+    async check() {
+      rootLogger.info("Cache kept in process");
+      return undefined;
+    },
     get: async (key) => read(key)?.value ?? null,
     mget: async (keys) => keys.map((key) => read(key)?.value ?? null),
     set: async (key, value, ttlSeconds) => write(key, value, ttlSeconds),
-    del: async (key) => {
-      entries.delete(key);
-    },
+    del: async (key) => remove(key),
     delPrefix: async (prefix) => {
       for (const key of entries.keys()) {
         if (key.startsWith(prefix)) {
-          entries.delete(key);
+          remove(key);
         }
       }
     },
@@ -125,16 +148,14 @@ export function memoryCache(): Cache {
     },
     tryIncr: async (key, limit, ttlSeconds) => {
       const current = Number(read(key)?.value ?? 0);
-      if (current >= limit) {
-        return false;
-      }
-      write(key, String(current + 1), ttlSeconds);
-      return true;
+      const admitted = current < limit;
+      write(key, String(admitted ? current + 1 : current), ttlSeconds);
+      return admitted;
     },
     decr: async (key) => {
       const entry = read(key);
       if (entry) {
-        entry.value = String(Number(entry.value) - 1);
+        store(key, String(Number(entry.value) - 1), entry.expiresAt);
       }
     },
   };

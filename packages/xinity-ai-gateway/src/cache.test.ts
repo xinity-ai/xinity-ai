@@ -49,6 +49,15 @@ describe("memoryCache", () => {
     expect(await cache.get("n")).toBeNull();
   });
 
+  test("past its size bound it drops the least recently written entries", async () => {
+    const cache = memoryCache(5);
+    await cache.set("a", "1", 60);
+    await cache.set("b", "1", 60);
+    await cache.set("a", "2", 60);
+    await cache.set("c", "1", 60);
+    expect(await cache.mget(["a", "b", "c"])).toEqual(["2", null, "1"]);
+  });
+
   test("delPrefix removes only the matching keys", async () => {
     const cache = memoryCache();
     await cache.set("dep:a", "1", 60);
