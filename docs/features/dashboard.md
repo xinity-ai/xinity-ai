@@ -76,6 +76,8 @@ Two types of API keys:
 
 AI API keys can be scoped to specific applications. The AI API Keys page includes code examples (Python, curl, Node.js).
 
+Deactivating or deleting an AI API key, or changing whether its calls are recorded, takes effect within 2 minutes with the default gateway settings.
+
 ## In-Dashboard Documentation
 
 The dashboard includes built-in docs covering: quick start, access methods, API reference, applications, code examples, deployment troubleshooting, inference drivers, labeling guide, roles, and SSO configuration.
