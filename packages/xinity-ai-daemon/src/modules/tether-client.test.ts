@@ -238,6 +238,7 @@ test("an open stream sends a signed heartbeat at the announced keepalive interva
     }
 
     await stream.close();
+    await Bun.sleep(50);
     const sentWhileOpen = heartbeats.length;
     await Bun.sleep(100);
     expect(heartbeats.length).toBe(sentWhileOpen);
