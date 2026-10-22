@@ -200,7 +200,7 @@ async function detectVllmVersion(deviceArgs: string[]): Promise<string | undefin
   const run =
     backend === "docker"
       ? // `vllm --version` needs a visible GPU or it aborts -> version_unknown.
-        () => $`docker run --rm --pull=never ${deviceArgs} --entrypoint ${process.env.VLLM_PATH ?? "vllm"} ${values.image} --version`.throws(false).text()
+        () => $`docker run --rm --pull=never ${deviceArgs} --entrypoint ${process.env.VLLM_PATH || "vllm"} ${values.image} --version`.throws(false).text()
       : () => $`${bareVllmPath ?? "vllm"} --version`.throws(false).text();
   try {
     const out = await run();
