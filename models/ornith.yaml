@@ -246,8 +246,8 @@ models:
     description: |
       The mid-size Ornith 1.5: a 35B sparse mixture of experts that activates about
       3B parameters per token, so it decodes far faster than its footprint suggests.
-      It is the strongest Ornith that fits on a single node here, and the one to
-      reach for when the 9B loses the thread of a long agentic task.
+      It is the one to reach for when the 9B loses the thread of a long agentic
+      task, and the 122B when this one does.
 
       Reasoning and tool calling work as on the 9B, with the chain of thought in
       `reasoning_content` and `chat_template_kwargs: {"enable_thinking": false}` to
@@ -464,3 +464,68 @@ models:
       <<: *ornith15-35b-nvfp4-kv
       weightGb: 21.91  # measured resident with the tower, 20.40 GiB
       nonLayerWeightGb: 2.2
+
+  ornith-1.5-122b-nvfp4-vllm: &ornith15-122b-nvfp4
+    name: Ornith 1.5 122B NVFP4
+    description: |
+      The largest Ornith 1.5 in the catalog, built for long, multi-step agentic
+      coding. Choose it when the 35B loses track of a task. It is larger and
+      answers more slowly than the 35B.
+
+      Reasoning is on by default, with the chain of thought arriving in
+      `reasoning_content`. Send `chat_template_kwargs: {"enable_thinking": false}`
+      to skip it. Tool calling works, including several calls in one turn. The
+      publisher recommends `temperature: 1.0`, `top_p: 0.95`, `top_k: 20`,
+      `presence_penalty: 1.5` for general use, and `temperature: 0.6` with
+      `presence_penalty: 0.0` for precise coding.
+
+      This entry serves text only. Use the vision entry if the agent has to read
+      screenshots.
+    url: https://huggingface.co/ornith-ai/Ornith-1.5-122B-NVFP4
+    license: mit
+    createdAt: 2026-10-16
+    registeredAt: 2026-10-22
+    engine: vllm
+    engineSpecifier: ornith-ai/Ornith-1.5-122B-NVFP4
+    platforms: [nvidia]
+    sizing: &ornith15-122b-nvfp4-kv
+      # 48 layers, 12 full attention and 36 linear, 2 kv heads at head_dim 256. The
+      # checkpoint carries a kv_cache_scheme, so the cache runs fp8_e4m3.
+      kvBytesPerToken: 12288
+      attentionHeads: 32
+      kvHeads: 2
+      stateBytesPerSequence: 153649152
+      maxContextLength: 262144
+      weightGb: 71.84  # measured resident, 66.89 GiB
+      layers: 48
+      attentionLayers: 12
+      stateLayers: 36
+      nonLayerWeightGb: 1.96
+      # Single-stream decode measured 28.5 tok/s on GB10.
+      activeWeightGb: 6.95
+      weightBits: 4
+    type: chat
+    family: Ornith
+    tags: [tools]
+    requestParams: *ornith15-params
+    engineArgs: *ornith15-args-text
+    engineVersions:
+      min: "0.23.1"
+
+  ornith-1.5-122b-nvfp4-vl-vllm:
+    <<: *ornith15-122b-nvfp4
+    name: Ornith 1.5 122B NVFP4 (vision)
+    description: |
+      The 122B with image reading switched on, so it understands images as well
+      as text. It transcribed invoice text exactly and read a bar chart correctly
+      in testing. Reasoning, tool calling and sampling are identical to the
+      text-only entry.
+
+      Prefer the text-only entry when the workload has no images.
+    variantOf: ornith-1.5-122b-nvfp4-vllm
+    tags: [tools, vision]
+    engineArgs: *ornith15-parsers
+    sizing:
+      <<: *ornith15-122b-nvfp4-kv
+      weightGb: 72.75  # measured resident with the tower, 67.74 GiB
+      nonLayerWeightGb: 2.86
