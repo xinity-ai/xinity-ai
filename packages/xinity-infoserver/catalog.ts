@@ -103,6 +103,7 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
     models: Map<string, Indexed<M>>;
     merged: Record<string, M>;
     localSpecifiers: Set<string>;
+    unreachableSources: string[];
   };
 
   function indexModels(
@@ -152,11 +153,13 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
       const response = await fetch(url, { signal: AbortSignal.timeout(INCLUDE_FETCH_TIMEOUT_MS) });
       if (!response.ok) {
         log.warn({ url, status: response.status }, "Include fetch failed");
+        state.unreachableSources.push(`${url} (HTTP ${response.status})`);
         return;
       }
       outcome = (options.parseRemoteFile ?? options.parseFile)(await response.text());
     } catch (err) {
       log.warn({ url, err }, "Include fetch error");
+      state.unreachableSources.push(url);
       return;
     }
 
@@ -190,6 +193,7 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
         .sort();
     } catch (err) {
       log.warn({ dirPath: directory, err }, "Could not read model info directory, skipping");
+      state.unreachableSources.push(directory);
       return;
     }
 
@@ -236,14 +240,27 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
     configure(config) {
       dirPath = config.dirPath;
       maxIncludeDepth = config.maxIncludeDepth;
+      modelData = new Map();
+      mergedData = { models: {} };
+      serialized = serializeCatalog(mergedData.models);
+      lastRefreshAt = null;
+      lastRefreshError = null;
     },
 
     async refresh() {
-      const state: IndexState = { models: new Map(), merged: {}, localSpecifiers: new Set() };
+      const state: IndexState = { models: new Map(), merged: {}, localSpecifiers: new Set(), unreachableSources: [] };
 
       try {
         if (dirPath) {
           await loadDirectoryFiles(dirPath, new Set(), state);
+        }
+
+        const unreachable = state.unreachableSources.length > 0
+          ? `Could not load ${state.unreachableSources.join(", ")}`
+          : null;
+        const hasCatalogToKeep = lastRefreshAt !== null;
+        if (unreachable && hasCatalogToKeep) {
+          throw new Error(`${unreachable}, keeping the previous catalog`);
         }
 
         // Atomic swap
@@ -251,7 +268,7 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
         mergedData = { models: state.merged };
         serialized = serializeCatalog(mergedData.models);
         lastRefreshAt = new Date();
-        lastRefreshError = null;
+        lastRefreshError = unreachable;
       } catch (err) {
         lastRefreshError = err instanceof Error ? err.message : String(err);
         throw err;
