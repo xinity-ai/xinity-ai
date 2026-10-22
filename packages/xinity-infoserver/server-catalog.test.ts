@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, afterEach, mock } from "bun:test";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -296,7 +297,38 @@ describe("server-catalog", () => {
 
       expect(get("local-model")).toBeDefined();
       expect(get("remote-model")).toBeUndefined();
-      expect(getCatalogHealth().legacy!.lastRefreshError).toBeNull();
+      expect(getCatalogHealth().legacy!.lastRefreshError).toContain("http://unreachable.invalid/models.yaml");
+    });
+
+    it("keeps the previous catalog when an include fails on a later refresh", async () => {
+      globalThis.fetch = ((_url: string, _init?: RequestInit) =>
+        Promise.resolve(new Response(makeModelYaml({ "remote-model": baseModel })))) as typeof fetch;
+
+      const localYaml = makeModelYaml({ "local-model": baseModel }, ["http://unreachable.invalid/models.yaml"]);
+      const { dirPath } = await writeYamlInOwnDir(localYaml, fileIndex++);
+      configure(10, undefined, dirPath);
+      await refresh();
+
+      globalThis.fetch = ((_url: string, _init?: RequestInit) =>
+        Promise.reject(new DOMException("The operation timed out.", "TimeoutError"))) as typeof fetch;
+      await expect(refresh()).rejects.toThrow("keeping the previous catalog");
+
+      expect(get("remote-model")).toBeDefined();
+      expect(get("local-model")).toBeDefined();
+      expect(getCatalogHealth().legacy!.lastRefreshError).toContain("http://unreachable.invalid/models.yaml");
+    });
+  });
+
+  describe("unreadable directory after a load", () => {
+    it("keeps the previous catalog", async () => {
+      const { dirPath } = await writeYamlInOwnDir(makeModelYaml({ "local-model": baseModel }), fileIndex++);
+      configure(10, undefined, dirPath);
+      await refresh();
+
+      await rm(dirPath, { recursive: true });
+      await expect(refresh()).rejects.toThrow(dirPath);
+
+      expect(get("local-model")).toBeDefined();
     });
   });
 
