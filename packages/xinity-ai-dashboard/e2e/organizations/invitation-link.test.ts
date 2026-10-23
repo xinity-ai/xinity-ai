@@ -40,7 +40,10 @@ async function removeMember(email: string): Promise<void> {
   });
 }
 
-async function expectLandedInTestOrg(page: Page): Promise<void> {
+async function acceptAndExpectLandedInTestOrg(page: Page): Promise<void> {
+  const accept = page.getByRole("button", { name: "Accept invitation" });
+  await expectVisible(accept);
+  await accept.click();
   await page.waitForURL((url) => url.pathname === `/organizations/${TEST_ORG.slug}/`, { timeout: 30_000 });
 }
 
@@ -67,7 +70,7 @@ describe("Invitation link", () => {
       }
       await page.goto(verificationLink);
 
-      await expectLandedInTestOrg(page);
+      await acceptAndExpectLandedInTestOrg(page);
       expect(await memberEmails()).toContain(email);
     } finally {
       await context.close();
@@ -90,7 +93,7 @@ describe("Invitation link", () => {
       await page.locator("#in-pass").fill(PASSWORD);
       await page.locator("#form-signin button[type='submit']").click();
 
-      await expectLandedInTestOrg(page);
+      await acceptAndExpectLandedInTestOrg(page);
       expect(await memberEmails()).toContain(email);
     } finally {
       await context.close();
