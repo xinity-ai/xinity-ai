@@ -142,6 +142,11 @@ export function classifyStreamError(e: unknown): StreamErrorInfo {
 
 export const TRUNCATED_STREAM_MESSAGE = "Backend stream ended before the response was complete";
 
+export function backendFailureMessage(reference: string): string {
+  // A backend's own error text can carry engine internals, so the user gets a reference to the logged details instead.
+  return `The model failed while generating this response. Give your administrator the reference ${reference} to look it up.`;
+}
+
 /** The official OpenAI SDKs raise an APIError on a data frame carrying `error`, which is how a client learns a stream failed midway. */
 export function enqueueStreamErrorEvent(
   controller: ReadableStreamDefaultController,
@@ -412,19 +417,24 @@ export async function forwardBackendError(
   const text = await backendResponse.text().catch(() => "");
   const fields = { ...backendRouteFields(route), status: backendResponse.status, body: text };
   recordBackendError(route.model, backendResponse.status);
+  const status = mapBackendStatusToClient(backendResponse.status);
+
+  const failWithReference = (logMessage: string, clientStatus: number) => {
+    const reference = crypto.randomUUID();
+    log.error({ ...fields, reference }, logMessage);
+    return errorResponse(backendFailureMessage(reference), clientStatus);
+  };
 
   // The client's API key never reaches the daemon, so a 401 is the daemon refusing the
   // gateway itself. Passing it through would tell the user their own key is bad.
   if (backendResponse.status === 401) {
-    log.error(fields, "Daemon refused the gateway's request signature");
-    return errorResponse("Bad Gateway", 502);
+    return failWithReference("Daemon refused the gateway's request signature", 502);
+  }
+  if (backendResponse.status >= 500) {
+    return failWithReference("Backend error", status);
   }
 
   log.error(fields, "Backend error");
-  const status = mapBackendStatusToClient(backendResponse.status);
-  if (backendResponse.status >= 500) {
-    return errorResponse("Bad Gateway", status);
-  }
   if (isJsonString(text)) {
     return new Response(text, { status, headers: { "Content-Type": "application/json" } });
   }
