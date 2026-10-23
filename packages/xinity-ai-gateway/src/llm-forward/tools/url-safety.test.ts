@@ -5,13 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LookupAddress } from "node:dns";
 
-mock.module("../../env", () => ({
-  env: {
-    LOG_LEVEL: "silent",
-    LOG_DIR: undefined,
-  },
-}));
-
 const resolved: Record<string, LookupAddress[]> = {};
 mock.module("node:dns/promises", () => ({
   lookup: async (hostname: string) => {
