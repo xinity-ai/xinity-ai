@@ -34,19 +34,27 @@
   $effect(() => {
     if (!slug || slug.length < 2) {
       slugAvailable = null;
+      checkingSlug = false;
       return;
     }
 
+    let cancelled = false;
     checkingSlug = true;
     const timer = setTimeout(async () => {
       const result = await organization.checkSlug({ slug });
+      if (cancelled) {
+        return;
+      }
       if (result.data) {
         slugAvailable = result.data.status;
       }
       checkingSlug = false;
     }, 500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   });
 
   async function handleSubmit(e: Event) {

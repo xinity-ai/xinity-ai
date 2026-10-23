@@ -27,28 +27,38 @@
   let liveMetrics = $state<LiveMetrics | null>(null);
   let loading = $state(true);
 
+  let latestRefresh = 0;
+
   async function refresh(hours: number) {
+    const refreshId = ++latestRefresh;
     try {
       const [overviewResult, historyResult, liveMetricsResult] = await Promise.all([
         orpc.compute.overview({ rangeHours: hours }),
         orpc.compute.history({ rangeHours: hours, timeZone }),
         orpc.compute.liveMetrics({}),
       ]);
+      if (refreshId !== latestRefresh) {
+        return;
+      }
       if (!overviewResult[0] && overviewResult[1]) overview = overviewResult[1];
       if (!historyResult[0] && historyResult[1]) history = historyResult[1];
       if (!liveMetricsResult[0] && liveMetricsResult[1]) liveMetrics = liveMetricsResult[1];
     } finally {
-      loading = false;
+      if (refreshId === latestRefresh) {
+        loading = false;
+      }
     }
   }
 
   function setRange(hours: number) {
     $searchParams.range = String(hours);
-    void refresh(hours);
   }
 
-  onMount(() => {
+  $effect(() => {
     void refresh(rangeHours);
+  });
+
+  onMount(() => {
     const timer = setInterval(() => {
       if (!document.hidden) void refresh(rangeHours);
     }, POLL_INTERVAL_MS);
