@@ -13,6 +13,10 @@ mock.module("./db", () => ({
 
 const { recordUsageEvent, flushUsageEvents } = await import("./usageRecorder");
 
+function rowRejection() {
+  return new Error("Failed query", { cause: Object.assign(new Error("invalid input"), { code: "22P02" }) });
+}
+
 function sampleRecord(index: number) {
   return {
     organizationId: "org-1",
@@ -80,11 +84,11 @@ describe("usageRecorder", () => {
     expect(insertMock).toHaveBeenCalledTimes(1);
   });
 
-  test("falls back to individual row inserts when batch insert fails", async () => {
+  test("falls back to individual row inserts when the batch is rejected", async () => {
     insertMock
-      .mockRejectedValueOnce(new Error("Batch insert failed: unique constraint or bad value"))
+      .mockRejectedValueOnce(rowRejection())
       .mockResolvedValueOnce(undefined) // first row succeeds
-      .mockRejectedValueOnce(new Error("Bad row error")) // second row fails
+      .mockRejectedValueOnce(rowRejection()) // second row fails
       .mockResolvedValueOnce(undefined); // third row succeeds
 
     recordUsageEvent(sampleRecord(1));
@@ -95,6 +99,17 @@ describe("usageRecorder", () => {
 
     // 1 batch attempt + 3 individual attempts
     expect(insertMock).toHaveBeenCalledTimes(4);
+  });
+
+  test("does not retry row by row when the database itself failed", async () => {
+    insertMock.mockRejectedValue(new Error("connection refused"));
+
+    recordUsageEvent(sampleRecord(1));
+    recordUsageEvent(sampleRecord(2));
+
+    await flushUsageEvents();
+
+    expect(insertMock).toHaveBeenCalledTimes(1);
   });
 
   test("a flush with an empty queue still waits for an insert already in flight", async () => {

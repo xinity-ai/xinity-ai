@@ -4,6 +4,7 @@ import { chatMessageT, inferenceCallT } from "common-db";
 /** Rows each table was given, keyed by table. */
 const inserted = new Map<string, any[]>();
 let failWrite = false;
+let rejectedOrg: string | null = null;
 
 function tableName(table: unknown): string {
   if (table === chatMessageT) return "chat_message";
@@ -16,6 +17,9 @@ const dbMock = {
     values: (rows: unknown) => {
       const name = tableName(table);
       const list = (Array.isArray(rows) ? rows : [rows]) as any[];
+      if (name === "inference_call" && list.some((row) => row.organizationId === rejectedOrg)) {
+        throw new Error("Failed query", { cause: Object.assign(new Error("duplicate key"), { code: "23505" }) });
+      }
       inserted.set(name, [...(inserted.get(name) ?? []), ...list]);
       const done = Promise.resolve(undefined) as Promise<undefined> & Record<string, unknown>;
       done.onConflictDoNothing = () => ({
@@ -68,6 +72,7 @@ function sampleChatInput() {
 beforeEach(() => {
   inserted.clear();
   failWrite = false;
+  rejectedOrg = null;
 });
 
 describe("callLogger", () => {
@@ -194,5 +199,18 @@ describe("callLogger", () => {
     await logChatSync(sampleChatInput());
 
     expect(flushCallLog()).resolves.toBeUndefined();
+  });
+
+  test("a rejected call does not take the rest of its batch down", async () => {
+    const rejected = sampleChatInput();
+    rejectedOrg = rejected.organizationId;
+    const kept = [sampleChatInput(), sampleChatInput()];
+
+    await logChatSync(kept[0]!);
+    await logChatSync(rejected);
+    await logChatSync(kept[1]!);
+    await flushCallLog();
+
+    expect(calls().map((row) => row.organizationId)).toEqual(kept.map((input) => input.organizationId));
   });
 });
