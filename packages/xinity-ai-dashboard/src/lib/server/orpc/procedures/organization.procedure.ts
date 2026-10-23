@@ -6,7 +6,7 @@ import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
-import { memberT, userT, invitationT, sql } from "common-db";
+import { memberT, userT, invitationT, sql, driverErrorCode } from "common-db";
 import { isInstanceAdmin, isRoleAvailable, RoleSchema } from "$lib/server/roles";
 import { MULTI_ORG_LICENSE_MESSAGE, organizationLimitReached } from "$lib/server/lib/instance/organization-limit";
 import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
@@ -266,7 +266,7 @@ const cancelInvitation = rootOs
   });
 
 function isForeignKeyViolation(err: unknown): boolean {
-  return typeof err === "object" && err !== null && (err as { code?: unknown }).code === "23503";
+  return driverErrorCode(err) === "23503";
 }
 
 const deleteOrganization = rootOs
