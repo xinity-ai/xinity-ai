@@ -3,7 +3,7 @@
  */
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { z } from "zod";
-import { sql, aiApiKeyT, apiCallT, inferenceCallT } from "common-db";
+import { sql, aiApiKeyT, aiApplicationT, apiCallT, inferenceCallT } from "common-db";
 import { getDB } from "$lib/server/db";
 import { resolveCallMessages } from "$lib/server/lib/calls/call-messages";
 import { messageIdsOfCalls, pruneUnreferencedMessages } from "$lib/server/lib/calls/chat-message-store";
@@ -131,7 +131,23 @@ const reassignApplication = rootOs
     apiCallIds: z.uuid().array().min(1).max(500),
     applicationId: z.uuid().nullable(),
   }))
-  .handler(async ({ context, input }) => {
+  .errors({ NOT_FOUND: {} })
+  .handler(async ({ context, input, errors }) => {
+    if (input.applicationId !== null) {
+      const [app] = await getDB()
+        .select({ id: aiApplicationT.id })
+        .from(aiApplicationT)
+        .where(sql`
+          ${aiApplicationT.id} = ${input.applicationId}
+          AND ${aiApplicationT.organizationId} = ${context.activeOrganizationId}
+          AND ${aiApplicationT.deletedAt} IS NULL
+        `)
+        .limit(1);
+      if (!app) {
+        throw errors.NOT_FOUND({ message: "Application not found" });
+      }
+    }
+
     const result = await getDB()
       .update(inferenceCallT)
       .set({ applicationId: input.applicationId })
