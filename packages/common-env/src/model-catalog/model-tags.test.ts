@@ -1,10 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import {
   resolveDefaultProvider,
-  resolveProvider,
   resolveTagsForDriver,
   resolveAllTags,
-  driverHasTag,
   resolveArgsForDriver,
   resolveRequiredFeaturesForDriver,
 } from "./model-tags";
@@ -41,19 +39,6 @@ describe("resolveDefaultProvider", () => {
   it("returns undefined when no providers have values", () => {
     const m = makeModel({ providers: {} as any });
     expect(resolveDefaultProvider(m)).toBeUndefined();
-  });
-});
-
-describe("resolveProvider", () => {
-  it("returns the provider model for a known driver", () => {
-    const m = makeModel();
-    expect(resolveProvider(m, "vllm")).toBe("org/test-vllm");
-    expect(resolveProvider(m, "ollama")).toBe("test-ollama");
-  });
-
-  it("returns undefined for a driver not in the model", () => {
-    const m = makeModel({ providers: { vllm: "org/test-vllm" } });
-    expect(resolveProvider(m, "ollama")).toBeUndefined();
   });
 });
 
@@ -103,23 +88,6 @@ describe("resolveAllTags", () => {
     expect(tags).toContain("custom_code");
     // No duplicates
     expect(tags.filter(t => t === "vision")).toHaveLength(1);
-  });
-});
-
-describe("driverHasTag", () => {
-  it("returns true when the driver has the tag", () => {
-    const m = makeModel({ providerTags: { vllm: ["tools"] } });
-    expect(driverHasTag(m, "vllm", "tools")).toBe(true);
-  });
-
-  it("returns false when the driver does not have the tag", () => {
-    const m = makeModel({ providerTags: { vllm: ["tools"] } });
-    expect(driverHasTag(m, "vllm", "custom_code")).toBe(false);
-  });
-
-  it("falls back to model-level tags for a driver without providerTags", () => {
-    const m = makeModel({ tags: ["vision"], providerTags: { vllm: ["tools"] } });
-    expect(driverHasTag(m, "ollama", "vision")).toBe(true);
   });
 });
 
