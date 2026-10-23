@@ -91,16 +91,17 @@ describe("RBAC enforcement", () => {
     const keys = (await listRes.json()) as ApiKeyResponse[];
     expect(Array.isArray(keys)).toBe(true);
     const targetKey = keys.find((k) => k.name === `Key To Not Delete ${suffix}`);
-
-    if (targetKey) {
-      const deleteRes = await viewerFetch(`/api/api-key/${targetKey.id}`, {
-        method: "DELETE",
-        body: JSON.stringify({ id: targetKey.id }),
-      });
-
-      expect(deleteRes.status).toBeGreaterThanOrEqual(400);
-      expect(deleteRes.status).toBeLessThan(500);
+    if (!targetKey) {
+      throw new Error("The key created for this test is missing from the owner's list");
     }
+
+    const deleteRes = await viewerFetch(`/api/api-key/${targetKey.id}`, {
+      method: "DELETE",
+      body: JSON.stringify({ id: targetKey.id }),
+    });
+
+    expect(deleteRes.status).toBeGreaterThanOrEqual(400);
+    expect(deleteRes.status).toBeLessThan(500);
   });
 
   test("viewer cannot list API keys", async () => {

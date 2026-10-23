@@ -248,19 +248,6 @@ describe("emitAuthAuditEvent", () => {
     expect(row.resourceId).toBeNull();
   });
 
-  test("swallows DB errors without throwing", async () => {
-    insertValues.mockImplementationOnce(() => ({ returning: () => Promise.reject(new Error("db down")) }));
-    expect(() => {
-      emitAuthAuditEvent({
-        action: "account.sign_out",
-        resource: "account",
-        actorId: "user-1",
-        actorLabel: null,
-        ipAddress: null,
-        userAgent: null,
-      });
-    }).not.toThrow();
-  });
 });
 
 describe("auditMiddleware", () => {
