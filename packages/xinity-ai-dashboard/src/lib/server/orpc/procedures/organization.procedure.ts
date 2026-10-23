@@ -55,10 +55,13 @@ export const createOrganization = rootOs
       throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to create organization" });
     }
 
-    await auth.api.setActiveOrganization({
-      body: { organizationId: org.id },
-      headers: context.request.headers,
-    });
+    // An API key session has no stored row to activate the organization on.
+    if (context.actor.actorType !== "api_key") {
+      await auth.api.setActiveOrganization({
+        body: { organizationId: org.id },
+        headers: context.request.headers,
+      });
+    }
 
     return { id: org.id, name: org.name, slug: org.slug };
   });
