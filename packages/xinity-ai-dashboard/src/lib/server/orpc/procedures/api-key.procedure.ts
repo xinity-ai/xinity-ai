@@ -102,6 +102,7 @@ const listApiKey = rootOs.use(withOrganization)
         ${aiApiKeyT.organizationId} = ${context.activeOrganizationId}
         AND ${aiApiKeyT.deletedAt} IS NULL
       `)
+      .orderBy(sql`${aiApiKeyT.createdAt} DESC, ${aiApiKeyT.id} DESC`)
       .limit(400);
     return keys;
   });

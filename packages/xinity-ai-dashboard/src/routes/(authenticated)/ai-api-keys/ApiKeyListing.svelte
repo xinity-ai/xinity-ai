@@ -13,9 +13,10 @@ import { invalidate } from "$app/navigation";
   import { Badge } from "$lib/components/ui/badge";
 
   // Icons
-  import { Plus, Pencil, KeyRound } from "@lucide/svelte";
+  import { Plus, Pencil, KeyRound, ChevronDown, ChevronUp } from "@lucide/svelte";
 
   const locale = "de";
+  const VISIBLE_KEY_COUNT = 10;
   type EditingKey = Pick<ApiKeyDto, "name" | "specifier" | "id" | "applicationId">;
 
   let {
@@ -32,6 +33,7 @@ import { invalidate } from "$app/navigation";
     userId: string;
   } = $props();
   let keyToDelete: ApiKeyDto | null = $state(null);
+  let showOlder = $state({ mine: false, org: false });
 
   const myKeys = $derived(apiKeys.filter((key) => key.createdByUserId === userId));
   const orgKeys = $derived(apiKeys.filter((key) => key.createdByUserId !== userId));
@@ -98,7 +100,9 @@ import { invalidate } from "$app/navigation";
   }
 </script>
 
-{#snippet keyTable(keys: ApiKeyDto[])}
+{#snippet keyTable(keys: ApiKeyDto[], section: keyof typeof showOlder)}
+  {@const olderCount = Math.max(keys.length - VISIBLE_KEY_COUNT, 0)}
+  {@const visibleKeys = showOlder[section] ? keys : keys.slice(0, VISIBLE_KEY_COUNT)}
   <table class="min-w-full">
     <thead class="bg-muted/50">
       <tr>
@@ -125,7 +129,7 @@ import { invalidate } from "$app/navigation";
       </tr>
     </thead>
     <tbody class="divide-y">
-      {#each keys as key}
+      {#each visibleKeys as key (key.id)}
         <tr>
           <td class="px-6 py-4 compact:px-3 compact:py-2 whitespace-nowrap">
             <div class="flex items-center text-sm font-medium">
@@ -217,6 +221,23 @@ import { invalidate } from "$app/navigation";
       {/each}
     </tbody>
   </table>
+  {#if olderCount > 0}
+    <Button
+      variant="ghost"
+      size="sm"
+      class="w-full rounded-none border-t text-muted-foreground"
+      aria-expanded={showOlder[section]}
+      onclick={() => (showOlder[section] = !showOlder[section])}
+    >
+      {#if showOlder[section]}
+        <ChevronUp class="w-4 h-4" />
+        Hide older keys
+      {:else}
+        <ChevronDown class="w-4 h-4" />
+        Show {olderCount} older {olderCount === 1 ? "key" : "keys"}
+      {/if}
+    </Button>
+  {/if}
 {/snippet}
 
 <!-- API Keys Section -->
@@ -256,7 +277,7 @@ import { invalidate } from "$app/navigation";
             <div class="px-4 py-2 compact:px-3 compact:py-1 bg-muted font-semibold text-sm">
               Your Keys
             </div>
-            {@render keyTable(myKeys)}
+            {@render keyTable(myKeys, "mine")}
           </div>
         {/if}
         {#if orgKeys.length > 0}
@@ -264,7 +285,7 @@ import { invalidate } from "$app/navigation";
             <div class="px-4 py-2 compact:px-3 compact:py-1 bg-muted font-semibold text-sm">
               Organization Keys
             </div>
-            {@render keyTable(orgKeys)}
+            {@render keyTable(orgKeys, "org")}
           </div>
         {/if}
       {/if}
