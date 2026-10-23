@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import {
+  backendFailureMessage,
   enqueueStreamErrorEvent,
   errorResponse,
   forwardBackendError,
@@ -208,11 +209,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           } else {
             const reference = crypto.randomUUID();
             log.error({ model: originalModel, nodeId, reference, backendError }, "Backend failed mid-stream");
-            enqueueStreamErrorEvent(
-              controller,
-              `The model failed while generating this response. Give your administrator the reference ${reference} to look it up.`,
-              "server_error",
-            );
+            enqueueStreamErrorEvent(controller, backendFailureMessage(reference), "server_error");
           }
           controller.close();
           return;

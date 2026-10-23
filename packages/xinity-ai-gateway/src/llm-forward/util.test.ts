@@ -83,6 +83,20 @@ describe("forwardBackendError", () => {
     expect(await res.text()).toBe(body);
     expect(error).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "node-1", status: 400, signed: false }), "Backend error");
   });
+
+  test("answers a backend failure with a reference to the logged details instead of the backend's text", async () => {
+    const { log, error } = capturingLog();
+    const res = await forwardBackendError(new Response("CUDA out of memory on GPU 0", { status: 500 }), log, route);
+
+    expect(res.status).toBe(502);
+    const { message } = ((await res.json()) as { error: { message: string } }).error;
+    expect(message).not.toContain("CUDA");
+    const [, reference] = message.match(/reference ([0-9a-f-]{36})/) ?? [];
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ reference, body: "CUDA out of memory on GPU 0" }),
+      "Backend error",
+    );
+  });
 });
 
 describe("handleStreamError", () => {
