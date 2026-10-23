@@ -370,16 +370,16 @@ export const auth = betterAuth({
       if (ctx.path === "/sign-up/email" && !config.auth.signupEnabled()) {
         const email = ctx.body?.email;
         if (email) {
-          const [invitation] = await getDB()
-            .select({ id: invitationT.id })
+          const invitations = await getDB()
+            .select({ expiresAt: invitationT.expiresAt })
             .from(invitationT)
             .where(sql`
-              ${invitationT.email} = ${email}
+              lower(${invitationT.email}) = ${String(email).toLowerCase()}
             AND
               ${invitationT.status} = ${"pending"}
-            `)
-            .limit(1);
-          if (!invitation) {
+            `);
+          const now = new Date();
+          if (!invitations.some((invitation) => invitation.expiresAt > now)) {
             throw new APIError("FORBIDDEN", {
               message: "Registration is currently invite-only. Contact an administrator for an invitation.",
             });
