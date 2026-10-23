@@ -157,4 +157,48 @@ describe("forwardOpenAIStream", () => {
     expect(text).toContain('"unmodeled_field":true');
     expect(warn).toHaveBeenCalled();
   });
+
+  function streamEndingIn(errorFrame: object): Promise<string> {
+    const sseBody = [
+      `data: ${JSON.stringify({ id: "c1", created: 1, object: "chat.completion.chunk", model: "backend-model", choices: [{ index: 0, delta: { content: "Hel" } }] })}\n\n`,
+      `data: ${JSON.stringify({ error: errorFrame })}\n\n`,
+      "data: [DONE]\n\n",
+    ].join("");
+    return forwardOpenAIStream({
+      backendResponse: new Response(sseBody, { headers: { "Content-Type": "text/event-stream" } }),
+      originalModel: "public-model",
+      includeUsage: false,
+      spec: {
+        ...chatSpec,
+        synthesizeFinal: (_acc, index, template) => ({ ...template, choices: [{ index, delta: {}, finish_reason: "stop" }] }),
+      },
+      logFields: dummyLogFields,
+      log,
+    }).text();
+  }
+
+  test("ends the stream with a reference instead of the engine's message when the backend fails mid-stream", async () => {
+    const text = await streamEndingIn({ message: "CUDA out of memory on GPU 0", type: "InternalServerError", param: null, code: 500 });
+
+    expect(text).toMatch(/"type":"server_error"/);
+    expect(text).toMatch(/reference [0-9a-f-]{36}/);
+    expect(text).not.toContain("CUDA");
+    expect(text).not.toContain('"finish_reason":"stop"');
+    expect(text).toEndWith("data: [DONE]\n\n");
+  });
+
+  test("passes a request error from the backend through as it was reported", async () => {
+    const text = await streamEndingIn({ message: "temperature must be non-negative", type: "BadRequestError", param: "temperature", code: 400 });
+
+    expect(text).toEndWith(
+      `data: ${JSON.stringify({ error: { message: "temperature must be non-negative", type: "invalid_request_error", param: "temperature" } })}\n\ndata: [DONE]\n\n`,
+    );
+  });
+
+  test("treats an error frame without a code as a server failure", async () => {
+    const text = await streamEndingIn({ message: "something internal" });
+
+    expect(text).toMatch(/"type":"server_error"/);
+    expect(text).not.toContain("something internal");
+  });
 });
