@@ -1,29 +1,9 @@
 import { describe, test, expect } from "bun:test";
 import { CreateResponseBodySchema, type CreateResponseBody, type MessageOutputItem, type ReasoningOutputItem } from "./schemas";
-import type {
-  ToolCallItem,
-  ToolResultData,
-  ResponsePayloadParams,
-} from "./builders";
-
-
-const {
-  createToolTracker,
-  resolveActiveTools,
-  parseFunctionTools,
-  buildFunctionToolSet,
-  buildOutputConfig,
-  resolveResponseText,
-  formatUsage,
-  createResponseObject,
-  markResponseFailed,
-  extractSearchAnnotations,
-  buildOutputItems,
-  buildStepOutputItems,
-  buildInputItems,
-  inputItemId,
-  parseInputItemCursor,
-} = await import("./builders");
+import { createToolTracker, resolveActiveTools, parseFunctionTools, buildFunctionToolSet, type ToolCallItem, type ToolResultData } from "./tools";
+import { buildOutputConfig, resolveResponseText } from "./generation-params";
+import { formatUsage, createResponseObject, markResponseFailed, type ResponsePayloadParams } from "./response-object";
+import { extractSearchAnnotations, buildOutputItems, buildStepOutputItems, buildInputItems, inputItemId, parseInputItemCursor } from "./items";
 
 // ---------------------------------------------------------------------------
 // Helpers

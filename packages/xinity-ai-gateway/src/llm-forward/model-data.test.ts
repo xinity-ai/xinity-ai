@@ -4,22 +4,6 @@ import { redis } from "../redis";
 import type { LegacyModel, Model } from "common-env/model-catalog";
 import type { ModelInfo, ModelLookup } from "./model-data";
 
-mock.module("../env", () => ({
-  env: {
-    HOST: "localhost",
-    PORT: 4010,
-    DB_CONNECTION_URL: "postgresql://localhost/test",
-    REDIS_URL: "redis://localhost:6379",
-    INFOSERVER_URL: "http://localhost:3000",
-    INFOSERVER_CACHE_TTL_MS: 30000,
-    LOAD_BALANCE_STRATEGY: "random",
-    BACKEND_TIMEOUT_MS: 300000,
-    LOG_LEVEL: "silent",
-    LOG_DIR: undefined,
-    METRICS_AUTH: undefined,
-  },
-}));
-
 const db = drizzle.mock();
 const queryQueue: Record<string, unknown>[][] = [];
 let executeCount = 0;

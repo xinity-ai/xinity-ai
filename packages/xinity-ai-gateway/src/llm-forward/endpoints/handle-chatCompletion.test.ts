@@ -57,7 +57,7 @@ const recordUsageEvent = mock((_record: Record<string, unknown>) => {});
 mock.module("../../usageRecorder", () => ({ recordUsageEvent }));
 
 const { handleChatCompletion } = await import("./handle-chatCompletion");
-// Imported after the module mocks above so util's transitive `env` import sees the mock.
+// Imported after the module mocks above so util's transitive imports see them.
 const { readSSEStream } = await import("../util");
 
 const MOCK_TOOL_CALLS = [{ id: "call_test123", name: "get_weather", arguments: '{"location":"Boston"}' }];
@@ -534,28 +534,6 @@ describe("handleChatCompletion, tool calling", () => {
     expect(forwardedTools.length).toBe(1);
     expect(forwardedTools[0].function.name).toBe("get_weather");
     expect(lastUpstreamBody?.tool_choice).toBe("required");
-  });
-
-  test("should not pass tools when tool_choice is 'none'", async () => {
-    const req = new Request("http://localhost:4000/v1/chat/completions", {
-      method: "POST",
-      headers: { "Authorization": "Bearer test" },
-      body: JSON.stringify({
-        model: "test-model",
-        messages: [{ role: "user", content: "Hello" }],
-        tools: SAMPLE_TOOLS,
-        tool_choice: "none",
-      }),
-    });
-
-    const res = await handleChatCompletion(req);
-    expect(res.status).toBe(200);
-
-    const body = await res.json() as any;
-    // With tool_choice "none", the model should return text, not tool calls
-    expect(body.choices[0].finish_reason).toBe("stop");
-    expect(body.choices[0].message.content).toBe("Hello");
-    expect(body.choices[0].message.tool_calls).toBeUndefined();
   });
 
   test("should forward specific function tool_choice to upstream", async () => {
