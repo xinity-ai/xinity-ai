@@ -11,9 +11,10 @@ import { invalidate } from "$app/navigation";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
   import { Badge } from "$lib/components/ui/badge";
+  import * as Tooltip from "$lib/components/ui/tooltip";
 
   // Icons
-  import { Plus, Pencil, KeyRound, ChevronDown, ChevronUp } from "@lucide/svelte";
+  import { Plus, Pencil, KeyRound, ChevronDown, ChevronUp, Info } from "@lucide/svelte";
 
   const locale = "de";
   const VISIBLE_KEY_COUNT = 10;
@@ -163,9 +164,21 @@ import { invalidate } from "$app/navigation";
             {/if}
           </td>
           <td class="px-6 py-4 compact:px-3 compact:py-2 whitespace-nowrap text-sm">
-            {key.createdAt.toLocaleDateString(locale, {
-              dateStyle: "medium",
-            })}
+            <div class="flex items-center gap-1.5">
+              {key.createdAt.toLocaleDateString(locale, {
+                dateStyle: "medium",
+              })}
+              {#if section === "org" && key.createdByUserName}
+                <Tooltip.Provider>
+                  <Tooltip.Root>
+                    <Tooltip.Trigger class="text-muted-foreground hover:text-foreground" aria-label="Created by {key.createdByUserName}">
+                      <Info class="w-3.5 h-3.5" />
+                    </Tooltip.Trigger>
+                    <Tooltip.Content>Created by {key.createdByUserName}</Tooltip.Content>
+                  </Tooltip.Root>
+                </Tooltip.Provider>
+              {/if}
+            </div>
           </td>
           <td class="px-6 py-4 compact:px-3 compact:py-2 whitespace-nowrap">
             <div class="flex gap-1.5 flex-wrap">

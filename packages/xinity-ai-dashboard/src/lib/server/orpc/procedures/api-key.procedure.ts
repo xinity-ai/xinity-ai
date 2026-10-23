@@ -2,7 +2,7 @@ import { rootOs, withOrganization, requirePermission, auditMiddleware } from "..
 import { z } from "zod";
 import { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
-import { sql, aiApiKeyT, aiApplicationT, apiKeyVerifier } from "common-db";
+import { sql, aiApiKeyT, aiApplicationT, apiKeyVerifier, userT } from "common-db";
 import { generateApiKey } from "$lib/server/lib/auth/api-key";
 import { pick } from "$lib/util";
 import { getDB } from "$lib/server/db";
@@ -96,8 +96,12 @@ const listApiKey = rootOs.use(withOrganization)
   .route({ path: "/", tags, method: "GET", summary: "List LLM API Keys" })
   .handler(async ({ context }) => {
     const keys = await getDB()
-      .select(pick(aiApiKeyT, "name", "enabled", "collectData", "specifier", "createdAt", "id", "applicationId", "createdByUserId"))
+      .select({
+        ...pick(aiApiKeyT, "name", "enabled", "collectData", "specifier", "createdAt", "id", "applicationId", "createdByUserId"),
+        createdByUserName: userT.name,
+      })
       .from(aiApiKeyT)
+      .leftJoin(userT, sql`${userT.id} = ${aiApiKeyT.createdByUserId}`)
       .where(sql`
         ${aiApiKeyT.organizationId} = ${context.activeOrganizationId}
         AND ${aiApiKeyT.deletedAt} IS NULL
