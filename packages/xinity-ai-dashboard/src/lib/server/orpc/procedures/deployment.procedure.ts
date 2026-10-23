@@ -2,7 +2,7 @@ import { rootOs, withOrganization, requirePermission, auditMiddleware } from "..
 import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { inArray, sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, deploymentMatchesInstallation, installationOnLiveNode, stateOfInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
-import { DeploymentDto, DeploymentWithStatusDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
+import { DeploymentDto, DeploymentUpdateDto, DeploymentWithStatusDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
 import { requirementsForDeployments, type DeploymentPlan } from "$lib/server/lib/deployments/requirements";
@@ -269,7 +269,7 @@ const updateDeployment = rootOs
   .route({
     path: "/{id}", method: "PATCH", tags, summary: "Update Deployment",
   })
-  .input(DeploymentDto.omit(commonInputFilter))
+  .input(DeploymentUpdateDto)
   .output(DeploymentDto)
   .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
