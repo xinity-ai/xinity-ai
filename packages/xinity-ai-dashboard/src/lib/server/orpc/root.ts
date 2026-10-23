@@ -111,8 +111,10 @@ export const withOrganization = rootOs.middleware(async ({ context, next, errors
   const session = await loadSessionOrThrow(context, errors);
   const { actor, apiKeyInfo } = await resolveActor(context.request, session);
 
+  const { pinnedOrganizationId } = context as { pinnedOrganizationId?: string };
   const activeOrganizationId =
-    session.session.activeOrganizationId
+    pinnedOrganizationId
+    ?? session.session.activeOrganizationId
     ?? apiKeyInfo?.organizationId
     ?? await readActiveOrganizationFromDb(context.request.headers);
 
