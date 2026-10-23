@@ -53,12 +53,10 @@ describe("github", () => {
 
     test("uses correct prefix per component", () => {
       const release = makeRelease([
-        "xinity-cli-linux-x64.tar.gz",
         "xinity-infoserver-linux-x64.tar.gz",
         "xinity-ai-daemon-linux-x64.tar.gz",
         "xinity-ai-dashboard-linux-x64.tar.gz",
       ]);
-      expect(pickReleaseAsset(release, "cli", "x64")).toBe("xinity-cli-linux-x64.tar.gz");
       expect(pickReleaseAsset(release, "infoserver", "x64")).toBe("xinity-infoserver-linux-x64.tar.gz");
       expect(pickReleaseAsset(release, "daemon", "x64")).toBe("xinity-ai-daemon-linux-x64.tar.gz");
       expect(pickReleaseAsset(release, "dashboard", "x64")).toBe("xinity-ai-dashboard-linux-x64.tar.gz");

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { Host, RunResult } from "../core/host.ts";
-import { testRdmaPath, type RdmaTestSide } from "./rdma-test.ts";
+import type { Host, RunResult } from "../../../src/lib/core/host.ts";
+import { testRdmaPath, type RdmaTestSide } from "../../../src/lib/doctor/rdma-test.ts";
 
 const ADDRESSES = "  local address:  LID 0x0000, QPN 0x00012c, PSN 0x4ce44e, GID ::ffff:192.168.100.2\n  remote address: LID 0x0000, QPN 0x00012a, PSN 0x5c96c7, GID ::ffff:192.168.100.1";
 

@@ -1,7 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { GroupStage } from "common-env";
-import type { Host } from "../core/host.ts";
-import { checkGroup, type HostedMember } from "./group-check.ts";
+import type { Host } from "../../../src/lib/core/host.ts";
+import { checkGroup, type HostedMember } from "../../../src/lib/doctor/group-check.ts";
 
 const member = (rank: number, stage: GroupStage | null, generation = 1): HostedMember => ({
   hostName: `spark-${rank}`,
