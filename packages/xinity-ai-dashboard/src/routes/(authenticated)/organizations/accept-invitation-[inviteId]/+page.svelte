@@ -1,7 +1,41 @@
 <script lang="ts">
   import type { PageData } from "./$types";
+  import { goto } from "$app/navigation";
+  import { organization } from "$lib/auth";
+  import { Button } from "$lib/components/ui/button";
+  import * as Card from "$lib/components/ui/card";
+  import * as Avatar from "$lib/components/ui/avatar";
 
   let { data }: { data: PageData } = $props();
+
+  type Failure = { code?: string; message?: string; status?: number };
+  let acceptFailure: Failure | null = $state(null);
+  let accepting = $state(false);
+
+  const failure: Failure | null = $derived(
+    acceptFailure ?? (data.error ? { code: data.errorCode, message: data.errorMessage, status: data.statusCode } : null),
+  );
+
+  async function acceptInvitation() {
+    if (data.error) {
+      return;
+    }
+    accepting = true;
+    const { error } = await organization.acceptInvitation({ invitationId: data.inviteId });
+    accepting = false;
+    if (error) {
+      acceptFailure = { code: error.code, message: error.message, status: error.status };
+      return;
+    }
+    await goto(`/organizations/${data.invitation.organizationSlug}/`, { invalidateAll: true });
+  }
+
+  const emailNotVerified = $derived({
+    title: "Email Not Verified",
+    description: `Your email address ${data.userEmail} must be verified before you can accept this invitation.`,
+    suggestion:
+      "To verify it, either:\n• Use the link in your verification email, or request a new one from the Organizations page\n• Ask an instance administrator to mark your email as verified",
+  });
 
   // Error message mapping
   const errorMessages: Record<
@@ -27,12 +61,8 @@
       suggestion:
         "Please contact the organization administrator to request a new invitation.",
     },
-    EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION: {
-      title: "Email Not Verified",
-      description: `Your email address ${data.userEmail} must be verified before you can accept this invitation.`,
-      suggestion:
-        "To verify it, either:\n• Use the link in your verification email, or request a new one from the Organizations page\n• Ask an instance administrator to mark your email as verified",
-    },
+    EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION: emailNotVerified,
+    EMAIL_VERIFICATION_REQUIRED_FOR_INVITATION: emailNotVerified,
     ALREADY_A_MEMBER: {
       title: "Already a Member",
       description: "You're already a member of this organization.",
@@ -44,20 +74,20 @@
   const defaultError = $derived({
     title: "Error Accepting Invitation",
     description:
-      data.errorMessage ||
+      failure?.message ||
       "An unexpected error occurred while accepting the invitation.",
     suggestion:
       "Please try again or contact the organization administrator for assistance.",
   });
 
-  const errorInfo = $derived(data.errorCode
-    ? errorMessages[data.errorCode] || defaultError
+  const errorInfo = $derived(failure?.code
+    ? errorMessages[failure.code] || defaultError
     : defaultError);
 </script>
 
-<div class="container max-w-2xl px-6 py-8 mx-auto">
-  {#if data.error}
-    <div class="p-8 bg-white rounded-lg shadow">
+<div class="flex items-center justify-center min-h-[80vh] px-4">
+  {#if failure}
+    <div class="w-full max-w-2xl p-8 bg-white rounded-lg shadow">
       <!-- Error Icon -->
       <div class="flex justify-center mb-6">
         <div
@@ -90,12 +120,12 @@
       </p>
 
       <!-- Error Code Badge -->
-      {#if data.errorCode}
+      {#if failure.code}
         <div class="flex justify-center mb-6">
           <span
             class="px-3 py-1 text-xs font-mono text-red-800 bg-red-100 rounded-full"
           >
-            Error Code: {data.errorCode}
+            Error Code: {failure.code}
           </span>
         </div>
       {/if}
@@ -136,22 +166,36 @@
         <div
           class="p-3 mt-2 text-xs font-mono text-gray-600 bg-gray-50 rounded border border-gray-200"
         >
-          <div><strong>Status Code:</strong> {data.statusCode}</div>
-          <div><strong>Error Code:</strong> {data.errorCode || "N/A"}</div>
+          <div><strong>Status Code:</strong> {failure.status ?? "N/A"}</div>
+          <div><strong>Error Code:</strong> {failure.code || "N/A"}</div>
           <div><strong>Invitation ID:</strong> {data.inviteId}</div>
           <div><strong>Your Email:</strong> {data.userEmail}</div>
         </div>
       </details>
     </div>
-  {:else}
-    <!-- This shouldn't happen as successful acceptance redirects, but just in case -->
-    <div class="p-8 text-center bg-white rounded-lg shadow">
-      <div class="flex justify-center mb-4">
-        <div
-          class="w-12 h-12 border-4 border-xinity-purple border-t-transparent rounded-full animate-spin"
-        ></div>
-      </div>
-      <p class="text-gray-600">Processing invitation...</p>
-    </div>
+  {:else if !data.error}
+    {@const { organizationName, organizationLogo, inviterEmail, role } = data.invitation}
+    <Card.Root class="w-full max-w-md">
+      <Card.Header class="justify-items-center gap-4 text-center">
+        <Avatar.Root class="w-20 h-20 text-3xl">
+          {#if organizationLogo}
+            <Avatar.Image src={organizationLogo} alt={organizationName} />
+          {/if}
+          <Avatar.Fallback class="bg-primary text-primary-foreground">
+            {organizationName.charAt(0).toUpperCase()}
+          </Avatar.Fallback>
+        </Avatar.Root>
+        <Card.Title class="text-2xl">{organizationName}</Card.Title>
+        <Card.Description>
+          {inviterEmail} invited you to join as {role}.
+        </Card.Description>
+      </Card.Header>
+      <Card.Footer class="flex gap-3">
+        <Button variant="outline" href="/organizations/" class="flex-1">Not now</Button>
+        <Button onclick={acceptInvitation} disabled={accepting} class="flex-1">
+          {accepting ? "Joining..." : "Accept invitation"}
+        </Button>
+      </Card.Footer>
+    </Card.Root>
   {/if}
 </div>
