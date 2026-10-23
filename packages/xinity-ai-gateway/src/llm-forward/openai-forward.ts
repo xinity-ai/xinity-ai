@@ -14,7 +14,7 @@ import {
   sseResponse,
   type BackendRoute,
 } from "./util";
-import { recordTimeToFirstToken } from "../metrics";
+import { recordBackendError, recordTimeToFirstToken } from "../metrics";
 import { BackendUsageSchema } from "./backend-schemas";
 import type { CallLogFields } from "./usage";
 import type { ChatStreamData, ChatSyncData } from "../callLogger";
@@ -83,6 +83,26 @@ export function isStandardStreamingChunk(json: unknown): boolean {
   return true;
 }
 
+type BackendStreamError = { code: number | undefined; message: string; param: string | null };
+
+function backendStreamError(json: unknown): BackendStreamError | undefined {
+  const error = (json as { error?: unknown } | null)?.error;
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+  const { code, message, param } = error as { code?: unknown; message?: unknown; param?: unknown };
+  return {
+    code: typeof code === "number" ? code : undefined,
+    message: typeof message === "string" ? message : "Backend reported an error",
+    param: typeof param === "string" ? param : null,
+  };
+}
+
+// A 4xx describes the caller's own request. Anything else may carry engine internals, so it stays in the log.
+function isCausedByRequest(error: BackendStreamError): boolean {
+  return error.code !== undefined && error.code >= 400 && error.code < 500;
+}
+
 export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   backendResponse,
   originalModel,
@@ -103,6 +123,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   onStreamEnd?: () => void;
 }): Response {
   let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined;
+  let backendError: BackendStreamError | undefined;
   let sawDone = false;
   let ttftRecorded = false;
   const accumByChoice = new Map<number, Acc>();
@@ -124,6 +145,11 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           } catch {
             log.warn({ data: event.data }, "Non-JSON SSE chunk from backend, skipping");
             continue;
+          }
+
+          backendError = backendStreamError(json);
+          if (backendError !== undefined) {
+            break;
           }
 
           let chunk: Chunk;
@@ -170,6 +196,26 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           }
           const forwarded = includeUsage ? chunk : { ...chunk, usage: undefined };
           controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(forwarded)}\n\n`));
+        }
+
+        if (backendError !== undefined) {
+          const { model, nodeId } = logFields.modelInfo;
+          recordBackendError(model, backendError.code ?? 500);
+          recordFailedRequest(logFields);
+          if (isCausedByRequest(backendError)) {
+            log.warn({ model: originalModel, backendError }, "Backend rejected the request mid-stream");
+            enqueueStreamErrorEvent(controller, backendError.message, "invalid_request_error", backendError.param);
+          } else {
+            const reference = crypto.randomUUID();
+            log.error({ model: originalModel, nodeId, reference, backendError }, "Backend failed mid-stream");
+            enqueueStreamErrorEvent(
+              controller,
+              `The model failed while generating this response. Give your administrator the reference ${reference} to look it up.`,
+              "server_error",
+            );
+          }
+          controller.close();
+          return;
         }
 
         const sortedAccs = [...accumByChoice.entries()].sort(([a], [b]) => a - b);
