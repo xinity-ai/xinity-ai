@@ -78,6 +78,30 @@ describe("processMessageMedia, S3 enabled", () => {
     expect(dbParts[1]!.image_url.url).toMatch(/^xinity-media:\/\/[0-9a-f]{64}$/);
   });
 
+  test("a failed store still logs the image's reference and keeps a media-only message", async () => {
+    const failingStore = makeMediaStore(mock(() => Promise.reject(new Error("S3 unavailable"))));
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: TINY_PNG_DATA_URI } }] },
+    ] as any;
+
+    const { messagesForDB } = await processMessageMedia(messages, "org-1", failingStore, true);
+
+    expect(messagesForDB).toHaveLength(1);
+    expect((messagesForDB[0]!.content as any[])[0].image_url.url).toMatch(/^xinity-media:\/\/[0-9a-f]{64}$/);
+  });
+
+  test("a failed store still logs the audio's reference", async () => {
+    const failingStore = makeMediaStore(mock(() => Promise.reject(new Error("S3 unavailable"))));
+    const wav = Buffer.from("RIFF\0\0\0\0WAVEfmt ").toString("base64");
+    const messages = [
+      { role: "user", content: [{ type: "input_audio", input_audio: { data: wav, format: "wav" } }] },
+    ] as any;
+
+    const { messagesForDB } = await processMessageMedia(messages, "org-1", failingStore, true);
+
+    expect((messagesForDB[0]!.content as any[])[0].input_audio.data).toMatch(/^xinity-media:\/\/[0-9a-f]{64}$/);
+  });
+
   test("data URI: INSERT targets media_object with correct values", async () => {
     const messages = [
       {
