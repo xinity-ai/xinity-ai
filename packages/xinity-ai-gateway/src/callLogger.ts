@@ -1,6 +1,7 @@
 import type { ApiCallInputMessage, InferenceEndpoint } from "common-db";
 import { recordInferenceCalls, type InferenceCallRecord } from "./inference-call-store";
 import { rootLogger } from "./logger";
+import { isRowRejection } from "./db-errors";
 
 const log = rootLogger.child({ name: "call-logger" });
 
@@ -87,12 +88,30 @@ export async function flushCallLog(): Promise<void> {
   if (callQueue.length > 0) {
     const batch = callQueue;
     callQueue = [];
-    const insert = recordInferenceCalls(batch)
-      .catch((err) => log.error({ err, count: batch.length }, "Inference call batch insert failed"));
+    const insert = insertCallBatch(batch);
     pendingCallInserts.add(insert);
     void insert.finally(() => pendingCallInserts.delete(insert));
   }
   await Promise.all(pendingCallInserts);
+}
+
+async function insertCallBatch(batch: InferenceCallRecord[]): Promise<void> {
+  try {
+    await recordInferenceCalls(batch);
+  } catch (batchErr) {
+    if (!isRowRejection(batchErr)) {
+      log.error({ err: batchErr, count: batch.length }, "Inference call batch insert failed");
+      return;
+    }
+    log.warn({ err: batchErr, count: batch.length }, "Inference call batch rejected, falling back to individual inserts");
+    for (const call of batch) {
+      try {
+        await recordInferenceCalls([call]);
+      } catch (rowErr) {
+        log.error({ err: rowErr, organizationId: call.organizationId, id: call.id }, "Inference call individual insert failed");
+      }
+    }
+  }
 }
 
 async function enqueueCalls(calls: InferenceCallRecord[]): Promise<void> {

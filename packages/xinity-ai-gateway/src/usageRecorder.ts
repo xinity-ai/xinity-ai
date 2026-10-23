@@ -1,6 +1,7 @@
 import { getDB } from "./db";
 import { usageEventT } from "common-db";
 import { rootLogger } from "./logger";
+import { isRowRejection } from "./db-errors";
 
 const log = rootLogger.child({ name: "usage-recorder" });
 
@@ -44,7 +45,11 @@ async function insertBatch(batch: UsageRecord[]): Promise<void> {
   try {
     await getDB().insert(usageEventT).values(batch);
   } catch (batchErr) {
-    log.warn({ err: batchErr, count: batch.length }, "Usage recording batch failed, falling back to individual inserts");
+    if (!isRowRejection(batchErr)) {
+      log.error({ err: batchErr, count: batch.length }, "Usage recording batch failed");
+      return;
+    }
+    log.warn({ err: batchErr, count: batch.length }, "Usage recording batch rejected, falling back to individual inserts");
     for (const record of batch) {
       try {
         await getDB().insert(usageEventT).values(record);
