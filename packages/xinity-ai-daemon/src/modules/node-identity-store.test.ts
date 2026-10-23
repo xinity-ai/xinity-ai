@@ -64,3 +64,29 @@ describe("loadOrCreateIdentity", () => {
     expect((await loadOrCreateIdentity(stateDir)).keypair.publicKey).toBe(rotated.keypair.publicKey);
   });
 });
+
+describe("readNodeId", () => {
+  beforeEach(async () => {
+    await rm(stateDir, { recursive: true, force: true });
+    await mkdir(stateDir, { recursive: true });
+  });
+  afterAll(async () => {
+    await rm(stateDir, { recursive: true, force: true });
+  });
+
+  test("returns null when the file does not exist", async () => {
+    expect(await readNodeId(stateDir)).toBeNull();
+  });
+
+  test("returns the trimmed id when present", async () => {
+    await Bun.write(idFile, "  3f1a2b3c-0000-4000-8000-000000000001\n");
+    expect(await readNodeId(stateDir)).toBe("3f1a2b3c-0000-4000-8000-000000000001");
+  });
+
+  // Guards against feeding an empty string id into the upsert, which would be an
+  // invalid uuid: an empty/whitespace file must fall through to (host,port) adoption.
+  test("returns null for an empty or whitespace-only file", async () => {
+    await Bun.write(idFile, "   \n");
+    expect(await readNodeId(stateDir)).toBeNull();
+  });
+});
