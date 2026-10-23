@@ -16,7 +16,7 @@ import { ac, isInstanceAdmin, isRoleAvailable, roles } from "./roles";
 import type { RoleName } from "$lib/roles";
 import { MULTI_ORG_LICENSE_MESSAGE, organizationLimitReached } from "$lib/server/lib/instance/organization-limit";
 import { sendEmail, commonEmailProps, type AnyComponent } from "$lib/server/notifications/email";
-import { notify } from "./notifications/notification.service";
+import { notify, notifyOrgMembers } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
 import { emitAuthAuditEvent, type AuditAction } from "./orpc/audit";
 import { CLIENT_ADDRESS_HEADER, readClientAddress } from "$lib/server/lib/auth/client-address";
@@ -486,6 +486,22 @@ export const auth = betterAuth({
       roles,
       cancelPendingInvitationsOnReInvite: true,
       requireEmailVerificationOnInvitation: !!config.mail,
+      organizationHooks: {
+        async afterAcceptInvitation({ member, user, organization }) {
+          void notifyOrgMembers({
+            type: NotificationType.member_joined,
+            organizationId: organization.id,
+            excludeUserId: user.id,
+            data: {
+              memberName: user.name,
+              eventType: "joined",
+              role: member.role,
+              orgName: organization.name,
+              dashboardUrl: `${config.origin}/organizations/`,
+            },
+          });
+        },
+      },
       // disableOrganizationDeletion: true,
       async sendInvitationEmail(data) {
         const encodedEmail = encodeURIComponent(data.email);
