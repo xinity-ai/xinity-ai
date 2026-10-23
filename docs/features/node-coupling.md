@@ -8,11 +8,12 @@ Detection needs nothing beyond the daemon on each node and a correctly set up li
 
 Xinity never configures network ports itself, since the host's network tools would undo it. Configure the cabled ports with the machine's own tools:
 
-1. **Give each cabled interface a static IPv4 address**, with both ends in the same subnet. Some cards expose one physical port as two interfaces (DGX Spark does). Configure both, each in its own subnet.
-2. **Keep the IPv6 link-local address enabled** on those interfaces. Xinity uses it to find the machine on the other end.
-3. **Set the MTU to 9000** on every coupled interface, and on the switch if there is one. Both ends must use the same value.
-4. **Trust the coupled interfaces in the host firewall.** A model served across the coupled nodes sets up its connections over TCP on ports that change from start to start, so opening single ports is not enough. The link test in `xinity stack doctor` uses TCP port 18515. RDMA traffic itself is not affected by host firewalls.
-5. **Install `rdma-core`** on each node, so `xinity stack doctor` can test the link.
+1. **Find the cabled interfaces.** With both machines powered on, `ip -br link` shows `LOWER_UP` on interfaces with a working cable and `NO-CARRIER` on the rest. On a card that exposes one physical port as two interfaces, both show it.
+2. **Give each cabled interface a static IPv4 address**, with both ends in the same subnet. Some cards expose one physical port as two interfaces (DGX Spark does). Configure both, each in its own subnet.
+3. **Keep the IPv6 link-local address enabled** on those interfaces. Xinity uses it to find the machine on the other end.
+4. **Set the MTU to 9000** on every coupled interface, and on the switch if there is one. Both ends must use the same value.
+5. **Trust the coupled interfaces in the host firewall.** A model served across the coupled nodes sets up its connections over TCP on ports that change from start to start, so opening single ports is not enough. The link test in `xinity stack doctor` uses TCP port 18515. RDMA traffic itself is not affected by host firewalls.
+6. **Install `rdma-core`** on each node, so `xinity stack doctor` can test the link.
 
 With NetworkManager, for a DGX Spark whose cable sits in the first port (run on the second machine with `.2` instead of `.1`):
 
@@ -24,6 +25,8 @@ nmcli con add type ethernet ifname enP2p1s0f0np0 con-name coupling-b \
 ```
 
 Without a profile like this, NetworkManager repeatedly takes the port over and removes its addresses, which breaks any connection running across the link.
+
+NetworkManager applies the profile only while the interface has a link. On an interface without one, the profile stays inactive and `ip addr` shows neither the address nor the MTU.
 
 To trust the coupled interfaces, with the same interface names:
 
@@ -44,6 +47,29 @@ networking.firewall.trustedInterfaces = [ "enp1s0f0np0" "enP2p1s0f0np0" ];
 ```
 
 Changes to the link show up within about 30 seconds.
+
+### When the Link Does Not Come Up
+
+If the cabled interface still shows `NO-CARRIER`, first check that the card sees the cable:
+
+```bash
+sudo ethtool -m enp1s0f0np0
+```
+
+A plugged-in cable shows its identifier, vendor and part number. An empty port gives an error. If both ends see the cable and there is still no link, ask the card for the reason. The `mstlink` tool comes with the `mstflint` package and takes the interface's PCI address, which `ethtool -i enp1s0f0np0` lists as `bus-info`:
+
+```bash
+sudo mstlink -d 0000:01:00.0
+```
+
+`State: Polling` with `Recommendation: Negotiation failure` means the ports never agree on a link. Some cables link only at a fixed speed. Set the same speed on both ends, then take the port down and up again:
+
+```bash
+sudo mstlink -d 0000:01:00.0 --speeds 100G_4X --link_mode_force
+sudo mstlink -d 0000:01:00.0 -a TG
+```
+
+When `State` turns to `Active`, the profile comes up on its own. Check after the next reboot that the link comes back. A link that works only at a lower speed often means the cable is not fully seated. Reseat it at both ends until the latch clicks, then try the higher speed again.
 
 With a working coupling, a model too large for one machine can be served across the coupled machines, see [Serving Across Coupled Nodes](serving-across-nodes.md).
 
