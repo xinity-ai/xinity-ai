@@ -5,7 +5,7 @@ import {
   type InterconnectPort,
   type UnsignedNodeRegistration,
 } from "common-env";
-import { loadOrCreateIdentity, readNodeId, rotateIdentity, type NodeIdentity } from "./node-identity-store";
+import { loadOrCreateIdentity, rotateIdentity, type NodeIdentity } from "./node-identity-store";
 import { $ } from "bun";
 import { config } from "../config";
 import { networkInterfaces } from "node:os";
@@ -200,10 +200,6 @@ function findHostIPv4Address(): string {
     .flatMap(n => n ?? [])
     .find(isMatchingExternalIPv4);
   return match?.address || '127.0.0.1';
-}
-
-export async function readNodeIdFile(): Promise<string | null> {
-  return readNodeId(config.node.stateDir);
 }
 
 /** Memoised, so a concurrent first boot cannot write two different identities. */
