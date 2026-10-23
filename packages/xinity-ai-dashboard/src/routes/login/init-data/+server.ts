@@ -4,6 +4,7 @@ import { sql, userT } from "common-db";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
 import { auth } from "$lib/server/auth-server";
+import { safeCallbackPath } from "../callback-url";
 
 const log = rootLogger.child({ name: "login.update" });
 
@@ -24,10 +25,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
   if (!session) {
     error(403, "Not authorized");
   }
-  const rawCallback = url.searchParams.get("callbackUrl");
-  const callback = rawCallback && rawCallback.startsWith("/") && !rawCallback.startsWith("//")
-    ? rawCallback
-    : "/";
+  const callback = safeCallbackPath(url.searchParams.get("callbackUrl"));
   const name = url.searchParams.get("name");
 
   log.info({ callback, user: { name, id: session.user.id } }, "Entered user name");
