@@ -7,5 +7,5 @@ export { estimateThroughput, estimateConcurrency, type ThroughputEstimate, type 
 export { satisfiesMinVersion, matchesVersionRange, isValidVersionRange } from "./semver";
 export { kvCacheFloorGb, type KvFloorLayout, type KvPaging } from "./kv-cache-floor";
 export { IncompatibilityReasonEnum, nearestIncompatibility, type IncompatibilityReason } from "./incompatibility";
-export { checkNodeCompatibility, isDeployableOnCluster, isLegacyModelDeployableOnCluster, explainClusterIncompatibility, explainLegacyClusterIncompatibility, blockedVersionNotes, modelRequirements, blockedVersionRules, type DeployableModel, modelRequirementsForDriver, requiredFeaturesForEngine, type NodeCapability, type ModelNodeRequirements, type BlockedVersion, type ClusterModel } from "./node-compat";
+export { checkNodeCompatibility, isDeployableOnCluster, explainClusterIncompatibility, blockedVersionNotes, modelRequirements, blockedVersionRules, type DeployableModel, requiredFeaturesForEngine, type NodeCapability, type ModelNodeRequirements, type BlockedVersion } from "./node-compat";
 export { createCatalogClient, createInfoserverClient, type CatalogClient, type InfoserverClient, type ModelLookup } from "./client";

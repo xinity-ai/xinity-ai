@@ -7,17 +7,6 @@ import { join } from "node:path";
 // Mocks: must be registered before the dynamic import below
 // ---------------------------------------------------------------------------
 
-mock.module("./env", () => ({
-  env: {
-    MODEL_INFO_DIR: "/tmp/test-models",
-    PORT: 8090,
-    REFRESH_INTERVAL_MS: 300_000,
-    MAX_INCLUDE_DEPTH: 10,
-    LOG_LEVEL: "silent",
-    LOG_DIR: undefined,
-  },
-}));
-
 const logWarn = mock((_fields: unknown, _msg?: string) => {});
 
 mock.module("./logger", () => ({

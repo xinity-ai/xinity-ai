@@ -21,11 +21,6 @@ export function resolveDefaultProvider(model: LegacyModel): { driver: Provider; 
   return undefined;
 }
 
-/** Returns the provider-specific model name for a given driver, or undefined. */
-export function resolveProvider(model: LegacyModel, driver: Provider): string | undefined {
-  return model.providers[driver];
-}
-
 // ---------------------------------------------------------------------------
 // Tag resolution
 // ---------------------------------------------------------------------------
@@ -51,11 +46,6 @@ export function resolveAllTags(model: LegacyModel): string[] {
     }
   }
   return [...tagSet];
-}
-
-/** Checks whether a specific driver has a given tag. */
-export function driverHasTag(model: LegacyModel, driver: Provider, tag: string): boolean {
-  return resolveTagsForDriver(model, driver).includes(tag);
 }
 
 // ---------------------------------------------------------------------------

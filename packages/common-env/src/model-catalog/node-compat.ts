@@ -4,7 +4,7 @@
  * Pure functions with no DB or IO dependencies.
  */
 import { matchesVersionRange, satisfiesMinVersion } from "./semver";
-import type { LegacyModel, Model } from "./definitions/model-definition";
+import type { Model } from "./definitions/model-definition";
 import { nearestIncompatibility, type IncompatibilityReason } from "./incompatibility";
 import type { GpuInfo } from "../tether-protocol";
 
@@ -89,40 +89,6 @@ export function requiredFeaturesForEngine(engine: string, type: string | undefin
   return engine === "vllm" && type === "transcription" ? ["audio"] : [];
 }
 
-/** A model as seen by cluster-wide deployability checks. */
-export type ClusterModel = {
-  weight: number;
-  minKvCache: number;
-  type?: string;
-  providers: Record<string, string | undefined>;
-  providerMinVersions?: Record<string, string>;
-  providerPlatforms?: Record<string, string[]>;
-};
-
-export function modelRequirementsForDriver(model: ClusterModel, driver: string): ModelNodeRequirements {
-  return {
-    driver,
-    capacityGb: model.weight + model.minKvCache,
-    minVersion: model.providerMinVersions?.[driver],
-    requiredPlatforms: model.providerPlatforms?.[driver] ?? [],
-    requiredFeatures: requiredFeaturesForEngine(driver, model.type),
-  };
-}
-
-/** Returns null if any node can serve the model via any of its providers. */
-export function explainLegacyClusterIncompatibility(
-  nodes: NodeCapability[],
-  model: ClusterModel,
-): IncompatibilityReason | null {
-  const drivers = Object.keys(model.providers).filter(d => model.providers[d] !== undefined);
-
-  return nearestIncompatibility(
-    nodes.flatMap(node =>
-      drivers.map(driver => checkNodeCompatibility(node, modelRequirementsForDriver(model, driver))),
-    ),
-  );
-}
-
 /** Everything a cluster-wide deployability check reads off a model. */
 export type DeployableModel = Pick<Model, "sizing" | "type" | "engine" | "engineVersions" | "platforms">;
 
@@ -163,15 +129,4 @@ export function blockedVersionNotes(nodes: NodeCapability[], model: DeployableMo
   return blockedVersionRules(model)
     .filter(blocked => running.some(version => matchesVersionRange(version, blocked.range)))
     .map(blocked => blocked.reason);
-}
-
-/**
- * DEPRECATED v1 form: a single entry could claim several engines, so every
- * provider has to be tried. Removed before 1.0.0 with the format.
- */
-export function isLegacyModelDeployableOnCluster(
-  nodes: NodeCapability[],
-  model: Pick<LegacyModel, "weight" | "minKvCache" | "type" | "providers" | "providerMinVersions" | "providerPlatforms">,
-): boolean {
-  return explainLegacyClusterIncompatibility(nodes, model) === null;
 }
