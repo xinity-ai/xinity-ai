@@ -240,7 +240,7 @@ async function processImage(
 
   const originalUrl = isDataUri ? null : imageUrl;
   const dbUrl = await storeMedia(bytes, mimeType, originalUrl, orgId, mediaStore);
-  return { dataUri, dbUrl: dbUrl ?? originalUrl };
+  return { dataUri, dbUrl: dbUrl ?? originalUrl ?? unstoredMediaRef(bytes) };
 }
 
 async function processAudio(
@@ -266,7 +266,11 @@ async function processAudio(
     return null;
   }
   const mimeType: StorableAudioType = STORABLE_AUDIO_TYPES[declaredFormat];
-  return storeMedia(bytes, mimeType, null, orgId, mediaStore);
+  return await storeMedia(bytes, mimeType, null, orgId, mediaStore) ?? unstoredMediaRef(bytes);
+}
+
+function unstoredMediaRef(bytes: Uint8Array): string {
+  return formatMediaRef(bytesDigest(bytes));
 }
 
 async function storeMedia(
