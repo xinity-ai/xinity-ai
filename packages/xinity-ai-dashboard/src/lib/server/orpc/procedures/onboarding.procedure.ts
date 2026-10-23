@@ -97,6 +97,7 @@ const setupOnboarding = rootOs
       name: input.orgName,
       slug,
     }, { context });
+    const orgContext = { ...context, pinnedOrganizationId: org.id };
 
     const apiKeyResult = await call(createApiKey, {
       name: "Default API Key",
@@ -105,7 +106,7 @@ const setupOnboarding = rootOs
         name: defaultApplicationName,
         description: "Default application created during onboarding",
       },
-    }, { context }).catch(async (err: unknown) => {
+    }, { context: orgContext }).catch(async (err: unknown) => {
       await discardOrganization(org.id, context.request.headers, rlog);
       throw err;
     });
@@ -121,7 +122,7 @@ const setupOnboarding = rootOs
           publicSpecifier,
           enabled: true,
           replicas: 1,
-        }, { context });
+        }, { context: orgContext });
         deploymentName = publicSpecifier;
       } catch (err) {
         // The organization and its API key already exist, and the key is only ever
