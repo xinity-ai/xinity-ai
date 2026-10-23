@@ -7,7 +7,8 @@
   import { Switch } from "$lib/components/ui/switch";
   import * as Card from "$lib/components/ui/card";
   import * as Select from "$lib/components/ui/select";
-  import { ChevronLeft, ChevronRight, Search, Download, ChevronDown, ChevronUp } from "@lucide/svelte";
+  import * as Tooltip from "$lib/components/ui/tooltip";
+  import { ChevronLeft, ChevronRight, Search, Download, ChevronDown, ChevronUp, Info } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
   import { humanDate, localDayStart } from "$lib/util";
@@ -28,6 +29,7 @@
   let cursorStack = $state<(string | undefined)[]>([]);
   let loading = $state(false);
   let expandedRow = $state<string | null>(null);
+  let resourceIdTooltipEventId = $state<string | null>(null);
   let instanceView = $state(false);
 
   let actorInputValue = $state($searchParams.actor ?? "");
@@ -458,9 +460,29 @@
                     <td class="py-3 pr-4">
                       <span>{event.resource}</span>
                       {#if event.resourceId}
-                        <span class="text-muted-foreground text-xs ml-1" title={event.resourceId}>
+                        <span class="text-muted-foreground text-xs ml-1">
                           ({event.resourceId.slice(0, 8)}...)
                         </span>
+                        <Tooltip.Provider>
+                          <Tooltip.Root
+                            disableCloseOnTriggerClick
+                            open={resourceIdTooltipEventId === event.id}
+                            onOpenChange={(open) => {
+                              resourceIdTooltipEventId = open ? event.id : null;
+                            }}
+                          >
+                            <Tooltip.Trigger
+                              class="text-muted-foreground hover:text-foreground align-middle ml-0.5"
+                              aria-label="Show full resource ID"
+                              onclick={() => {
+                                resourceIdTooltipEventId = event.id;
+                              }}
+                            >
+                              <Info class="w-3.5 h-3.5" />
+                            </Tooltip.Trigger>
+                            <Tooltip.Content class="font-mono select-text text-nowrap">{event.resourceId}</Tooltip.Content>
+                          </Tooltip.Root>
+                        </Tooltip.Provider>
                       {/if}
                     </td>
                     <td class="py-3 pr-4">
