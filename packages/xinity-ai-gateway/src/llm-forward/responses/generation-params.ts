@@ -1,4 +1,4 @@
-import { Output, jsonSchema, type ToolChoice, type ModelMessage, type ToolSet } from "ai";
+import { Output, jsonSchema, stepCountIs, type ToolChoice, type ModelMessage, type ToolSet } from "ai";
 import type { OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 import type { CreateResponseBody } from "./schemas";
 
@@ -64,6 +64,8 @@ export function resolveResponseText(text: string, getOutput: () => unknown, uses
 // AI-SDK generation parameters
 // ---------------------------------------------------------------------------
 
+const MAX_TOOL_STEPS = 1000;
+
 function mapToolChoice(choice: CreateResponseBody["tool_choice"]): ToolChoice<ToolSet> | undefined {
   if (choice === "auto" || choice === "none" || choice === "required") {
     return choice;
@@ -101,7 +103,7 @@ export function buildGenerationParams(
       : undefined,
     tools: hasTools ? activeTools : undefined,
     toolChoice: hasTools ? mapToolChoice(body.tool_choice) : undefined,
-    stopWhen: hasTools ? (() => false) : undefined,
+    stopWhen: hasTools ? stepCountIs(MAX_TOOL_STEPS) : undefined,
     output: outputConfig.output,
   };
 }
