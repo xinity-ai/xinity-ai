@@ -3,7 +3,7 @@
  */
 import { z } from "zod";
 import { OPTIMIZATION_GOALS } from "common-env/deployment-settings";
-import { CommonDto } from "./common.dto";
+import { CommonDto, commonInputFilter } from "./common.dto";
 
 export const DeploymentSettingsDto = z.object({
   version: z.literal(1),
@@ -35,6 +35,16 @@ export const DeploymentDto = CommonDto.extend({
   preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
   settings: DeploymentSettingsDto.optional(),
 });
+
+// Zod still applies a default under .optional(), so .partial() alone would reset omitted fields.
+export const DeploymentUpdateDto = DeploymentDto.omit(commonInputFilter)
+  .extend({
+    replicas: DeploymentDto.shape.replicas.unwrap(),
+    canaryProgressWithFeedback: DeploymentDto.shape.canaryProgressWithFeedback.unwrap(),
+    progress: DeploymentDto.shape.progress.unwrap(),
+  })
+  .partial()
+  .required({ id: true });
 
 const ReplicaPhaseDto = z.enum(["ready", "downloading", "installing", "failed", "scheduling"]);
 
