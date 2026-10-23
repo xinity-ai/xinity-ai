@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
 
 models:
-  kolibri-1-vllm:
+  kolibri-1-vllm: &kolibri
     name: Kolibri 1
     description: |
       Aleph Alpha's reasoning model for German and English. It is built for assistant work,
@@ -18,7 +18,8 @@ models:
       `max_tokens` generous enough for both the reasoning and the answer.
 
       Aleph Alpha intends it for work a person reviews before it is acted on, not for systems
-      that act unsupervised.
+      that act unsupervised. A BF16 entry with the original, unreduced weights is also
+      available and needs twice the memory.
     url: https://huggingface.co/Aleph-Alpha/Kolibri-1
     license: apache-2.0
     createdAt: 2026-10-03
@@ -26,6 +27,13 @@ models:
     engine: vllm
     engineSpecifier: Aleph-Alpha/Kolibri-1
     sizing:
+      <<: &kolibri-shape
+        attentionHeads: 48
+        kvHeads: 4
+        maxContextLength: 262144
+        layers: 50
+        attentionLayers: 10
+        nonLayerWeightGb: 1.31
       # 10 of the 50 layers attend to the full context, the other 40 to a 513-token
       # window, all with 4 kv heads at head_dim 128 and an fp8 cache:
       # 2 * 10 * 4 * 128 per token, and 40 * 2 * 4 * 128 * 513 per request in flight.
@@ -35,13 +43,7 @@ models:
       kvBytesPerToken: 10240
       stateBytesPerSequence: 21012480
       minKvCacheGb: 2.88
-      attentionHeads: 48
-      kvHeads: 4
-      maxContextLength: 262144
       weightGb: 78.86  # measured resident, 73.45 GiB
-      layers: 50
-      attentionLayers: 10
-      nonLayerWeightGb: 1.31
       activeWeightGb: 3.84
       largestFileGb: 3.16
       weightBits: 8
@@ -51,13 +53,43 @@ models:
     engineArgs:
       - --kv-cache-dtype
       - fp8
-      - --tool-call-parser
-      - hermes
-      - --reasoning-parser
-      - qwen3
+      - &kolibri-parsers
+        - --tool-call-parser
+        - hermes
+        - --reasoning-parser
+        - qwen3
     requestParams:
       chat_template_kwargs.enable_thinking: boolean
     engineVersions:
       # Served through the Transformers backend from upstream main (#60827, merged after the
       # 0.32.0 cut, which also ships too old a transformers). Verified on nightly 0.32.1rc1.dev117.
       min: "0.33.0"
+
+  kolibri-1-bf16-vllm:
+    <<: *kolibri
+    name: Kolibri 1 BF16
+    description: |
+      The same Kolibri model in its original, unreduced precision. It behaves the same as
+      the standard Kolibri 1 entry: German and English, reasoning with adjustable depth,
+      tool calling and a 262K window.
+
+      It needs twice the memory. Aleph Alpha measured the model's quality on the standard
+      entry, so prefer that one unless you specifically want the original weights.
+    url: https://huggingface.co/Aleph-Alpha/Kolibri-1-BF16
+    engineSpecifier: Aleph-Alpha/Kolibri-1-BF16
+    variantOf: kolibri-1-vllm
+    sizing:
+      <<: *kolibri-shape
+      # Same layout as the FP8 build with a bf16 cache, so every figure doubles:
+      # 2 * 10 * 4 * 128 * 2 per token, and 40 * 2 * 4 * 128 * 2 * 513 per request.
+      # Split over two cards, each card holds the same 2.68 GiB the FP8 build needs on one.
+      # Bracketed across two nodes: 5.74 aborts, 5.75 starts at 1.00x.
+      kvBytesPerToken: 20480
+      stateBytesPerSequence: 42024960
+      minKvCacheGb: 5.75
+      weightGb: 156.39  # measured resident across two nodes, 2 x 72.83 GiB
+      hostWeightGb: 0
+      activeWeightGb: 6.92
+      largestFileGb: 5
+      weightBits: 16
+    engineArgs: *kolibri-parsers
