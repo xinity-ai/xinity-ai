@@ -16,15 +16,16 @@ function decodeQuotedPrintable(raw: string): string {
     .replace(/&amp;/g, "&");
 }
 
-async function findVerificationUrl(email: string): Promise<string | null> {
+export async function findMailLink(email: string, marker: string): Promise<string | null> {
   for (let i = 0; i < 10; i++) {
     const res = await fetch(`${MAILHOG_API}/v2/search?kind=to&query=${encodeURIComponent(email)}`);
     if (res.ok) {
       const data = (await res.json()) as MailhogResponse;
       for (const item of data?.items ?? []) {
-        const match = decodeQuotedPrintable(item?.Content?.Body ?? "").match(/https?:\/\/[^\s"<>]+verify-email[^\s"<>]*/);
+        const links = decodeQuotedPrintable(item?.Content?.Body ?? "").match(/https?:\/\/[^\s"<>]+/g) ?? [];
+        const match = links.find((link) => link.includes(marker));
         if (match) {
-          return match[0];
+          return match;
         }
       }
     }
@@ -54,7 +55,7 @@ export async function ensureSignedUp(user: { name: string; email: string; passwo
   if (token !== null) {
     return;
   }
-  const verificationUrl = await findVerificationUrl(user.email);
+  const verificationUrl = await findMailLink(user.email, "verify-email");
   if (verificationUrl) {
     await fetch(verificationUrl, { redirect: "manual" });
   }
