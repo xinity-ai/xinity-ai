@@ -21,9 +21,25 @@
         if cfg.tetherOrigin != null then cfg.tetherOrigin
         else "localhost:${toString config.services.xinity-tether.port}";
 
-      vhost = subdomain: target: lib.optionalAttrs (subdomain != null) {
+      # HSTS stays off the operator's other subdomains, so no includeSubDomains or preload.
+      commonHeaders = [
+        ''Strict-Transport-Security "max-age=31536000"''
+        ''X-Content-Type-Options "nosniff"''
+      ];
+      dashboardHeaders = commonHeaders ++ [
+        ''X-Frame-Options "SAMEORIGIN"''
+        ''Referrer-Policy "strict-origin-when-cross-origin"''
+      ];
+      headerBlock = headers: ''
+        header {
+          ${lib.concatStringsSep "\n  " headers}
+        }
+      '';
+
+      vhost = subdomain: target: headers: lib.optionalAttrs (subdomain != null) {
         "${subdomain}.${cfg.domain}".extraConfig = lib.mkDefault ''
           reverse_proxy ${target}
+          ${headerBlock headers}
         '';
       };
 
@@ -37,6 +53,7 @@
           handle {
             respond 404
           }
+          ${headerBlock commonHeaders}
         '';
       };
 
@@ -159,12 +176,12 @@
             email ${cfg.acmeEmail}
           '');
           virtualHosts =
-            vhost cfg.dashboardSubdomain dashboardTarget
-            // vhost cfg.gatewaySubdomain gatewayTarget
-            // vhost cfg.infoserverSubdomain infoserverTarget
+            vhost cfg.dashboardSubdomain dashboardTarget dashboardHeaders
+            // vhost cfg.gatewaySubdomain gatewayTarget commonHeaders
+            // vhost cfg.infoserverSubdomain infoserverTarget commonHeaders
             // tetherVhost
             // lib.optionalAttrs (cfg.grafanaOrigin != null)
-              (vhost cfg.grafanaSubdomain cfg.grafanaOrigin);
+              (vhost cfg.grafanaSubdomain cfg.grafanaOrigin commonHeaders);
         };
 
         networking.firewall.allowedTCPPorts = [ 80 443 ];
