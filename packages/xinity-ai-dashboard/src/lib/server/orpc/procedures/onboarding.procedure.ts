@@ -142,7 +142,7 @@ const setupOnboarding = rootOs
 
 // Unauthenticated and marks an unproven email verified, which is only safe while nobody else could own that address.
 const cli = rootOs
-  .meta({ mcp: false, audit: { action: "onboarding.cli", resource: "user", captureInput: ["email", "orgName"] } })
+  .meta({ mcp: false, audit: { action: "onboarding.cli", resource: "user", resourceId: { fromOutput: "userId" }, captureInput: ["email", "orgName"] } })
   .use(auditMiddleware)
   .route({
     path: "/cli",

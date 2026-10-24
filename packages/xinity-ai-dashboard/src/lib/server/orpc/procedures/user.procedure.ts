@@ -29,7 +29,7 @@ const getSelf = rootOs.use(withAuth)
 const updateSettings = rootOs
   .use(withAuth)
   .use(auditMiddleware)
-  .meta({ audit: { action: "user.update_settings", resource: "user" } })
+  .meta({ audit: { action: "user.update_settings", resource: "user", resourceId: { fromOutput: "id" } } })
   .route({
     summary: "Update User Settings",
     path: "/self", method: "PATCH", tags, description: `Endpoint to update your own user
