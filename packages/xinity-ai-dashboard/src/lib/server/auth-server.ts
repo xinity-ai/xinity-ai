@@ -21,6 +21,7 @@ import { NotificationType } from "./notifications/events";
 import { emitAuthAuditEvent, type AuditAction } from "./orpc/audit";
 import { CLIENT_ADDRESS_HEADER, readClientAddress } from "$lib/server/lib/auth/client-address";
 import { isEmailInProviderDomain } from "$lib/server/lib/auth/sso-domains";
+import { clearTemporaryPassword } from "$lib/server/lib/auth/temporary-password";
 import EmailVerificationTemplate from "$lib/components/mailTemplates/EmailVerificationTemplate.svelte";
 import EmailForgotPasswordTemplate from "$lib/components/mailTemplates/EmailForgotPasswordTemplate.svelte";
 import EmailInvitationTemplate from "$lib/components/mailTemplates/EmailInvitationTemplate.svelte";
@@ -86,6 +87,8 @@ export function getGreenlitCallId() {
 // instead of sending an email, keyed by a one-time resetId passed via redirectTo.
 const pendingAdminResets = new Map<string, (token: string) => void>();
 const ADMIN_RESET_TOKEN_TIMEOUT_MS = 10_000;
+// An admin reset issues the temporary password, so it must not clear the flag a user's own reset does.
+const adminResetUserEmails = new Set<string>();
 
 /**
  * Resets a user's password via Better Auth's standard reset flow without
@@ -112,9 +115,14 @@ export async function adminResetPassword(email: string, newPassword: string) {
     body: { email, redirectTo: `__admin_reset__:${resetId}` },
   });
   const token = await tokenPromise;
-  await auth.api.resetPassword({
-    body: { newPassword, token },
-  });
+  adminResetUserEmails.add(email.toLowerCase());
+  try {
+    await auth.api.resetPassword({
+      body: { newPassword, token },
+    });
+  } finally {
+    adminResetUserEmails.delete(email.toLowerCase());
+  }
 }
 
 export async function adminCreateUser(
@@ -325,6 +333,11 @@ export const auth = betterAuth({
     enabled: true,
     autoSignIn: true,
     revokeSessionsOnPasswordReset: true,
+    async onPasswordReset({ user }) {
+      if (!adminResetUserEmails.has(user.email.toLowerCase())) {
+        await clearTemporaryPassword(user.id);
+      }
+    },
     requireEmailVerification: !!config.mail,
     disableSignUp: false,
     async sendResetPassword({ url, user, token }) {
@@ -426,6 +439,10 @@ export const auth = betterAuth({
       }
     }),
     after: createAuthMiddleware(async (ctx) => {
+      const changedUser = ctx.context.newSession?.user ?? ctx.context.session?.user;
+      if (ctx.path === "/change-password" && changedUser && !(ctx.context.returned instanceof APIError)) {
+        await clearTemporaryPassword(changedUser.id);
+      }
       await sendWelcomeNotification(ctx);
       await recordAuthAudit(ctx);
     }),

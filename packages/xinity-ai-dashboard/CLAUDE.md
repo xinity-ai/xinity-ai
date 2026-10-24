@@ -102,4 +102,4 @@ Two mechanisms exist for server-initiated Better Auth actions that need to skip 
 
 ### Temporary Passwords
 
-Admin-created users and admin-reset passwords set `userT.temporaryPassword = true`. The authenticated layout (`(authenticated)/+layout.server.ts`) checks this flag and redirects to `/settings/auth` until the user changes their password via the standard `changePassword` flow. The flag is cleared in `account.procedure.ts` after a successful password change.
+Admin-created users and admin-reset passwords set `userT.temporaryPassword = true`. Until it is cleared, the authenticated layout redirects to `/settings/auth`, oRPC refuses every procedure without `meta({ allowTemporaryPassword: true })`, and server routes and remote functions refuse through `requireSession()`. Better Auth clears it on any password change or user-initiated reset (`auth-server.ts`), but not on the admin reset that issued it.

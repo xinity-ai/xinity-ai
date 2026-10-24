@@ -7,7 +7,7 @@
  * so the export stands alone.
  */
 import type { RequestHandler } from "./$types";
-import { auth } from "$lib/server/auth-server";
+import { requireSession } from "$lib/server/lib/auth/session";
 import { assertOrgPermission } from "$lib/server/lib/auth/permissions";
 import { getDB } from "$lib/server/db";
 import { apiCallT, inferenceCallT, sql, type ApiCallResponse, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
@@ -19,10 +19,7 @@ import { parseMediaRef } from "common-env/media-ref";
 import { error } from "@sveltejs/kit";
 
 export const GET: RequestHandler = async ({ params, locals }) => {
-  const session = await auth.api.getSession({ headers: locals.request.headers });
-  if (!session) {
-    error(401, "Unauthorized");
-  }
+  const session = await requireSession(locals.request.headers);
 
   const orgId = session.session.activeOrganizationId;
   if (!orgId) {

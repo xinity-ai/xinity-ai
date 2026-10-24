@@ -5,7 +5,7 @@
  * S3 and returning the bytes directly when the database holds them.
  */
 import type { RequestHandler } from "./$types";
-import { auth } from "$lib/server/auth-server";
+import { requireSession } from "$lib/server/lib/auth/session";
 import { assertOrgPermission } from "$lib/server/lib/auth/permissions";
 import { getPresignedUrl, readMediaObject } from "$lib/server/lib/calls/media-store";
 import { isMediaDigest } from "common-env/media-ref";
@@ -13,10 +13,7 @@ import { isStorableAudioType, isStorableImageType } from "common-env/media-types
 import { error } from "@sveltejs/kit";
 
 export const GET: RequestHandler = async ({ params, locals }) => {
-  const session = await auth.api.getSession({ headers: locals.request.headers });
-  if (!session) {
-    error(401, "Unauthorized");
-  }
+  const session = await requireSession(locals.request.headers);
 
   const orgId = session.session.activeOrganizationId;
   if (!orgId) {

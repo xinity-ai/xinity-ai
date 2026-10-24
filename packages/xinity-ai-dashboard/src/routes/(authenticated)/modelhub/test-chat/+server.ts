@@ -7,13 +7,12 @@
  * don't need cross-origin support on the gateway.
  */
 import type { RequestHandler } from "./$types";
-import { auth } from "$lib/server/auth-server";
+import { requireSession } from "$lib/server/lib/auth/session";
 import { fetchGateway } from "$lib/server/lib/models/gateway-proxy";
 import { error } from "@sveltejs/kit";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
-  const session = await auth.api.getSession({ headers: locals.request.headers });
-  if (!session) error(401, "Unauthorized");
+  const session = await requireSession(locals.request.headers);
   if (!session.session.activeOrganizationId) error(403, "No active organization");
 
   let body: {
