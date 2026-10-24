@@ -207,6 +207,15 @@ describe("processMessageMedia, S3 disabled (mediaStore = null)", () => {
     await expect(processMessageMedia(messages, "org-1", null, true)).rejects.toThrow(/over the 40MB limit/);
   });
 
+  test("rejects oversize audio", async () => {
+    const oversize = "A".repeat(56 * 1024 * 1024);
+    const messages = [
+      { role: "user", content: [{ type: "input_audio", input_audio: { data: oversize, format: "wav" } }] },
+    ] as any;
+
+    await expect(processMessageMedia(messages, "org-1", null, true)).rejects.toThrow(/Audio is \d+ bytes, over the 40MB limit/);
+  });
+
   test("keeps an inline image, storing its bytes in the row it references", async () => {
     const messages = [
       {

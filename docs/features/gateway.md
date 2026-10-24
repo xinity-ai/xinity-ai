@@ -93,7 +93,7 @@ Long research sessions can exceed the model's context window. When accumulated t
 
 ## Image Storage
 
-When S3 is configured, images in chat requests are uploaded to S3, deduplicated by SHA-256, and stored as compact references in the database. External image URLs are fetched and converted to data URIs before forwarding to inference nodes (which may not have internet access). Content type is not validated; any image is accepted up to 40 MB.
+When S3 is configured, images in chat requests are uploaded to S3, deduplicated by SHA-256, and stored as compact references in the database. External image URLs are fetched and converted to data URIs before forwarding to inference nodes (which may not have internet access). Content type is not validated; any image is accepted up to `MAX_MEDIA_SIZE_MB` (default 40 MB).
 
 ## TLS
 

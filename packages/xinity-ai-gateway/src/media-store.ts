@@ -37,7 +37,7 @@ export function createMediaStore(s3: GatewayConfig["s3"]): MediaStore | null {
 
 type ResolvedImage = { mimeType: string; bytes: Uint8Array<ArrayBuffer> };
 
-const MAX_MEDIA_BYTES = 40 * 1024 * 1024;
+const MAX_MEDIA_BYTES = config.maxMediaMb * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
 
 const MEDIA_TOO_LARGE = "media_too_large";
@@ -175,11 +175,16 @@ function parseDataUri(url: string): ResolvedImage | null {
   // data:[<mediatype>][;base64],<data>
   const [, mimeType, data] = url.match(/^data:([^;,]+)(?:;base64)?,(.+)$/s) ?? [];
   if (!mimeType || !data) return null;
-  const bytes = new Uint8Array(Buffer.from(data, "base64"));
-  if (bytes.byteLength > MAX_MEDIA_BYTES) {
-    throw mediaTooLargeError("Image", bytes.byteLength);
+  return { mimeType, bytes: decodeBase64Media("Image", data) };
+}
+
+function decodeBase64Media(kind: "Image" | "Audio", data: string): Uint8Array<ArrayBuffer> {
+  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
+  const decodedSize = Math.floor((data.length * 3) / 4) - padding;
+  if (decodedSize > MAX_MEDIA_BYTES) {
+    throw mediaTooLargeError(kind, decodedSize);
   }
-  return { mimeType, bytes };
+  return new Uint8Array(Buffer.from(data, "base64"));
 }
 
 /** Fetch an external URL and return its bytes and mime type. */
@@ -255,10 +260,7 @@ async function processAudio(
       `Audio format ${declaredFormat || "unknown"} is not supported. Supported: ${Object.keys(STORABLE_AUDIO_TYPES).join(", ")}`,
     );
   }
-  const bytes = new Uint8Array(Buffer.from(data, "base64"));
-  if (bytes.byteLength > MAX_MEDIA_BYTES) {
-    throw mediaTooLargeError("Audio", bytes.byteLength);
-  }
+  const bytes = decodeBase64Media("Audio", data);
   if (sniffAudioFormat(bytes) !== declaredFormat) {
     throw mediaPartInvalidError(`Audio data is not valid ${declaredFormat}`);
   }

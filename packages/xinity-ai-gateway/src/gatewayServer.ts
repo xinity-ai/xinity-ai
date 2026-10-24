@@ -119,6 +119,8 @@ const serveOptions = {
   },
   fetch: handleRequest,
   idleTimeout: config.server.idleTimeout,
+  // One media part base64-encoded, which grows it by a third, plus room for the rest of the request.
+  maxRequestBodySize: Math.ceil((config.maxMediaMb * 1024 * 1024 * 4) / 3) + 8 * 1024 * 1024,
 } as const;
 
 const proto = tls ? "https" : "http";

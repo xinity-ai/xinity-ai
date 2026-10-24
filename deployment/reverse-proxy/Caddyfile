@@ -60,7 +60,8 @@
 	}
 
 	# Multimodal requests carry base64 images (up to ~54 MB encoded) and
-	# transcription uploads are multipart.
+	# transcription uploads are multipart. Raise this together with the
+	# gateway's MAX_MEDIA_SIZE_MB.
 	request_body {
 		max_size 64MB
 	}

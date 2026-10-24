@@ -169,6 +169,12 @@
           description = "Maximum time in milliseconds to wait for an inference backend to respond before the gateway returns a timeout error to the client. Increase this for models with long generation times.";
         };
 
+        maxMediaSizeMb = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 40;
+          description = "Largest image or audio file a request may carry, in MB.";
+        };
+
 
         tlsCertFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
@@ -287,6 +293,7 @@
             INFOSERVER_CACHE_TTL_MS = toString cfg.infoserverCacheTtlMs;
             LOAD_BALANCE_STRATEGY = cfg.loadBalanceStrategy;
             BACKEND_TIMEOUT_MS = toString cfg.backendTimeoutMs;
+            MAX_MEDIA_SIZE_MB = toString cfg.maxMediaSizeMb;
             LOG_LEVEL = cfg.logLevel;
             S3_BUCKET = cfg.s3Bucket;
             S3_REGION = cfg.s3Region;
