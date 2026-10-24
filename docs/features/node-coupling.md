@@ -84,6 +84,34 @@ Ports without a cable are ignored everywhere.
 
 Each message on the dashboard and in `xinity stack doctor` links to its entry here.
 
+```mermaid
+ishikawa-beta
+    Coupling fails
+    Cable and port
+        Cable not fully seated
+        Ports fail to negotiate a speed
+        Ends link at different speeds
+        Other machine powered off
+    Addressing
+        No IPv4 address
+        No common IPv4 subnet
+        Address on a bridge or bond
+        No IPv6 link-local address
+    Host network tools
+        Address removed by NetworkManager
+        Profile inactive without a link
+    MTU
+        Below 9000
+        Different at each end or on the switch
+    Firewall
+        TCP 18515 blocked
+        Coupled interfaces not trusted
+    Software
+        RDMA driver not loaded
+        rdma-core missing
+        No Xinity daemon on the other machine
+```
+
 ### No IPv4 address
 
 *interface* has no IPv4 address
