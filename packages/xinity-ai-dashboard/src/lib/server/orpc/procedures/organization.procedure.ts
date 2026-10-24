@@ -99,7 +99,7 @@ const inviteMember = rootOs
   .use(withOrganization)
   .use(requirePermission({ invitation: ["create"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "invitation.create", resource: "invitation", captureInput: ["email", "role"] } })
+  .meta({ audit: { action: "invitation.create", resource: "invitation", resourceId: { fromOutput: "id" }, captureInput: ["email", "role"] } })
   .errors({ CONFLICT: {}, BAD_REQUEST: {} })
   .route({ path: "/invite", method: "POST", tags, summary: "Invite Member" })
   .input(z.object({
@@ -125,7 +125,7 @@ const inviteMember = rootOs
         throw errors.INTERNAL_SERVER_ERROR({ message: "Failed to send invitation" });
       }
 
-      return { success: true };
+      return { success: true, id: result.id };
     } catch (err) {
       const body = betterAuthErrorBody(err);
       switch (body?.code) {

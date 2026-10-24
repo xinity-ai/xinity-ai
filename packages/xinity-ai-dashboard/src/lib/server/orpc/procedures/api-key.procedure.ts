@@ -22,7 +22,7 @@ export const createApiKey = rootOs
   .use(withOrganization)
   .use(requirePermission({ apiKey: ["create"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "apiKey.create", resource: "apiKey", captureInput: ["name"] } })
+  .meta({ audit: { action: "apiKey.create", resource: "apiKey", resourceId: { fromOutput: "id" }, captureInput: ["name"] } })
   .route({ path: "/", method: "POST", tags, summary: "Create LLM API Key" })
   .input(
     ApiKeyDto.omit({ specifier: true, id: true, applicationId: true, collectData: true, createdByUserId: true, createdByUserName: true, ...commonInputFilter }).extend({
@@ -44,7 +44,7 @@ export const createApiKey = rootOs
     let applicationId: string | null = input.applicationId ?? null;
     const { specifier, fullKey } = generateApiKey();
 
-    await getDB().transaction(async (tx) => {
+    const id = await getDB().transaction(async (tx) => {
       if (applicationId) {
         const [application] = await tx
           .select({ id: aiApplicationT.id })
@@ -71,7 +71,7 @@ export const createApiKey = rootOs
         applicationId = newApp.id;
       }
 
-      await tx
+      const [key] = await tx
         .insert(aiApiKeyT)
         .values({
           name: input.name,
@@ -81,9 +81,13 @@ export const createApiKey = rootOs
           createdByUserId: context.session.user.id,
           specifier,
           hash: apiKeyVerifier(fullKey),
-        });
+        })
+        .returning({ id: aiApiKeyT.id });
+      if (!key) throw new Error("Insert into aiApiKeyT returned no row");
+      return key.id;
     });
     return {
+      id,
       fullKey,
       name: input.name,
       specifier,
