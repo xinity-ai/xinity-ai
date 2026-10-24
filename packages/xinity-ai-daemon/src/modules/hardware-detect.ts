@@ -42,7 +42,7 @@ export type HardwareProfile = {
 // ─── Unit conversions ────────────────────────────────────────────────────────
 
 function mbToGb(mb: number): number {
-  return Math.floor(mb / 1024);
+  return Math.floor((mb * 2 ** 20) / 1e9);
 }
 
 function bytesToMb(bytes: number): number {
@@ -430,7 +430,7 @@ export function classifyCapacitySource(gpus: DetectedGpu[]): CapacitySource {
 const USABLE_RAM_FRACTION = 0.9;
 
 const usableRamGb = (systemRamMb: number) =>
-  systemRamMb > 0 ? Math.floor((systemRamMb * 2 ** 20 * USABLE_RAM_FRACTION) / 1e9) : undefined;
+  systemRamMb > 0 ? mbToGb(systemRamMb * USABLE_RAM_FRACTION) : undefined;
 
 export function buildHardwareProfile(gpus: DetectedGpu[], systemRamMb: number): HardwareProfile {
   const gpuCount = gpus.length;
