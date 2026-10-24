@@ -1,8 +1,7 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
-import { commonInputFilter } from "$lib/orpc/dtos/common.dto";
 import { inArray, sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, deploymentMatchesInstallation, installationOnLiveNode, stateOfInstallation, type ModelDeployment, type SQL } from "common-db";
 import z from "zod";
-import { DeploymentDto, DeploymentUpdateDto, DeploymentWithStatusDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
+import { DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, DeploymentWithStatusDto, KvCacheSizeDto, ProgressDto, ReplicasDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
 import { requirementsForDeployments, type DeploymentPlan } from "$lib/server/lib/deployments/requirements";
@@ -53,10 +52,10 @@ async function validateCanaryModelTypes(canarySpecifier: string, replacedSpecifi
 const CapacityCheckInput = z.object({
   specifier: z.string().trim(),
   earlySpecifier: z.string().trim().nullish(),
-  replicas: z.number().default(1),
-  progress: z.number().default(100),
-  kvCacheSize: z.number().nullish(),
-  earlyKvCacheSize: z.number().nullish(),
+  replicas: ReplicasDto.default(1),
+  progress: ProgressDto.default(100),
+  kvCacheSize: KvCacheSizeDto.nullish(),
+  earlyKvCacheSize: KvCacheSizeDto.nullish(),
   preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
   settings: deploymentSettingsSchema.optional(),
   deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
@@ -299,10 +298,11 @@ const updateDeployment = rootOs
       }
     }
 
-    // Check capacity when re-enabling a disabled deployment
-    if (input.enabled && !current.enabled) {
+    const reenabling = input.enabled && !current.enabled;
+    const scalingUp = staysEnabled && input.replicas !== undefined && input.replicas > current.replicas;
+    if (reenabling || scalingUp) {
       const merged = { ...current, ...input };
-      const result = await checkDeploymentCapacity(merged);
+      const result = await checkDeploymentCapacity(merged, scalingUp ? current.id : undefined);
       if (!result.deployable) {
         throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
       }
@@ -470,7 +470,7 @@ export const createDeployment = rootOs
     summary: "Create Deployment",
     path: "/", method: "POST", tags, description: `Endpoint to create new deployments`
   })
-  .input(DeploymentDto.omit({ ...commonInputFilter, id: true }))
+  .input(DeploymentInputDto.omit({ id: true }))
   .output(DeploymentDto)
   .errors({ CONFLICT: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {} })
   .handler(async ({ context, input, errors }) => {
