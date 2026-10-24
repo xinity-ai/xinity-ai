@@ -20,6 +20,14 @@ mock.module("./db", () => ({
   getDB: () => db,
 }));
 
+const urlSafety = await import("./llm-forward/tools/url-safety");
+const realSafeFetch = urlSafety.safeFetch;
+let safeFetchOverride: (() => Promise<Response>) | null = null;
+mock.module("./llm-forward/tools/url-safety", () => ({
+  ...urlSafety,
+  safeFetch: (...args: Parameters<typeof realSafeFetch>) => safeFetchOverride?.() ?? realSafeFetch(...args),
+}));
+
 // ─── Imports (after mocks) ────────────────────────────────────────────────────
 
 const { processMessageMedia, resolveMediaRef, restoreMessageMedia, sniffAudioFormat, sniffImageType } = await import("./media-store");
@@ -214,6 +222,32 @@ describe("processMessageMedia, S3 disabled (mediaStore = null)", () => {
     ] as any;
 
     await expect(processMessageMedia(messages, "org-1", null, true)).rejects.toThrow(/Audio is \d+ bytes, over the 40MB limit/);
+  });
+
+  test("stops reading an external image without a content-length once it passes the limit", async () => {
+    const chunk = new Uint8Array(1024 * 1024);
+    let chunksServed = 0;
+    let cancelled = false;
+    safeFetchOverride = async () => new Response(new ReadableStream({
+      pull(controller) {
+        chunksServed++;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }));
+    const messages = [
+      { role: "user", content: [{ type: "image_url", image_url: { url: "https://example.com/endless.png" } }] },
+    ] as any;
+
+    try {
+      await expect(processMessageMedia(messages, "org-1", null, true)).rejects.toThrow(/over the 40MB limit/);
+    } finally {
+      safeFetchOverride = null;
+    }
+    expect(cancelled).toBe(true);
+    expect(chunksServed).toBeLessThan(45);
   });
 
   test("keeps an inline image, storing its bytes in the row it references", async () => {

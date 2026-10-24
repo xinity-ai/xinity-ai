@@ -187,6 +187,22 @@ function decodeBase64Media(kind: "Image" | "Audio", data: string): Uint8Array<Ar
   return new Uint8Array(Buffer.from(data, "base64"));
 }
 
+async function readImageBody(res: Response): Promise<Uint8Array<ArrayBuffer>> {
+  if (!res.body) {
+    return new Uint8Array();
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of res.body) {
+    size += chunk.byteLength;
+    if (size > MAX_MEDIA_BYTES) {
+      throw mediaTooLargeError("Image", size);
+    }
+    chunks.push(chunk);
+  }
+  return new Uint8Array(Buffer.concat(chunks, size));
+}
+
 /** Fetch an external URL and return its bytes and mime type. */
 async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
   try {
@@ -201,12 +217,7 @@ async function fetchExternalImage(url: string): Promise<ResolvedImage | null> {
       throw mediaTooLargeError("Image", declaredSize);
     }
 
-    const buffer = await res.arrayBuffer();
-    if (buffer.byteLength > MAX_MEDIA_BYTES) {
-      throw mediaTooLargeError("Image", buffer.byteLength);
-    }
-
-    return { mimeType, bytes: new Uint8Array(buffer) };
+    return { mimeType, bytes: await readImageBody(res) };
   } catch (err) {
     if (isMediaTooLarge(err)) {
       throw err;
