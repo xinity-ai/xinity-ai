@@ -131,7 +131,7 @@ services.xinity-ai = {
 };
 ```
 
-Nothing is proxied and no ports are opened for you, so forward `dashboard.example.com` and `api.example.com` to the dashboard and gateway ports (5121 and 4121 by default) and open 80/443 yourself. `acmeEmail` is not required in this mode. The dashboard still expects to be reached at `https://<dashboardSubdomain>.<domain>` for auth redirects, so keep those names pointing at it, and forward `x-forwarded-for`.
+Nothing is proxied and no ports are opened for you, so forward `dashboard.example.com` and `api.example.com` to the dashboard and gateway ports (5121 and 4121 by default) and open 80/443 yourself. `acmeEmail` is not required in this mode. The dashboard still expects to be reached at `https://<dashboardSubdomain>.<domain>` for auth redirects, so keep those names pointing at it. To see real client IPs instead of the proxy's address, have the proxy set `X-Forwarded-For` and set `services.xinity-ai-dashboard.reverseProxy.ipHeader = "x-forwarded-for"`.
 
 #### External Database
 
