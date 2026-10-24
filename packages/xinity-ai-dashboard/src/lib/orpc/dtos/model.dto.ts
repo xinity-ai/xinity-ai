@@ -36,12 +36,28 @@ export const DeploymentDto = CommonDto.extend({
   settings: DeploymentSettingsDto.optional(),
 });
 
+export const ReplicasDto = z.number().int().min(1);
+export const ProgressDto = z.number().int().min(0).max(100);
+export const KvCacheSizeDto = z.number().positive();
+
+// Stored rows are read back through DeploymentDto, so the stricter rules apply to what is written only.
+export const DeploymentInputDto = DeploymentDto.omit(commonInputFilter).extend({
+  publicSpecifier: DeploymentDto.shape.publicSpecifier
+    .pipe(z.string().min(5).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, {
+      message: "Use letters, digits and . _ -, starting with a letter or digit",
+    })),
+  replicas: ReplicasDto.default(1),
+  progress: ProgressDto.default(100),
+  kvCacheSize: KvCacheSizeDto.nullish(),
+  earlyKvCacheSize: KvCacheSizeDto.nullish(),
+});
+
 // Zod still applies a default under .optional(), so .partial() alone would reset omitted fields.
-export const DeploymentUpdateDto = DeploymentDto.omit(commonInputFilter)
+export const DeploymentUpdateDto = DeploymentInputDto
   .extend({
-    replicas: DeploymentDto.shape.replicas.unwrap(),
+    replicas: ReplicasDto,
     canaryProgressWithFeedback: DeploymentDto.shape.canaryProgressWithFeedback.unwrap(),
-    progress: DeploymentDto.shape.progress.unwrap(),
+    progress: ProgressDto,
   })
   .partial()
   .required({ id: true });
