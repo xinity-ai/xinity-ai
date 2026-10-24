@@ -43,7 +43,7 @@ function dispatchAuthEmail(args: {
     subject: args.subject,
     template: args.template,
     props: { ...commonEmailProps, url: args.url, ...args.extraProps },
-  });
+  }).catch(() => log.warn({ user: pick(args.user, "email", "id") }, `${args.logLabel} failed`));
 }
 
 const apiKeyManagementPaths = new Set(["/api-key/get", "/api-key/list", "/api-key/update", "/api-key/delete"]);
@@ -540,7 +540,7 @@ export const auth = betterAuth({
             orgName: data.organization.name,
             loginUrl: `${config.origin}/login/?email=${encodedEmail}&tab=signup`,
           },
-        });
+        }).catch(() => log.warn({ invitationId: data.invitation.id, email: data.email }, "Send invitation email failed"));
       },
     }),
     sveltekitCookies(getRequestEvent),
