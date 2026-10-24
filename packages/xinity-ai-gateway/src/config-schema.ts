@@ -141,6 +141,7 @@ export type GatewayConfig = {
   webSearch: WebSearch;
   inference: Inference;
   deepResearch: DeepResearch;
+  maxMediaMb: number;
   secretKey: string;
   previousSecretKey?: string;
 };
@@ -157,6 +158,9 @@ export const gatewayConfig = defineConfig<GatewayConfig>({
   webSearch,
   inference,
   deepResearch,
+  maxMediaMb: env("MAX_MEDIA_SIZE_MB", configInt(z.int().positive()).default(40)
+    .describe("Largest image or audio file a request may carry, in MB")
+    .meta(expert())),
   secretKey: secretKeyField(),
   previousSecretKey: previousSecretKeyField(),
 });
