@@ -388,7 +388,7 @@ const computeLiveMetrics = rootOs
 const removeNode = rootOs
   .use(withInstanceAdmin)
   .use(auditMiddleware)
-  .meta({ audit: { action: "compute.remove_node", resource: "node", resourceId: { fromInput: "nodeId" } } })
+  .meta({ mcp: false, audit: { action: "compute.remove_node", resource: "node", resourceId: { fromInput: "nodeId" } } })
   .route({
     path: "/{nodeId}", method: "DELETE", tags,
     summary: "Remove Compute Node",

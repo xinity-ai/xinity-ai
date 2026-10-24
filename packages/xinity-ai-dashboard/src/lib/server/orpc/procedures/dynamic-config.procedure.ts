@@ -30,7 +30,7 @@ const list = rootOs
 const setGroup = rootOs
   .use(withInstanceAdmin)
   .use(auditMiddleware)
-  .meta({ audit: { action: "dynamicConfig.set", resource: "dynamicConfig", resourceId: { fromInput: "id" }, captureOutput: ["values"] } })
+  .meta({ mcp: false, audit: { action: "dynamicConfig.set", resource: "dynamicConfig", resourceId: { fromInput: "id" }, captureOutput: ["values"] } })
   .route({ method: "PUT", path: "/dynamic-config/groups/{id}", tags, summary: "Set a dashboard-managed group" })
   .input(z.object({ id: z.string(), values: z.record(z.string(), z.string()) }))
   .handler(async ({ input, context, errors }) => {
@@ -58,7 +58,7 @@ const setGroup = rootOs
 const clearGroup = rootOs
   .use(withInstanceAdmin)
   .use(auditMiddleware)
-  .meta({ audit: { action: "dynamicConfig.clear", resource: "dynamicConfig", resourceId: { fromInput: "id" } } })
+  .meta({ mcp: false, audit: { action: "dynamicConfig.clear", resource: "dynamicConfig", resourceId: { fromInput: "id" } } })
   .route({ method: "DELETE", path: "/dynamic-config/groups/{id}", tags, summary: "Clear a dashboard-managed group" })
   .input(z.object({ id: z.string() }))
   .handler(async ({ input, errors }) => {
@@ -75,7 +75,7 @@ const set = rootOs
   .use(auditMiddleware)
   // captureOutput, not captureInput: the handler withholds a secret's value, so the audit trail
   // records what a non-secret was set to without ever carrying a secret into the log.
-  .meta({ audit: { action: "dynamicConfig.set", resource: "dynamicConfig", resourceId: { fromInput: "key" }, captureOutput: ["value"] } })
+  .meta({ mcp: false, audit: { action: "dynamicConfig.set", resource: "dynamicConfig", resourceId: { fromInput: "key" }, captureOutput: ["value"] } })
   .route({ method: "PUT", path: "/dynamic-config/{key}", tags, summary: "Set a dashboard-managed setting" })
   .input(z.object({ key: z.string(), value: z.string() }))
   .handler(async ({ input, context, errors }) => {
@@ -96,7 +96,7 @@ const set = rootOs
 const clear = rootOs
   .use(withInstanceAdmin)
   .use(auditMiddleware)
-  .meta({ audit: { action: "dynamicConfig.clear", resource: "dynamicConfig", resourceId: { fromInput: "key" } } })
+  .meta({ mcp: false, audit: { action: "dynamicConfig.clear", resource: "dynamicConfig", resourceId: { fromInput: "key" } } })
   .route({ method: "DELETE", path: "/dynamic-config/{key}", tags, summary: "Clear a dashboard-managed setting" })
   .input(z.object({ key: z.string() }))
   .handler(async ({ input, errors }) => {
