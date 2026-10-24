@@ -41,7 +41,7 @@ models:
       activeWeightGb: 7
       weightBits: 4
     type: chat
-    family: Nemotron
+    family: Nemotron 3
     tags: [tools, custom_code]
     platforms: [nvidia]
     engineArgs:
@@ -103,7 +103,7 @@ models:
       activeWeightGb: 11
       weightBits: 4
     type: chat
-    family: Nemotron
+    family: Nemotron 3
     tags: [tools]
     engineArgs:
       - --tool-call-parser

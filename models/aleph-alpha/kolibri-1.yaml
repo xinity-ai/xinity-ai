@@ -48,7 +48,7 @@ models:
       largestFileGb: 3.16
       weightBits: 8
     type: chat
-    family: Kolibri
+    family: Kolibri 1
     tags: [tools]
     engineArgs:
       - --kv-cache-dtype

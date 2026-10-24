@@ -39,7 +39,7 @@ models:
       largestFileGb: 3.69
       weightBits: 4
     type: chat
-    family: DeepSeek
+    family: DeepSeek V4
     tags: [tools]
     engineArgs:
       # The checkpoint ships no chat template, the tokenizer mode renders the prompt instead.

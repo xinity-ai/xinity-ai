@@ -51,7 +51,7 @@ models:
       largestFileGb: 12.13
       weightBits: 8
     type: chat
-    family: MiMo
+    family: MiMo V2.6
     tags: [tools, custom_code]
     engineArgs: &mimo-args-text
       - &mimo-args

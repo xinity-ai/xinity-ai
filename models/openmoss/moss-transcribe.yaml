@@ -36,7 +36,7 @@ models:
       largestFileGb: 1.82
       weightBits: 16
     type: transcription
-    family: MOSS
+    family: MOSS Transcribe
     # The repo ships its own processor, which vLLM can only load as remote code.
     tags: [diarization, custom_code]
     downloadFilter:

@@ -43,8 +43,9 @@ steps.)
    into `sizing`. Its comments say what to adjust for the entry. It reads only `config.json` and the
    safetensors headers, never the weights, and also takes a local model directory. A gated repo
    needs `HF_TOKEN`.
-3. **Write the entry** into the family's file under `models/`, keyed by a specifier that carries the
-   engine (e.g. `qwen3-coder-30b-vllm`). Start with the required fields; add optional fields only
+3. **Write the entry** into its model line's file, `models/<publisher>/<model-line>.yaml` (see
+   [`models/README.md`](../../../models/README.md) for the layout), keyed by a specifier that
+   carries the engine (e.g. `qwen3-coder-30b-vllm`). Start with the required fields; add optional fields only
    when research or a failure justifies them. For editor autocomplete and validation, add the schema
    header from the README's "IDE validation" section. Once a family has more than one entry, factor
    the shared values into YAML anchors from the first draft rather than retrofitting them. See
@@ -103,10 +104,10 @@ host, outside vLLM), and starts the server. No daemon, database or cluster is in
 
 ```bash
 # Inspect the plan: what it resolved, whether it can run here, and the exact start command.
-bun run run-model -- --models ../../../models/<family>.yaml --model <specifier> --image <vllm-image> --plan
+bun run run-model -- --models ../../models/<publisher>/<model-line>.yaml --model <specifier> --image <vllm-image> --plan
 
 # Run it. Downloads on the host first, then starts the container.
-bun run run-model -- --models ../../../models/<family>.yaml --model <specifier> --image <vllm-image> --start
+bun run run-model -- --models ../../models/<publisher>/<model-line>.yaml --model <specifier> --image <vllm-image> --start
 ```
 
 With the docker backend (`--image`), the container always runs **egress-blocked and offline**: it
