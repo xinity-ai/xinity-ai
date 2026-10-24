@@ -69,6 +69,11 @@ const EXCLUDED_TOOLS = [
   "instanceAdmin_getOrganizationMembers",
   "instanceAdmin_setSsoSelfManage",
   "apiCall_addExampleCalls",
+  "dynamicConfig_set",
+  "dynamicConfig_clear",
+  "dynamicConfig_setGroup",
+  "dynamicConfig_clearGroup",
+  "compute_removeNode",
 ];
 
 // ─── Setup ──────────────────────────────────────────────────────────
@@ -120,6 +125,7 @@ describe("MCP tool visibility", () => {
     expect(toolNames).toContain("deployment_list");
     expect(toolNames).toContain("application_list");
     expect(toolNames).toContain("health");
+    expect(toolNames).toContain("dynamicConfig_list");
   });
 
   test("tools/call with excluded tool name returns unknown tool error", async () => {
