@@ -86,7 +86,7 @@ models:
       weightGb: 2.1
       weightBits: 4
     type: chat
-    family: Granite
+    family: Granite 4
     tags: [tools]
     engineVersions:
       min: "0.33.1"
@@ -115,7 +115,7 @@ models:
       weightGb: 0.71
       weightBits: 16
     type: chat
-    family: Granite
+    family: Granite 4
     tags: [tools]
     engineVersions:
       min: "0.33.1"

@@ -72,8 +72,9 @@
           meta.description = "Xinity model catalog, usable as services.xinity-infoserver.modelInfoDir";
         } ''
           mkdir -p $out
-          find $src -maxdepth 1 \( -name '*.yaml' -o -name '*.yml' \) \
-            -exec install -Dm644 {} $out/ \;
+          cd $src
+          find . \( -name '*.yaml' -o -name '*.yml' \) \
+            -exec install -Dm644 {} $out/{} \;
         '';
     in {
       packages = {

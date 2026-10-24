@@ -345,6 +345,12 @@ describe("buildHardwareProfile", () => {
     expect(buildHardwareProfile([{ ...card, vramMb: 0 }], 131072).hostMemoryGb).toBe(123);
   });
 
+  test("reports capacity in decimal GB, the unit of the model sizes it is compared with", () => {
+    const card: DetectedGpu = { vendor: "nvidia", name: "RTX PRO 6000", vramMb: 97887 };
+    expect(buildHardwareProfile([card], 131072)).toMatchObject({ detectedCapacityGb: 102, physicalCapacityGb: 102 });
+    expect(buildHardwareProfile([{ ...card, vramMb: 0 }], 131072)).toMatchObject({ detectedCapacityGb: 123, physicalCapacityGb: 137 });
+  });
+
   test("reports no host memory when the RAM could not be read", () => {
     expect(buildHardwareProfile([], 0).hostMemoryGb).toBeUndefined();
   });

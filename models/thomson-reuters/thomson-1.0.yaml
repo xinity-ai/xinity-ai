@@ -3,7 +3,7 @@
 # Thomson 1.0: Thomson Reuters' continual-learning line for legal, tax and journalism
 # work. Thomson-1.0-Small is a continual-pretrain of Qwen3.6-35B-A3B (by way of
 # tri-fair-lab/Snowdon1.1-Small), so it is byte for byte that architecture and every
-# cache figure below cross-checks against qwen3.6-35b-a3b-vllm in models/qwen3.yaml.
+# cache figure below cross-checks against qwen3.6-35b-a3b-vllm in qwen/qwen3.6.yaml.
 #
 # Verified on GB10 (aarch64, 109 GB, egress-blocked docker via run-model). The full
 # record, including what was predicted before it was measured, is in
@@ -88,7 +88,7 @@ models:
       activeWeightGb: 7.8
       weightBits: 16
     type: chat
-    family: Thomson
+    family: Thomson 1.0
     tags: [vision, tools]
     # The tags add --enable-auto-tool-choice; vLLM still needs the parsers named.
     # The template emits <tool_call><function=...><parameter=...>, which qwen3_coder

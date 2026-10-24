@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  qwen-agentworld-35b-a3b-vllm:
+    name: Qwen-AgentWorld 35B A3B
+    description: |
+      A world model rather than an assistant. It simulates agent environments such as
+      MCP servers, search, a terminal, SWE tasks, Android, the web and an OS, so an
+      agent can be exercised against a model of the world instead of the real thing.
+
+      It works through long chains of thought and thinking is on by default, so output
+      budgets have to cover the reasoning as well as the answer. Text only, with tool
+      calling and a 256K window.
+
+      Do not reach for this as a general chat model; that is not the job it was trained
+      for.
+    url: https://huggingface.co/Qwen/Qwen-AgentWorld-35B-A3B
+    license: apache-2.0
+    createdAt: 2026-06-22
+    registeredAt: 2026-08-18
+    engine: vllm
+    engineSpecifier: Qwen/Qwen-AgentWorld-35B-A3B
+    # Byte for byte the Qwen3.6 35B A3B layout, so the cache figures are the ones measured
+    # on it, see qwen3.6.yaml. Only the weights differ.
+    sizing:
+      kvBytesPerToken: 20480
+      attentionHeads: 16
+      kvHeads: 2
+      stateBytesPerSequence: 64880640
+      minKvCacheGb: 5.54
+      maxContextLength: 262144
+      weightGb: 69.46  # measured resident, 64.69 GiB
+      layers: 40
+      attentionLayers: 10
+      stateLayers: 30
+      nonLayerWeightGb: 2.03
+      activeWeightGb: 7
+      weightBits: 16
+    type: chat
+    family: Qwen-AgentWorld
+    tags: [tools]
+    requestParams:
+      chat_template_kwargs.enable_thinking: boolean
+    engineArgs:
+      - --language-model-only
+      - --tool-call-parser
+      - qwen3_coder
+      - --reasoning-parser
+      - qwen3
+    engineVersions:
+      min: "0.19.0"

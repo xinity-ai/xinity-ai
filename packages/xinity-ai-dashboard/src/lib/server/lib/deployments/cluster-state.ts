@@ -35,7 +35,7 @@ export function rankServers(strategy: DeploymentStrategy, state: ClusterState): 
 function nodeCards(server: AiNode): CardCapacity[] {
   const cards = server.gpus
     .filter((gpu) => gpu.vramMb > 0)
-    .map((gpu) => ({ id: gpuId(gpu) ?? null, vendor: gpu.vendor, name: gpu.name, total: gpu.vramMb / 1024, used: 0 }));
+    .map((gpu) => ({ id: gpuId(gpu) ?? null, vendor: gpu.vendor, name: gpu.name, total: (gpu.vramMb * 2 ** 20) / 1e9, used: 0 }));
   const [gpu] = server.gpus;
   return cards.length > 0 ? cards : [{ id: null, vendor: gpu?.vendor ?? "", name: gpu?.name ?? "", total: server.estCapacity, used: 0 }];
 }

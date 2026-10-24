@@ -3,7 +3,7 @@
  * side, one per model format, with no data crossing between them.
  */
 import { readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { rootLogger } from "./logger";
 
 /** Without this an unresponsive include host stalls every later refresh behind it. */
@@ -188,8 +188,8 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
   async function loadDirectoryFiles(directory: string, visited: Set<string>, state: IndexState): Promise<void> {
     let entries: string[];
     try {
-      entries = (await readdir(directory))
-        .filter(f => f.endsWith(".yaml") || f.endsWith(".yml"))
+      entries = (await readdir(directory, { recursive: true }))
+        .filter(f => (f.endsWith(".yaml") || f.endsWith(".yml")) && !f.split(sep).some(part => part.startsWith(".")))
         .sort();
     } catch (err) {
       log.warn({ dirPath: directory, err }, "Could not read model info directory, skipping");

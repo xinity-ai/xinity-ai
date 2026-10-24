@@ -34,7 +34,7 @@ models:
       activeWeightGb: 6
       weightBits: 16
     type: chat
-    family: Qwen3 30B
+    family: Qwen3
     tags: [tools]
     engineArgs: &qwen3-30b-args
       - --tool-call-parser

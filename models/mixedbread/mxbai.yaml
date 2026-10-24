@@ -38,7 +38,7 @@ models:
       nonLayerWeightGb: 0.07
       weightBits: 16
     type: embedding
-    family: Mixedbread
+    family: mxbai
     tags: []
 
   mxbai-rerank-large-v2-vllm: &mxbai-rerank
@@ -71,7 +71,7 @@ models:
       nonLayerWeightGb: 0.47
       weightBits: 16
     type: rerank
-    family: Mixedbread
+    family: mxbai
     tags: []
 
   mxbai-rerank-base-v2-vllm:

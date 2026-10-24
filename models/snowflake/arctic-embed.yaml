@@ -32,7 +32,7 @@ models:
       nonLayerWeightGb: 0.53
       weightBits: 16
     type: embedding
-    family: Snowflake Arctic
+    family: Arctic Embed
     tags: []
 
   snowflake-arctic-embed-l-v2-ollama:
@@ -58,7 +58,7 @@ models:
       weightGb: 1.16
       weightBits: 16
     type: embedding
-    family: Snowflake Arctic
+    family: Arctic Embed
     tags: []
     engineVersions:
       min: "0.33.1"

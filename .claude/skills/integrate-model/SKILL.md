@@ -19,8 +19,9 @@ When working through it as an agent:
 - **One entry describes one model on one engine.** The specifier carries the engine
   (`qwen3-coder-30b-vllm`), and `sizing.weightGb`, `sizing.minKvCacheGb`, `tags` and `engineArgs`
   describe that build only. A second engine means a second entry, not extra keys on this one.
-- **Write the entry into `models/<family>.yaml`**, creating the file if that family has none, then
-  point `run-model --models ../../models/<family>.yaml` at it for verification.
+- **Write the entry into `models/<publisher>/<model-line>.yaml`** (layout in `models/README.md`),
+  creating the file if that model line has none, then point
+  `run-model --models ../../models/<publisher>/<model-line>.yaml` at it for verification.
 - Never touch `packages/xinity-infoserver/models.legacy.d/`. That is the deprecated v1 format, kept
   only for deployments predating the current one.
 - Run `run-model` with `--json` (`--plan --json`, then `--start --json`) so output is machine-readable.

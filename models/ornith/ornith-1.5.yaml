@@ -1,166 +1,18 @@
 # yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
 #
-# Ornith: agentic-coding models on a Qwen 3.5 base, so they inherit that family's
-# hybrid layout of linear attention with full attention every fourth layer. Two
-# generations live here, 1.0 first and then 1.5; 1.5 supersedes 1.0 at every size.
+# Ornith 1.5: agentic-coding models on a Qwen 3.5 base, the same hybrid layout as
+# Ornith 1.0 (linear attention with full attention every fourth layer), so the KV
+# geometry carries over byte for byte and the 1.0 entries cross-check these numbers.
 #
-# Each checkpoint appears twice, once text-only and once with the vision tower loaded.
-# The vision tower costs both weights and load time, and an agentic-coding deployment
-# usually has no use for it, so the text-only entry is the one to reach for by default.
+# Each checkpoint appears twice: once text-only, once with the vision tower loaded.
+# Unlike 1.0, the FP8 build's vision tower is genuinely usable, so it gets a vision
+# entry too. The 35B checkpoints also ship an MTP head, which the mtp entry uses.
+#
+# Not integrated: the 397B (794 GB bf16, 405 GB FP8, 238 GB NVFP4 on disk) needs
+# more memory than one node here has, and the MLX and GGUF repos are for other
+# engines.
 
 models:
-  ornith-1.0-9b-vllm: &ornith9
-    name: Ornith 1.0 9B
-    description: |
-      A 9B dense agentic-coding model. It reasons before answering and calls tools, which
-      is the combination that makes it useful for driving a coding agent rather than
-      answering questions about code.
-
-      This entry serves it text-only. Use the vision entry if the agent needs to read
-      screenshots.
-    url: https://huggingface.co/ornith-ai/Ornith-1.0-9B
-    license: mit
-    createdAt: 2026-06-21
-    registeredAt: 2026-08-18
-    engine: vllm
-    engineSpecifier: ornith-ai/Ornith-1.0-9B
-    sizing: &ornith9-kv
-      # 32 layers, 8 full attention and 24 linear -> a token costs
-      # 2 * 8 * 4 kv heads * 256 head_dim * 2, and each linear layer holds a fixed
-      # 2,162,688-byte per-sequence state instead. minKvCacheGb is authored, not
-      # derived: whole-block allocation puts it above the product of the two.
-      # Bracketed: 8.71 aborts, 8.72 starts at 1.00x.
-      kvBytesPerToken: 32768
-      attentionHeads: 16
-      kvHeads: 4
-      stateBytesPerSequence: 51904512
-      minKvCacheGb: 8.72
-      maxContextLength: 262144
-      weightGb: 18.04  # measured resident, 16.80 GiB
-      layers: 32
-      attentionLayers: 8
-      stateLayers: 24
-      nonLayerWeightGb: 4.07
-      weightBits: 16
-    type: chat
-    family: Ornith
-    tags: [tools]
-    engineArgs: &ornith-args-text
-      - &ornith-parsers
-        - --tool-call-parser
-        - qwen3_xml
-        - --reasoning-parser
-        - qwen3
-      - --language-model-only
-    engineVersions:
-      min: "0.19.2"
-
-  ornith-1.0-9b-vl-vllm:
-    <<: *ornith9
-    name: Ornith 1.0 9B (vision)
-    description: |
-      The same 9B agentic-coding model with its vision tower loaded, so it reads images
-      as well as text. Reasoning and tool calling are unchanged.
-
-      Prefer the text-only entry unless images are actually part of the workload; the
-      tower is not free.
-    variantOf: ornith-1.0-9b-vllm
-    tags: [tools, vision]
-    engineArgs: *ornith-parsers
-    sizing:
-      <<: *ornith9-kv
-      weightGb: 18.96  # measured resident, 17.66 GiB
-      nonLayerWeightGb: 4.98
-
-  ornith-1.0-35b-vllm: &ornith35
-    name: Ornith 1.0 35B
-    description: |
-      The larger Ornith: a 35B sparse mixture of experts, so it decodes far faster than
-      its total size suggests. It is the one to use where the 9B loses track of a long
-      agentic task.
-
-      Reasoning and tool calling as in the 9B, and text-only in this entry.
-    url: https://huggingface.co/ornith-ai/Ornith-1.0-35B
-    license: mit
-    createdAt: 2026-06-21
-    registeredAt: 2026-08-18
-    engine: vllm
-    engineSpecifier: ornith-ai/Ornith-1.0-35B
-    sizing: &ornith35-kv
-      # 40 layers, 10 full attention and 30 linear, 2 kv heads at head_dim 256. Byte for
-      # byte the Qwen3.5 35B A3B layout.
-      # Bracketed: 5.53 aborts, 5.54 starts at 1.00x.
-      kvBytesPerToken: 20480
-      attentionHeads: 16
-      kvHeads: 2
-      stateBytesPerSequence: 64880640
-      minKvCacheGb: 5.54
-      maxContextLength: 262144
-      weightGb: 69.46  # measured resident, 64.69 GiB
-      layers: 40
-      attentionLayers: 10
-      stateLayers: 30
-      nonLayerWeightGb: 2.04
-      # 8 of 256 experts per token, plus the shared expert, attention and lm_head read in
-      # full. From the checkpoint's tensor sizes; the embedding table is not read per token.
-      activeWeightGb: 5.89
-      weightBits: 16
-    type: chat
-    family: Ornith
-    tags: [tools]
-    engineArgs: *ornith-args-text
-    engineVersions:
-      min: "0.19.2"
-
-  ornith-1.0-35b-vl-vllm:
-    <<: *ornith35
-    name: Ornith 1.0 35B (vision)
-    description: |
-      The 35B with its vision tower loaded, for agents that have to read images. Same
-      reasoning and tool calling as the text-only entry.
-    variantOf: ornith-1.0-35b-vllm
-    tags: [tools, vision]
-    engineArgs: *ornith-parsers
-    sizing:
-      <<: *ornith35-kv
-      weightGb: 70.36  # measured resident, 65.53 GiB
-      nonLayerWeightGb: 2.93
-
-  ornith-1.0-35b-fp8-vllm:
-    <<: *ornith35
-    name: Ornith 1.0 35B FP8
-    description: |
-      The 35B in compressed-tensors FP8, at half the memory of the bf16 release and the
-      practical choice when the full-precision entry will not leave room for anything
-      else.
-
-      Text only. The checkpoint does ship a vision tower, but in this build image input
-      serves a stream of exclamation marks rather than a description, so it is not
-      offered here. Use the bf16 vision entry for images.
-    url: https://huggingface.co/ornith-ai/Ornith-1.0-35B-FP8
-    engineSpecifier: ornith-ai/Ornith-1.0-35B-FP8
-    variantOf: ornith-1.0-35b-vllm
-    sizing:
-      <<: *ornith35-kv
-      weightGb: 37.00  # measured resident, 34.46 GiB
-      activeWeightGb: 4.49
-      weightBits: 8
-
-  # ---------------------------------------------------------------------------
-  # Ornith 1.5. Same Qwen 3.5 hybrid layout as 1.0 (linear attention with full
-  # attention every fourth layer), so the KV geometry carries over byte for byte,
-  # and the 1.0 entries cross-check these numbers.
-  #
-  # As in 1.0, each checkpoint appears twice: once text-only, once with the vision
-  # tower loaded. Unlike 1.0, the FP8 build's vision tower is genuinely usable, so
-  # it gets a vision entry too. The 35B checkpoints also ship an MTP head, which
-  # the mtp entry uses.
-  #
-  # Not integrated: the 397B (794 GB bf16, 405 GB FP8, 238 GB NVFP4 on disk) needs
-  # more memory than one node here has, and the MLX and GGUF repos are for other
-  # engines.
-  # ---------------------------------------------------------------------------
-
   ornith-1.5-9b-vllm: &ornith15-9b
     name: Ornith 1.5 9B
     description: |
@@ -204,7 +56,7 @@ models:
       nonLayerWeightGb: 4.07
       weightBits: 16
     type: chat
-    family: Ornith
+    family: Ornith 1.5
     tags: [tools]
     requestParams: &ornith15-params
       top_k: number
@@ -246,8 +98,8 @@ models:
     description: |
       The mid-size Ornith 1.5: a 35B sparse mixture of experts that activates about
       3B parameters per token, so it decodes far faster than its footprint suggests.
-      It is the strongest Ornith that fits on a single node here, and the one to
-      reach for when the 9B loses the thread of a long agentic task.
+      It is the one to reach for when the 9B loses the thread of a long agentic
+      task, and the 122B when this one does.
 
       Reasoning and tool calling work as on the 9B, with the chain of thought in
       `reasoning_content` and `chat_template_kwargs: {"enable_thinking": false}` to
@@ -286,7 +138,7 @@ models:
       activeWeightGb: 5.89
       weightBits: 16
     type: chat
-    family: Ornith
+    family: Ornith 1.5
     tags: [tools]
     requestParams: *ornith15-params
     engineArgs: *ornith15-args-text
@@ -464,3 +316,68 @@ models:
       <<: *ornith15-35b-nvfp4-kv
       weightGb: 21.91  # measured resident with the tower, 20.40 GiB
       nonLayerWeightGb: 2.2
+
+  ornith-1.5-122b-nvfp4-vllm: &ornith15-122b-nvfp4
+    name: Ornith 1.5 122B NVFP4
+    description: |
+      The largest Ornith 1.5 in the catalog, built for long, multi-step agentic
+      coding. Choose it when the 35B loses track of a task. It is larger and
+      answers more slowly than the 35B.
+
+      Reasoning is on by default, with the chain of thought arriving in
+      `reasoning_content`. Send `chat_template_kwargs: {"enable_thinking": false}`
+      to skip it. Tool calling works, including several calls in one turn. The
+      publisher recommends `temperature: 1.0`, `top_p: 0.95`, `top_k: 20`,
+      `presence_penalty: 1.5` for general use, and `temperature: 0.6` with
+      `presence_penalty: 0.0` for precise coding.
+
+      This entry serves text only. Use the vision entry if the agent has to read
+      screenshots.
+    url: https://huggingface.co/ornith-ai/Ornith-1.5-122B-NVFP4
+    license: mit
+    createdAt: 2026-10-16
+    registeredAt: 2026-10-22
+    engine: vllm
+    engineSpecifier: ornith-ai/Ornith-1.5-122B-NVFP4
+    platforms: [nvidia]
+    sizing: &ornith15-122b-nvfp4-kv
+      # 48 layers, 12 full attention and 36 linear, 2 kv heads at head_dim 256. The
+      # checkpoint carries a kv_cache_scheme, so the cache runs fp8_e4m3.
+      kvBytesPerToken: 12288
+      attentionHeads: 32
+      kvHeads: 2
+      stateBytesPerSequence: 153649152
+      maxContextLength: 262144
+      weightGb: 71.84  # measured resident, 66.89 GiB
+      layers: 48
+      attentionLayers: 12
+      stateLayers: 36
+      nonLayerWeightGb: 1.96
+      # Single-stream decode measured 28.5 tok/s on GB10.
+      activeWeightGb: 6.95
+      weightBits: 4
+    type: chat
+    family: Ornith 1.5
+    tags: [tools]
+    requestParams: *ornith15-params
+    engineArgs: *ornith15-args-text
+    engineVersions:
+      min: "0.23.1"
+
+  ornith-1.5-122b-nvfp4-vl-vllm:
+    <<: *ornith15-122b-nvfp4
+    name: Ornith 1.5 122B NVFP4 (vision)
+    description: |
+      The 122B with image reading switched on, so it understands images as well
+      as text. It transcribed invoice text exactly and read a bar chart correctly
+      in testing. Reasoning, tool calling and sampling are identical to the
+      text-only entry.
+
+      Prefer the text-only entry when the workload has no images.
+    variantOf: ornith-1.5-122b-nvfp4-vllm
+    tags: [tools, vision]
+    engineArgs: *ornith15-parsers
+    sizing:
+      <<: *ornith15-122b-nvfp4-kv
+      weightGb: 72.75  # measured resident with the tower, 67.74 GiB
+      nonLayerWeightGb: 2.86

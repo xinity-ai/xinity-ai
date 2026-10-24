@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# The checkpoint is omnimodal, so it appears twice: text-only, and with the vision tower
+# loaded. Agentic coding rarely needs images, so the text-only entry is the default.
+
+models:
+  mimo-v2.6-flash-vllm: &mimo
+    name: MiMo V2.6 Flash
+    description: |
+      Xiaomi's large model for agentic work: it plans over many steps, calls tools and
+      writes code, and it can take in up to a million tokens at once, enough for a large
+      codebase or a long document set. Only a small part of the model runs for each word it
+      writes, so it answers faster than its size suggests.
+
+      This is the updated release Xiaomi recommends. It fixes a habit of the first release
+      of calling the same tool over and over without making progress, which matters most
+      when the model drives an agent.
+
+      Thinking is on by default: the model reasons before it answers, and the reasoning
+      comes back separately from the answer. Turn it off per request with
+      `chat_template_kwargs: {"enable_thinking": false}` for quick replies where reasoning
+      adds nothing. With thinking on, leave `max_tokens` generous enough for both the
+      reasoning and the answer. Xiaomi recommends `temperature` 1.0 and `top_p` 0.95.
+
+      This entry serves text only. Use the vision entry if the work involves images.
+    url: https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD
+    license: mit
+    createdAt: 2026-09-27
+    registeredAt: 2026-10-22
+    engine: vllm
+    engineSpecifier: XiaomiMiMo/MiMo-V2.6-Flash-MOPD
+    sizing: &mimo-kv
+      # 9 of the 48 layers attend to the full context, 4 kv heads with keys at 192 and
+      # values at 128: 9 * 4 * (192 + 128) * 2. The other 39 hold a 128-token window,
+      # 8 kv heads each: 39 * 8 * 320 * 2 * 128 bytes per request in flight.
+      # minKvCacheGb is authored: vLLM pads the 39 windowed layers to five groups of nine
+      # and charges every group whole blocks, 11.70 GiB per card at TP2.
+      # Bracketed: 25.12 aborts, 25.14 starts at 1.00x.
+      kvBytesPerToken: 23040
+      stateBytesPerSequence: 25559040
+      minKvCacheGb: 25.14
+      attentionHeads: 64
+      kvHeads: 4
+      maxContextLength: 1048576
+      weightGb: 170.53  # measured resident across two nodes, 2 x 79.41 GiB
+      hostWeightGb: 0
+      layers: 48
+      attentionLayers: 9
+      nonLayerWeightGb: 2.82
+      activeWeightGb: 13.14
+      largestFileGb: 12.13
+      weightBits: 8
+    type: chat
+    family: MiMo V2.6
+    tags: [tools, custom_code]
+    engineArgs: &mimo-args-text
+      - &mimo-args
+        - --tool-call-parser
+        - mimo
+        - --reasoning-parser
+        - mimo
+        # The checkpoint's generation_config.json caps any request without max_tokens at
+        # 2048 tokens, too short for a reasoning model. vllm drops those defaults.
+        - --generation-config
+        - vllm
+      # Skips the vision tower and the audio encoder.
+      - --language-model-only
+    requestParams:
+      chat_template_kwargs.enable_thinking: boolean
+    downloadFilter:
+      - "dflash/"
+      - "*.pdf"
+      - "!*.py"
+    engineVersions:
+      min: "0.31.0"   # verified on 0.31.1 and 0.32.1 across two GB10 nodes; 0.30.0 fails loading the mxfp4 experts
+
+  mimo-v2.6-flash-vl-vllm:
+    <<: *mimo
+    name: MiMo V2.6 Flash (vision)
+    description: |
+      The same MiMo V2.6 Flash with its vision tower loaded, so it reads images alongside
+      text: screenshots, charts, scanned documents. Reasoning, tool calling and the
+      million-token window are unchanged.
+
+      Prefer the text-only entry unless images are actually part of the workload; reading
+      images takes extra memory on every machine the model runs on.
+    variantOf: mimo-v2.6-flash-vllm
+    tags: [tools, vision, custom_code]
+    engineArgs: *mimo-args
+    sizing:
+      <<: *mimo-kv
+      weightGb: 173.7  # measured resident across two nodes, 2 x 80.88 GiB
+      nonLayerWeightGb: 4.28

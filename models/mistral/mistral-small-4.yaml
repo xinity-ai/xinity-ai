@@ -38,7 +38,7 @@ models:
       activeWeightGb: 12
       weightBits: 4
     type: chat
-    family: Mistral Small
+    family: Mistral Small 4
     tags: [vision, tools]
     engineArgs:
       # Mistral's own checkpoint format, and the window pinned to what the entry
