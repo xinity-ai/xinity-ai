@@ -359,6 +359,20 @@ describe("server-catalog", () => {
       expect(getAll()).toHaveLength(2);
     });
 
+    it("loads model files from subdirectories, skipping hidden ones", async () => {
+      const dirPath = join(testDir, `dir-${fileIndex++}`);
+      await Bun.write(join(dirPath, "top.yaml"), makeModelYaml({ "top-model": baseModel }));
+      await Bun.write(join(dirPath, "qwen", "qwen3.yaml"), makeModelYaml({ "nested-model": baseModel }));
+      await Bun.write(join(dirPath, ".git", "stale.yaml"), makeModelYaml({ "hidden-model": baseModel }));
+
+      configure(10, undefined, dirPath);
+      await refresh();
+
+      expect(get("top-model")).toBeDefined();
+      expect(get("nested-model")).toBeDefined();
+      expect(get("hidden-model")).toBeUndefined();
+    });
+
     it("ignores non-yaml files in the directory", async () => {
       const dirPath = join(testDir, `dir-${fileIndex++}`);
       await Bun.write(join(dirPath, "valid.yaml"), makeModelYaml({ "yaml-model": baseModel }));
