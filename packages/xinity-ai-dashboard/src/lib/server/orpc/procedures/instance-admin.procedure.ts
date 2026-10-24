@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
-import { userT, accountT, memberT, organizationT, auditEventT, sessionT, dashboardApiKeyT, sql, and, count } from "common-db";
+import { userT, accountT, memberT, organizationT, auditEventT, sessionT, dashboardApiKeyT, deploymentMatchesInstallation, sql, and, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
 import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/calls/legacy-postfill";
 import { countDatabaseBackedMedia, moveMediaToS3 } from "$lib/server/lib/calls/media-migration";
@@ -370,12 +370,11 @@ const listOrganizations = rootOs
           deploymentCount: sql<number>`(SELECT count(*) FROM "model_deployment" WHERE "model_deployment"."organization_id" = "organization"."id" AND "model_deployment"."deleted_at" IS NULL)`.as("deploymentCount"),
           totalCapacity: sql<number>`(
             SELECT coalesce(sum("model_installation"."est_capacity"), 0)
-            FROM "model_deployment" md
-            INNER JOIN "model_installation"
-              ON "model_installation"."specifier" = md."specifier"
-              OR "model_installation"."specifier" = md."early_specifier"
-            WHERE md."organization_id" = "organization"."id"
-              AND md."deleted_at" IS NULL
+            FROM "model_deployment"
+            INNER JOIN "model_installation" ON ${deploymentMatchesInstallation}
+            WHERE "model_deployment"."organization_id" = "organization"."id"
+              AND "model_deployment"."deleted_at" IS NULL
+              AND "model_installation"."deleted_at" IS NULL
           )`.as("total_capacity"),
         })
         .from(organizationT)
