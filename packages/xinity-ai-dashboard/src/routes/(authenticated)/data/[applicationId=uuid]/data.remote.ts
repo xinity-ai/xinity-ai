@@ -1,5 +1,5 @@
 import { command, getRequestEvent, query } from '$app/server';
-import { auth } from '$lib/server/auth-server';
+import { requireSession } from '$lib/server/lib/auth/session';
 import { getDB } from '$lib/server/db';
 import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/lib/calls/call-messages";
 import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/lib/calls/call-ratings";
@@ -11,13 +11,8 @@ import { error } from '@sveltejs/kit';
 import { apiCallT, aiApiKeyT, inferenceCallT, inferenceCallRatingT, sql, unionAll, type ApiCallInputMessage, type AiApiKey, type PgColumn, and, inArray } from 'common-db';
 import z from 'zod';
 
-async function getSession() {
-  const { locals, } = getRequestEvent();
-  const session = await auth.api.getSession({ headers: locals.request.headers });
-  if (!session) {
-    throw error(401, "Not logged in")
-  }
-  return session;
+function getSession() {
+  return requireSession(getRequestEvent().locals.request.headers);
 }
 
 async function assertPermission(organizationId: string, permissions: PermissionSpec) {

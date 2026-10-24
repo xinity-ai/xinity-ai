@@ -67,6 +67,14 @@ async function signInAndSaveState(email: string, password: string, storagePath: 
   await Bun.write(storagePath, JSON.stringify({ cookies, origins: [] }, null, 2));
 }
 
+async function fetchAs(storagePath: string, path: string, init?: RequestInit): Promise<Response> {
+  const { cookies } = (await Bun.file(storagePath).json()) as { cookies: Array<{ name: string; value: string }> };
+  return fetch(`${BASE_URL}${path}`, {
+    ...init,
+    headers: { ...AUTH_HEADERS, Cookie: cookies.map((c) => `${c.name}=${c.value}`).join("; ") },
+  });
+}
+
 /** Create a browser page authenticated using the given storage state file. */
 async function pageWithState(storagePath: string): Promise<TestPage> {
   const { getBrowser } = await import("../utils/browser");
@@ -132,6 +140,12 @@ describe("Temporary password flow", () => {
     }
   });
 
+  test("the API refuses a user with a temporary password", async () => {
+    const res = await fetchAs(STORAGE_PATH, "/api/account/passkeys");
+    expect(res.status).toBe(403);
+    expect(await res.text()).toContain("temporary password");
+  });
+
   test("changing password clears the temporary password flag and stops the redirect", async () => {
     const { page, context } = await pageWithState(STORAGE_PATH);
     try {
@@ -180,6 +194,18 @@ describe("Temporary password flow", () => {
     } finally {
       await context.close();
     }
+  });
+
+  test("changing the password through Better Auth directly also clears the flag", async () => {
+    expect((await fetchAs(postResetStoragePath, "/api/account/passkeys")).status).toBe(403);
+
+    const res = await fetchAs(postResetStoragePath, "/api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ currentPassword: postResetTempPassword, newPassword: `${PERMANENT_PASSWORD}2` }),
+    });
+    expect(res.status).toBe(200);
+
+    expect((await fetchAs(postResetStoragePath, "/api/account/passkeys")).status).toBe(200);
   });
 
   test("createUser does not set session cookies on the admin response", async () => {

@@ -6,6 +6,7 @@ import { auth, type Session } from "$lib/server/auth-server";
 import { os } from "@orpc/server";
 import { rootLogger } from "../logging";
 import type { PermissionSpec } from "$lib/server/lib/auth/permissions";
+import { hasTemporaryPassword, TEMPORARY_PASSWORD_MESSAGE } from "$lib/server/lib/auth/temporary-password";
 import { isInstanceAdmin } from "../roles";
 import { runWithAudit, type ActorInfo, type AuditContext, type AuditTag } from "./audit";
 
@@ -15,6 +16,8 @@ export type ProcedureMeta = {
   mcp?: boolean;
   /** Opt a procedure into the audit trail. The middleware emits one event per call. */
   audit?: AuditTag;
+  /** Callable by a user who still has to replace an admin-issued temporary password. */
+  allowTemporaryPassword?: boolean;
 };
 
 export const rootOs = os.$context<App.Locals>().$meta<ProcedureMeta>({}).errors({
@@ -28,10 +31,14 @@ const log = rootLogger.child({ name: "orpc.root" });
 
 async function loadSessionOrThrow(
   context: App.Locals,
-  errors: { UNAUTHORIZED: () => Error },
+  errors: { UNAUTHORIZED: () => Error; FORBIDDEN: (options: { message: string }) => Error },
+  meta: ProcedureMeta,
 ): Promise<Session> {
   const session = await auth.api.getSession({ headers: context.request.headers });
   if (!session) throw errors.UNAUTHORIZED();
+  if (!meta.allowTemporaryPassword && await hasTemporaryPassword(session.user.id)) {
+    throw errors.FORBIDDEN({ message: TEMPORARY_PASSWORD_MESSAGE });
+  }
   return session;
 }
 
@@ -70,8 +77,8 @@ async function resolveActor(
 /**
  * Require an authenticated session and attach it to the ORPC context.
  */
-export const withAuth = rootOs.middleware(async ({ context, next, errors }) => {
-  const session = await loadSessionOrThrow(context, errors);
+export const withAuth = rootOs.middleware(async ({ context, procedure, next, errors }) => {
+  const session = await loadSessionOrThrow(context, errors, procedure["~orpc"].meta);
   const { actor } = await resolveActor(context.request, session);
   return next({
     context: {
@@ -82,8 +89,8 @@ export const withAuth = rootOs.middleware(async ({ context, next, errors }) => {
   });
 });
 
-export const withUserSession = rootOs.middleware(async ({ context, next, errors }) => {
-  const session = await loadSessionOrThrow(context, errors);
+export const withUserSession = rootOs.middleware(async ({ context, procedure, next, errors }) => {
+  const session = await loadSessionOrThrow(context, errors, procedure["~orpc"].meta);
   const { actor } = await resolveActor(context.request, session);
   if (actor.actorType === "api_key") {
     throw errors.FORBIDDEN({ message: "This action requires a signed-in user, not an API key" });
@@ -107,8 +114,8 @@ async function readActiveOrganizationFromDb(headers: Headers): Promise<string | 
  * Require an authenticated session with an active organization id.
  * For API key auth, falls back to the organizationId stored in the key's metadata.
  */
-export const withOrganization = rootOs.middleware(async ({ context, next, errors }) => {
-  const session = await loadSessionOrThrow(context, errors);
+export const withOrganization = rootOs.middleware(async ({ context, procedure, next, errors }) => {
+  const session = await loadSessionOrThrow(context, errors, procedure["~orpc"].meta);
   const { actor, apiKeyInfo } = await resolveActor(context.request, session);
 
   const { pinnedOrganizationId } = context as { pinnedOrganizationId?: string };
@@ -134,8 +141,8 @@ export const withOrganization = rootOs.middleware(async ({ context, next, errors
 /**
  * Require an authenticated session with instance admin privileges.
  */
-export const withInstanceAdmin = rootOs.middleware(async ({ context, next, errors }) => {
-  const session = await loadSessionOrThrow(context, errors);
+export const withInstanceAdmin = rootOs.middleware(async ({ context, procedure, next, errors }) => {
+  const session = await loadSessionOrThrow(context, errors, procedure["~orpc"].meta);
   if (!isInstanceAdmin(session.user.email)) {
     throw errors.FORBIDDEN();
   }
