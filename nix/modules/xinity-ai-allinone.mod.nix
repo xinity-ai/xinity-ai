@@ -1,7 +1,7 @@
 { self, ... }: {
 
   # ── Caddy Reverse Proxy Module ────────────────────────────────────────
-  flake.nixosModules.caddy = { config, lib, ... }:
+  flake.nixosModules.caddy = { config, options, lib, ... }:
     let
       cfg = config.services.xinity-ai-caddy;
 
@@ -142,7 +142,7 @@
         };
       };
 
-      config = lib.mkIf cfg.enable {
+      config = lib.mkIf cfg.enable (lib.mkMerge [{
         assertions = map (s: {
           assertion = false;
           message = ''
@@ -168,7 +168,23 @@
         };
 
         networking.firewall.allowedTCPPorts = [ 80 443 ];
-      };
+      }
+
+      # Guarded on `options` because this module can be imported without the service modules.
+      (lib.optionalAttrs (options.services ? xinity-ai-dashboard) {
+        services.xinity-ai-dashboard = lib.mkIf (cfg.dashboardSubdomain != null && cfg.dashboardOrigin == null) {
+          origin = lib.mkDefault "https://${cfg.dashboardSubdomain}.${cfg.domain}";
+          reverseProxy.ipHeader = lib.mkDefault "x-forwarded-for";
+          reverseProxy.xffDepth = lib.mkDefault 1;
+        };
+      })
+
+      (lib.optionalAttrs (options.services ? xinity-ai-monitoring) {
+        services.xinity-ai-monitoring.grafana.domain =
+          lib.mkIf (cfg.grafanaSubdomain != null && cfg.grafanaOrigin != null)
+            (lib.mkDefault "${cfg.grafanaSubdomain}.${cfg.domain}");
+      })
+    ]);
     };
 
   # ── SearXNG Search Engine Module ────────────────────────────────────
@@ -1297,9 +1313,7 @@
             port = lib.mkDefault cfg.dashboard.port;
             mcpEnabled = lib.mkDefault cfg.dashboard.mcpEnabled;
             licenseKey = lib.mkDefault cfg.dashboard.licenseKey;
-            origin = lib.mkDefault publicDashboardUrl;
-            reverseProxy.ipHeader = lib.mkDefault "x-forwarded-for";
-            reverseProxy.xffDepth = lib.mkDefault 1;
+            origin = lib.mkIf (!cfg.caddy.enable) (lib.mkDefault publicDashboardUrl);
             infoserverUrl = lib.mkDefault infoserverUrl;        # Internal URL for server-side fetching
             gatewayUrl = lib.mkDefault publicGatewayUrl;        # Public gateway base URL (no /v1 suffix)
             nodeEnv = lib.mkDefault "production";
@@ -1398,7 +1412,7 @@
             grafana.enable = lib.mkDefault cfg.monitoring.grafana.enable;
             grafana.port = lib.mkDefault cfg.monitoring.grafana.port;
             grafana.secretKeyFile = lib.mkDefault grafanaSecretKeyFile;
-            grafana.domain = lib.mkDefault "${cfg.grafanaSubdomain}.${cfg.domain}";
+            grafana.domain = lib.mkIf (!cfg.caddy.enable) (lib.mkDefault "${cfg.grafanaSubdomain}.${cfg.domain}");
             logs.enable = lib.mkDefault cfg.monitoring.logs.enable;
           };
 
