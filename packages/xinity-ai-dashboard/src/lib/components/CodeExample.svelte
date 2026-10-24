@@ -5,6 +5,7 @@
   import "prismjs/components/prism-javascript.min.js";
   import "prismjs/components/prism-bash.min.js";
   import "prismjs/components/prism-json.min.js";
+  import "prismjs/themes/prism.min.css";
   import CopyIcon from "$lib/components/icons/CopyIcon.svelte";
 
   const {
@@ -27,13 +28,6 @@
     }
   });
 </script>
-
-<svelte:head>
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css"
-  />
-</svelte:head>
 
 <div class="relative">
   {#if withCopy}
