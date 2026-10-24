@@ -186,7 +186,10 @@
             script = ''
               # This script uses the provided password file and attaches it to the db user
               ${pkgs.postgresql}/bin/psql -U postgres -c 'ALTER DATABASE "${cfg.name}" OWNER TO "${cfg.user}";'
-              ${pkgs.postgresql}/bin/psql -U postgres -c "ALTER USER \"${cfg.user}\" WITH PASSWORD '$(cat $CREDENTIALS_DIRECTORY/pgpass)';"
+              XINITY_PG_PASSWORD="$(cat "$CREDENTIALS_DIRECTORY/pgpass")" ${pkgs.postgresql}/bin/psql -U postgres -v ON_ERROR_STOP=1 <<'SQL'
+              \getenv pw XINITY_PG_PASSWORD
+              ALTER USER "${cfg.user}" WITH PASSWORD :'pw';
+              SQL
             '';
           };
       };
