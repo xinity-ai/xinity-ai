@@ -114,10 +114,20 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
   const [organization] = orgRows;
 
   const rowsByDeployment = Map.groupBy(models, (row) => row.model_deployment.publicSpecifier);
-  const uniqueSpecifiers = [...rowsByDeployment.keys()];
+  const deployments = [...rowsByDeployment.values()].map((rows) => rows[0]!.model_deployment);
+  const servingSpecifiers = (deployment: typeof deployments[number]) =>
+    deployment.earlySpecifier && calcCanaryProgress(deployment) !== 100
+      ? [deployment.specifier, deployment.earlySpecifier]
+      : [deployment.specifier];
+  const uniqueSpecifiers = [...new Set(deployments.flatMap(servingSpecifiers))];
   const metaMap = uniqueSpecifiers.length > 0
     ? await resolveMaxContextLengths(uniqueSpecifiers)
     : new Map<string, number>();
+  // A canary request can land on either model, so only the shorter context is safe to advertise.
+  const maxContextLength = (deployment: typeof deployments[number]) => {
+    const known = servingSpecifiers(deployment).flatMap((specifier) => metaMap.get(specifier) ?? []);
+    return known.length > 0 ? Math.min(...known) : 131072;
+  };
   const modelOutput = [...rowsByDeployment.values()].map((rows) => {
     const deployment = rows[0]!.model_deployment;
     const lifecycles = replicaLifecycles(rows
@@ -130,7 +140,7 @@ export async function handleModelsRequest(req: Request): Promise<Response> {
       owned_by: organization?.slug || "organization",
       status: deriveStatus(lifecycles),
       canary: calcCanaryProgress(deployment) !== 100,
-      max_model_len: metaMap.get(deployment.publicSpecifier) ?? 131072,
+      max_model_len: maxContextLength(deployment),
     };
   });
   const visibleModels = includeUnavailable
