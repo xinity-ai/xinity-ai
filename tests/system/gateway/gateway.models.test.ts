@@ -232,6 +232,20 @@ describe("xinity-ai-gateway models", () => {
     expect(body.data[0]!.max_model_len).toBe(8192);
   });
 
+  it("resolves max_model_len by the canonical specifier when the public name differs", async () => {
+    const { orgId, appId } = await createOrganizationAndApp();
+    const { fullKey } = await createApiKey({ orgId, appId });
+    await createModelDeployment({ orgId, publicSpecifier: `my-embedder-${orgId}`, specifier: "bge-m3" });
+
+    const res = await fetch(gatewayUrl("/v1/models?include_unavailable=true"), {
+      headers: { authorization: `Bearer ${fullKey}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json() as ModelsResponse;
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]!.max_model_len).toBe(8192);
+  });
+
   it("defaults max_model_len to 131072 for unknown models", async () => {
     const { orgId, appId } = await createOrganizationAndApp();
     const { fullKey } = await createApiKey({ orgId, appId });
