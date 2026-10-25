@@ -572,6 +572,14 @@ async function runSyncDeployedModels() {
   await applyChanges(toUninstall, toInstall);
 }
 
+async function runSyncAndLogFailure() {
+  try {
+    await runSyncDeployedModels();
+  } catch (err) {
+    log.error({ err }, "Deployment sync failed");
+  }
+}
+
 let activeSync: Promise<void> | null = null;
 let rerunRequested = false;
 
@@ -583,10 +591,10 @@ export function syncDeployedModels(): Promise<void> {
   }
   activeSync = (async () => {
     try {
-      await runSyncDeployedModels();
+      await runSyncAndLogFailure();
       while (rerunRequested) {
         rerunRequested = false;
-        await runSyncDeployedModels();
+        await runSyncAndLogFailure();
       }
     } finally {
       activeSync = null;
