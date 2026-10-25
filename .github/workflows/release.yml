@@ -233,11 +233,9 @@ jobs:
           path: staging/
           retention-days: 1
 
-  # Runs after publish so `:latest` only moves once the release tag exists.
-  # On failure, re-running the failed jobs finishes the release.
   build-images:
     name: "Image: ${{ matrix.image }}"
-    needs: [prepare, build-binaries, publish]
+    needs: [prepare, tests, build-binaries]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -333,7 +331,7 @@ jobs:
   # rebasing would publish a tree other than the one that was built and tested.
   publish:
     name: Publish release
-    needs: [prepare, tests, build-binaries, build-bundles]
+    needs: [prepare, tests, build-binaries, build-bundles, build-images]
     runs-on: ubuntu-latest
     permissions:
       contents: read
