@@ -52,10 +52,12 @@
   });
 
   $effect(() => {
-    if (!sentinelEl || !scrollContainerEl) return;
+    // Re-observing after each load reports the sentinel's current intersection, so a
+    // client-side filter that leaves it on screen keeps loading instead of stalling.
+    if (!sentinelEl || !scrollContainerEl || loadTriggered) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting && hasMore && !loadingMore && !loadTriggered) {
+        if (entries[0]?.isIntersecting && hasMore && !loadingMore) {
           loadTriggered = true;
           onLoadMore();
         }
@@ -189,14 +191,14 @@
               </div>
             {/each}
           </div>
-          {#if hasMore}
-            <div bind:this={sentinelEl} class="flex items-center justify-center p-4">
-              {#if loadingMore}
-                <LoaderCircle class="w-5 h-5 animate-spin text-muted-foreground" />
-              {/if}
-            </div>
-          {/if}
-        {:else}
+        {/if}
+        {#if hasMore && !loading}
+          <div bind:this={sentinelEl} class="flex items-center justify-center p-4">
+            {#if loadingMore}
+              <LoaderCircle class="w-5 h-5 animate-spin text-muted-foreground" />
+            {/if}
+          </div>
+        {:else if calls.length === 0}
           <div class="p-6 flex flex-col items-center justify-center text-muted-foreground">
             {#if loading}
               <LoaderCircle class="w-5 h-5 animate-spin mb-2" />
