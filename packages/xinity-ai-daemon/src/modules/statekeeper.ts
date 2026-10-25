@@ -21,7 +21,7 @@ const log = rootLogger.child({ name: "statekeeper" });
 
 let cachedProfile: HardwareProfile | null = null;
 let cachedNodeId: string | null = null;
-let cachedIdentity: NodeIdentity | null = null;
+let identity: Promise<NodeIdentity> | null = null;
 let cachedMachineName: string | null = null;
 let ollamaVersionAtStartup: Promise<string | undefined> | null = null;
 
@@ -203,11 +203,9 @@ function findHostIPv4Address(): string {
 }
 
 /** Memoised, so a concurrent first boot cannot write two different identities. */
-async function loadIdentity(): Promise<NodeIdentity> {
-  if (!cachedIdentity) {
-    cachedIdentity = await loadOrCreateIdentity(config.node.stateDir);
-  }
-  return cachedIdentity;
+function loadIdentity(): Promise<NodeIdentity> {
+  identity ??= loadOrCreateIdentity(config.node.stateDir);
+  return identity;
 }
 
 /** The running process keeps the refused identity, so the new one takes effect on restart. */
