@@ -233,6 +233,56 @@ jobs:
           path: staging/
           retention-days: 1
 
+  # Keyless: the signature binds SHASUMS256.txt to this workflow's OIDC identity,
+  # so no signing key exists.
+  sign:
+    name: Sign checksums
+    needs: [build-binaries, build-bundles]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout install scripts
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            scripts/install.sh
+            scripts/install.ps1
+          sparse-checkout-cone-mode: false
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Add install scripts to release
+        run: |
+          cp scripts/install.sh release/install.sh
+          cp scripts/install.ps1 release/install.ps1
+
+      - name: Generate SHASUMS256.txt
+        working-directory: release
+        run: sha256sum * | sort > SHASUMS256.txt
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign SHASUMS256.txt
+        working-directory: release
+        run: cosign sign-blob --yes --bundle SHASUMS256.txt.sigstore.json SHASUMS256.txt
+
+      - name: Upload signed checksums
+        uses: actions/upload-artifact@v5
+        with:
+          name: signed-checksums
+          path: |
+            release/SHASUMS256.txt
+            release/SHASUMS256.txt.sigstore.json
+          retention-days: 1
+
   build-images:
     name: "Image: ${{ matrix.image }}"
     needs: [prepare, tests, build-binaries]
@@ -240,6 +290,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     env:
       REGISTRY: ghcr.io
       IMAGE_NAMESPACE: ghcr.io/${{ github.repository_owner }}
@@ -313,6 +364,7 @@ jobs:
             org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}#readme
 
       - name: Build and push image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: ./build-context
@@ -325,13 +377,21 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Sign image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE_NAMESPACE}/${{ matrix.image }}@${DIGEST}"
+
   # The only job that writes to the repository: one release commit carrying the
   # version bump, the changelog and nix/release.json, pushed together with its tag.
   # A push to main by anyone else between dispatch and here rejects the push, since
   # rebasing would publish a tree other than the one that was built and tested.
   publish:
     name: Publish release
-    needs: [prepare, tests, build-binaries, build-bundles, build-images]
+    needs: [prepare, tests, build-binaries, build-bundles, sign, build-images]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -369,14 +429,16 @@ jobs:
           pattern: release-*
           merge-multiple: true
 
+      - name: Download signed checksums
+        uses: actions/download-artifact@v5
+        with:
+          name: signed-checksums
+          path: release
+
       - name: Add install scripts to release
         run: |
           cp scripts/install.sh release/install.sh
           cp scripts/install.ps1 release/install.ps1
-
-      - name: Generate SHASUMS256.txt
-        working-directory: release
-        run: sha256sum * | sort > SHASUMS256.txt
 
       - *set-release-version
 
@@ -474,10 +536,26 @@ jobs:
 
             ## Verify
 
+            Downloads are verified against `SHASUMS256.txt`, which is signed by this repository's release workflow. Verifying the signature requires [cosign](https://docs.sigstore.dev/cosign/system_config/installation/).
+
             ```bash
             curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ needs.prepare.outputs.tag }}/SHASUMS256.txt" \
               -o SHASUMS256.txt
+            curl -fSL "https://github.com/${{ github.repository }}/releases/download/${{ needs.prepare.outputs.tag }}/SHASUMS256.txt.sigstore.json" \
+              -o SHASUMS256.txt.sigstore.json
+            cosign verify-blob SHASUMS256.txt \
+              --bundle SHASUMS256.txt.sigstore.json \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/heads/main" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
             sha256sum -c SHASUMS256.txt --ignore-missing
+            ```
+
+            Container images are signed by the same workflow:
+
+            ```bash
+            cosign verify ghcr.io/${{ github.repository_owner }}/xinity-ai-gateway:${{ needs.prepare.outputs.version }} \
+              --certificate-identity "https://github.com/${{ github.repository }}/.github/workflows/release.yml@refs/heads/main" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com
             ```
 
             ---
