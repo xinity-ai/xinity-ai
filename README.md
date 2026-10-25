@@ -71,17 +71,17 @@ Your existing OpenAI SDK code works unchanged, just point the base URL to your X
 
 ## How is this different?
 
-| | **Xinity AI** | oLLaMa | LocalAI | vLLM |
+| | **Xinity AI** | Ollama | LocalAI | vLLM |
 |---|---|---|---|---|
 | OpenAI-compatible API | ✅ | ✅ | ✅ | ✅ |
-| Multi-model orchestration | ✅ | ❌ | Partial | ❌ |
-| Multi-GPU orchestration | ✅ | ❌ | ❌ | ✅ |
-| Load balancing | ✅ | ❌ | ❌ | ❌ |
-| Web dashboard with RBAC | ✅ | ❌ | ❌ | ❌ |
-| Enterprise auth (SSO/2FA) | ✅ | ❌ | ❌ | ❌ |
+| Multi-model orchestration | ✅ | Partial (single host) | Partial (single host) | ❌ |
+| Multi-GPU orchestration | ✅ | Partial (single host) | Partial | ✅ |
+| Load balancing | ✅ | ❌ | Partial | Partial |
+| Web dashboard with RBAC | ✅ | ❌ | Partial (two roles) | ❌ |
+| Enterprise auth (SSO/2FA) | ✅ | ❌ | Partial (no 2FA) | ❌ |
 | Multi-org tenant isolation | ✅ | ❌ | ❌ | ❌ |
-| Usage tracking & data collection | ✅ | ❌ | ❌ | ❌ |
-| Fine-tuning / distillation pipeline | 🚧 (in progress) | ❌ | ❌ | ❌ |
+| Usage tracking & data collection | ✅ | ❌ | Partial (token counts only) | ❌ |
+| Fine-tuning / distillation pipeline | 🚧 (in progress) | ❌ | Partial (experimental) | ❌ |
 | MCP server (AI-managed infra) | ✅ | ❌ | ❌ | ❌ |
 | EU Governance & Audit trail | ✅ | ❌ | ❌ | ❌ |
 | Fully auditable source code | ✅ | ✅ | ✅ | ✅ |
