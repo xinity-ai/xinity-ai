@@ -279,11 +279,11 @@ const ADMISSION_QUEUE_SHARE = 0.25;
 
 const ADMIT_SCRIPT = `
 local v = redis.call('INCR', KEYS[1])
-redis.call('EXPIRE', KEYS[1], ARGV[2])
 if v > tonumber(ARGV[1]) then
   redis.call('DECR', KEYS[1])
   return 0
 end
+redis.call('EXPIRE', KEYS[1], ARGV[2])
 return 1
 `;
 
