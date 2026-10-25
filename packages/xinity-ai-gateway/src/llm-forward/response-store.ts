@@ -21,7 +21,12 @@ const responseKey = (orgId: string, id: string) => `response:${orgId}:${id}`;
 export type ResponseCreation = ResponseAttribution & { inputMessages: ApiCallInputMessage[] };
 
 async function cacheResponse(orgId: string, id: string, payload: unknown): Promise<void> {
-  await redis.set(responseKey(orgId, id), JSON.stringify(payload), "EX", config.cache.responseTtlSeconds());
+  await redis.set(
+    responseKey(orgId, id),
+    JSON.stringify(payload),
+    "EX",
+    config.cache.responseTtlSeconds(),
+  );
 }
 
 /**
@@ -56,10 +61,27 @@ export async function saveResponse(
   response: ResponseObject,
   creation?: ResponseCreation,
 ): Promise<void> {
-  await cacheResponse(orgId, id, response);
   if (response.store === false) {
+    await cacheResponse(orgId, id, response);
     return;
   }
+
+  if (response.status !== "in_progress") {
+    try {
+      if (!await settlePersistedResponse(orgId, response)) {
+        log.info({ responseId: id }, "No in-progress row to settle; skipped caching response");
+        return;
+      }
+    } catch (err) {
+      log.error({ err, responseId: id }, "Failed to persist response");
+      return;
+    }
+
+    await cacheResponse(orgId, id, response);
+    return;
+  }
+
+  await cacheResponse(orgId, id, response);
   await persist(orgId, response, creation);
 }
 
@@ -101,8 +123,8 @@ export function getResponseMessages(orgId: string, id: string): Promise<ApiCallI
 /** Returns false when the entry could not be removed, so callers do not report a delete that did not happen. */
 export async function deleteResponse(orgId: string, id: string): Promise<boolean> {
   try {
-    await redis.del(responseKey(orgId, id));
     await deletePersistedResponse(orgId, id);
+    await redis.del(responseKey(orgId, id));
     return true;
   } catch (err) {
     log.warn({ err }, "Error in deleteResponse");

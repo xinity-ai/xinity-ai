@@ -7,11 +7,15 @@ const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync } = mo
 mockBackendFetch();
 
 const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } = await import("./handle-responses");
+const { getBackgroundTask } = await import("../responses/generate");
 
 let server: any;
 let lastUpstreamBody: Record<string, unknown> | undefined;
 /** The message list the backend was last asked to complete. */
 let lastChatMessages: Array<{ role: string; content: unknown }> = [];
+let holdNextBackendResponse = false;
+let onBackendResponseStarted: (() => void) | undefined;
+let releaseBackendResponse: (() => void) | undefined;
 
 beforeAll(() => {
   server = Bun.serve({
@@ -28,6 +32,14 @@ beforeAll(() => {
         };
         lastUpstreamBody = body as Record<string, unknown>;
         lastChatMessages = body.messages ?? [];
+
+        if (holdNextBackendResponse) {
+          holdNextBackendResponse = false;
+          onBackendResponseStarted?.();
+          await new Promise<void>((resolve) => {
+            releaseBackendResponse = resolve;
+          });
+        }
 
         if (body.reasoning_effort === "interleave") {
           return makeChatSseResponseWithInterleavedReasoning("test-model");
@@ -59,6 +71,10 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  releaseBackendResponse?.();
+  releaseBackendResponse = undefined;
+  onBackendResponseStarted = undefined;
+  holdNextBackendResponse = false;
   mocks.clearAll();
   lastUpstreamBody = undefined;
 });
@@ -172,6 +188,50 @@ describe("handleResponses", () => {
     const stored = await waitForResponseStatus(responseStore, body.id, "completed");
     expect(stored?.status).toBe("completed");
     expect(stored?.output?.[0]?.content?.[0]?.text).toBe("Hello");
+  });
+
+  test("does not resurrect a deleted background response when generation finishes", async () => {
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    holdNextBackendResponse = true;
+    onBackendResponseStarted = signalStarted;
+
+    const req = new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        input: "Hi",
+        background: true,
+      }),
+    });
+
+    const res = await handleCreateResponseRequest(req);
+    expect(res.status).toBe(202);
+    const body = (await res.json()) as any;
+
+    await started;
+
+    const deleteRes = await handleGetOrDeleteResponseRequest(requestWithParams(
+      new Request(`http://localhost:4000/v1/responses/${body.id}`, {
+        method: "DELETE",
+        headers: { "Authorization": "Bearer test" },
+      }),
+      { responseId: body.id },
+    ));
+    expect(deleteRes.status).toBe(200);
+    expect(responseStore.has(body.id)).toBe(false);
+
+    const backgroundTask = getBackgroundTask(body.id);
+    expect(backgroundTask).toBeDefined();
+
+    releaseBackendResponse?.();
+    releaseBackendResponse = undefined;
+
+    await backgroundTask;
+    expect(responseStore.has(body.id)).toBe(false);
   });
 
   test("should get a stored response", async () => {

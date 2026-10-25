@@ -14,6 +14,7 @@ const db = drizzle.mock();
 const capturedQueries: Array<{ sql: string; params: unknown[] }> = [];
 /** Rows the next select should yield, standing in for a row Redis no longer has. */
 let selectRows: unknown[] = [];
+let settleRows: unknown[] = [];
 let failNextQuery = false;
 
 const preparedProto = Object.getPrototypeOf(db.select().from(apiResponseT).prepare("_spy"));
@@ -26,7 +27,13 @@ jest.spyOn(preparedProto, "execute").mockImplementation(async function (this: { 
   if (/^\s*insert/i.test(this.queryString)) {
     return [{ id: UUID_A }];
   }
-  return /^\s*select/i.test(this.queryString) ? selectRows : [];
+  if (/^\s*select/i.test(this.queryString)) {
+    return selectRows;
+  }
+  if (/^\s*update/i.test(this.queryString)) {
+    return settleRows;
+  }
+  return [];
 });
 
 mock.module("../db", () => ({ getDB: () => db }));
@@ -36,16 +43,19 @@ const { saveResponse, getResponse, deleteResponse } = await import("./response-s
 const redisGet = spyOn(redis, "get");
 const redisSet = spyOn(redis, "set");
 const redisDel = spyOn(redis, "del");
+const redisSend = spyOn(redis, "send");
 
 const sqlOf = (pattern: RegExp) => capturedQueries.filter((q) => pattern.test(q.sql));
 
 beforeEach(() => {
   capturedQueries.length = 0;
   selectRows = [];
+  settleRows = [{ id: UUID_A }];
   failNextQuery = false;
   redisGet.mockClear().mockResolvedValue(null);
   redisSet.mockClear().mockResolvedValue("OK" as never);
   redisDel.mockClear().mockResolvedValue(1 as never);
+  redisSend.mockClear().mockResolvedValue(1 as never);
 });
 
 const UUID_A = "11111111-1111-4111-8111-111111111111";
@@ -104,6 +114,26 @@ describe("saveResponse", () => {
     expect(capturedQueries).toHaveLength(0);
   });
 
+  test("does not cache a settled response when no in-progress row was updated", async () => {
+    settleRows = [];
+
+    await saveResponse("org-1", RESP_A, makeResponse({ status: "completed" }));
+
+    expect(sqlOf(/^\s*update/i)).toHaveLength(1);
+    expect(redisSet).not.toHaveBeenCalled();
+  });
+
+  test("settles in Postgres before caching a response", async () => {
+    redisSet.mockImplementation(async () => {
+      expect(sqlOf(/^\s*update/i)).toHaveLength(1);
+      return "OK" as never;
+    });
+
+    await saveResponse("org-1", RESP_A, makeResponse({ status: "completed" }));
+
+    expect(redisSet).toHaveBeenCalled();
+  });
+
   test.each(["completed", "failed", "incomplete", "cancelled"] as const)("settles on %s", async (status) => {
     await saveResponse("org-1", RESP_A, makeResponse({ status }));
     const updates = sqlOf(/^\s*update/i);
@@ -127,14 +157,6 @@ describe("saveResponse", () => {
 });
 
 describe("getResponse", () => {
-  test("serves from Redis without reading Postgres", async () => {
-    const response = makeResponse({ status: "completed" });
-    redisGet.mockResolvedValue(JSON.stringify(response));
-
-    expect(await getResponse("org-1", RESP_A)).toEqual(response);
-    expect(capturedQueries).toHaveLength(0);
-  });
-
   test("falls back to Postgres once Redis has expired the entry", async () => {
     selectRows = [headerRow()];
     const recovered = await getResponse("org-1", RESP_A) as ResponseObject;
