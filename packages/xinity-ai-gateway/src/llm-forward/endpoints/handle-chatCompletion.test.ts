@@ -409,6 +409,43 @@ describe("handleChatCompletion, reasoning output", () => {
 });
 
 // ---------------------------------------------------------------------------
+// generation limits
+// ---------------------------------------------------------------------------
+
+describe("handleChatCompletion, generation limits", () => {
+  function limitsRequest(body: Record<string, unknown>): Request {
+    return new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({
+        model: "test-model",
+        messages: [{ role: "user", content: "Hi" }],
+        ...body,
+      }),
+    });
+  }
+
+  test("forwards max_completion_tokens as max_tokens, ahead of a max_tokens also sent", async () => {
+    const res = await handleChatCompletion(limitsRequest({ max_completion_tokens: 16, max_tokens: 512 }));
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.max_tokens).toBe(16);
+    expect(lastUpstreamBody).not.toHaveProperty("max_completion_tokens");
+  });
+
+  test("forwards stop and n to the backend", async () => {
+    const res = await handleChatCompletion(limitsRequest({ stop: ["\n\n", "END"], n: 3 }));
+    expect(res.status).toBe(200);
+    expect(lastUpstreamBody?.stop).toEqual(["\n\n", "END"]);
+    expect(lastUpstreamBody?.n).toBe(3);
+  });
+
+  test("rejects an n below 1", async () => {
+    const res = await handleChatCompletion(limitsRequest({ n: 0 }));
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // logprobs
 // ---------------------------------------------------------------------------
 
