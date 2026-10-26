@@ -4,14 +4,20 @@ The API gateway is the public entry point for all inference requests. It provide
 
 For configuration and development setup, see the [gateway README](../../packages/xinity-ai-gateway/README.md). For endpoint-level API documentation, see the live reference at `https://your-gateway/docs`.
 
+## Cache
+
+The gateway caches API keys, application lookups, completed responses and load-balancer state. Without `REDIS_URL` it keeps them in its own process, which is all a single gateway needs.
+
+Several gateways work without Redis too, since each one drops stale entries when the database changes and falls back to the database for anything it has not seen. What Redis adds is one cache shared between them: connection counts and round-robin turns then cover all traffic instead of each gateway's share, and a warm entry on one gateway is warm on all of them.
+
 ## Load Balancing
 
 Three strategies are available, configured via `LOAD_BALANCE_STRATEGY` (default: `least-connections`):
 
 | Strategy | Behavior |
 |---|---|
-| `least-connections` | Picks the node with the fewest in-flight requests (tracked in Redis). Falls back to random on Redis errors. |
-| `round-robin` | Atomic Redis counter per model, rotating through nodes. Falls back to random on Redis errors. |
+| `least-connections` | Picks the node with the fewest in-flight requests (tracked in the cache). Falls back to random on cache errors. |
+| `round-robin` | Atomic counter per model in the cache, rotating through nodes. Falls back to random on cache errors. |
 | `random` | Uniform random selection. |
 
 Only nodes with a ready installation of the model are candidates. A request for a known model with no ready node gets `503`, while an unknown model gets `404`.
@@ -20,13 +26,13 @@ Each vLLM installation takes as many requests as it runs at once, plus a short q
 
 ### Prefix-cache affinity
 
-For `least-connections` and `random`, the gateway hashes conversation message prefixes and stores the mapping in Redis for 5 minutes. Repeat conversations are routed to the same node when possible, improving KV cache hit rates on the inference engine. This means `random` does use Redis whenever prefix-cache affinity data exists, despite otherwise being the only strategy with no other Redis-backed state (no counters or connection gauges).
+For `least-connections` and `random`, the gateway hashes conversation message prefixes and stores the mapping in the cache for 5 minutes. Repeat conversations are routed to the same node when possible, improving KV cache hit rates on the inference engine. This means `random` does use the cache whenever prefix-cache affinity data exists, despite otherwise being the only strategy with no cached state (no counters or connection gauges).
 
 With `least-connections`, the affinity hint is only honored if the hinted node's connection count is within 2 of the least-loaded node.
 
 ### Observability
 
-The gateway exposes per-decision load-balancer metrics (candidate host count, selection reason, in-flight connections, canary split, canary fallback, prefix-affinity outcome, Redis fallbacks) via Prometheus, visualized in the "Load Balancing" row of the Xinity Gateway Grafana dashboard. See [Monitoring](monitoring.md#gateway-metrics) for the full metric list.
+The gateway exposes per-decision load-balancer metrics (candidate host count, selection reason, in-flight connections, canary split, canary fallback, prefix-affinity outcome, cache fallbacks) via Prometheus, visualized in the "Load Balancing" row of the Xinity Gateway Grafana dashboard. See [Monitoring](monitoring.md#gateway-metrics) for the full metric list.
 
 ## Canary Deployments
 
@@ -51,14 +57,14 @@ Every API call is recorded in the database with input/output messages, model, du
 The gateway implements the OpenAI Responses API at `/v1/responses`:
 
 - Streaming and non-streaming modes.
-- Background execution (returns 202 immediately, stores the result in Redis).
+- Background execution (returns 202 immediately, stores the result in the cache).
 - Conversation continuity via `previous_response_id`.
 - Built-in `web_search` tool (supports Google, Bing, Brave, Tavily, Serper, and SearXNG) and `web_fetch` tool with SSRF protection.
 - Function tools (model calls them, client receives the calls and can continue via `previous_response_id`).
 - Structured output via `text.format` (json_object, json_schema).
 - Reasoning effort control via `reasoning.effort`.
 
-Completed responses are cached in Redis with a configurable TTL (default: 1 hour).
+Completed responses are cached with a configurable TTL (default: 1 hour).
 
 ## Deep Research
 

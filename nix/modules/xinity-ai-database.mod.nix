@@ -43,7 +43,7 @@
         "${resolvedAddress} 127.0.0.1";
     in {
       options.services.xinity-ai-database = {
-        enable = lib.mkEnableOption "the xinity-ai database stack, which provisions a PostgreSQL 17 instance for persistent data and a Redis instance for caching and rate limiting";
+        enable = lib.mkEnableOption "the xinity-ai database stack, which provisions a PostgreSQL 17 instance for persistent data and a Redis instance the gateways can share their cache through";
 
         name = lib.mkOption {
           type = lib.types.str;

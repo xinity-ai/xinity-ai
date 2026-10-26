@@ -207,7 +207,7 @@
         redisUrlFile = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
-          description = "Path to a file containing the Redis connection URL.";
+          description = "Path to a file containing the Redis connection URL. Null keeps the cache in the gateway process.";
         };
 
         metricsAuthFile = lib.mkOption {

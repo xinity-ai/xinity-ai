@@ -60,11 +60,11 @@ When extending or modifying the OpenAI-compatible routes, update the hand-author
 
 ### Cache
 
-Redis, and the lifetimes of what the gateway keeps in it.
+Where the gateway caches, and the lifetimes of what it keeps there.
 
 | Variable | Default | Description |
 |---|---|---|
-| `REDIS_URL` | (required) | Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password. Secret. |
+| `REDIS_URL` | (unset) | Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password. Unset keeps the cache in the gateway process, which suits a single gateway. Secret. |
 | `RESPONSE_CACHE_TTL_SECONDS` | `3600` | How long an identical completion is served from cache instead of the backend. Can be set to `@dynamic` to take its value from the dashboard. |
 | `CACHE_APPLICATION_TTL_SECONDS` | `300` | How long an application name to id lookup is cached. Can be set to `@dynamic` to take its value from the dashboard. |
 | `CACHE_API_KEY_TTL_SECONDS` | `120` | How long a validated API key is cached, so every request does not hit the database. A deactivated or deleted key keeps working until its entry expires. Can be set to `@dynamic` to take its value from the dashboard. |

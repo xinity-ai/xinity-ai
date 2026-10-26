@@ -23,7 +23,7 @@ import { applyComponentAction } from "./installer.ts";
 import { componentFields, collectEnv, menuEditEnv, readExistingEnvState, diffEnv, planSecretFileRemoval, type EnvBundle, type EnvChange, type SecretFilePlan } from "../config/env-prompt.ts";
 import { discoverConnectionUrl, describeMigrationStep, migrationScriptComment, runMigrations } from "./migrator.ts";
 import { describePostgresProvision, buildPostgresProvisionCommands, applyPostgresProvision, type PostgresProvision } from "../infra/postgres-setup.ts";
-import { planRedis, applyRedisPlan, describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "../infra/redis-setup.ts";
+import { discoverRedis, applyRedisPlan, describeRedisPlan, buildRedisProvisionCommands, type RedisPlan } from "../infra/redis-setup.ts";
 import { planOllama, describeOllama, buildOllamaCommands, applyOllama, type OllamaAction } from "../infra/ollama-setup.ts";
 
 import { readManifest } from "./manifest.ts";
@@ -235,15 +235,11 @@ export async function planUp(
     resolvedKeys.add("DB_CONNECTION_URL");
 
     heading("redis");
-    const redisPlan = await planRedis(host);
+    const redisPlan = await discoverRedis(host);
     if (redisPlan) {
       shared.REDIS_URL = redisPlan.url;
       resolvedKeys.add("REDIS_URL");
       if (redisPlan.persist || redisPlan.provision) plan.redis = redisPlan;
-    } else {
-      warn("Redis", "No Redis URL configured");
-      const cont = await confirm({ message: "Continue without Redis?", initialValue: true });
-      if (isCancel(cont) || !cont) return null;
     }
 
     log.info(dim(`Model registry guide: ${getProjectUrl()}/tree/main/packages/xinity-infoserver#readme`));

@@ -217,7 +217,7 @@ xinity stack doctor prod     # health-check every host (alias: status)
 
 **Versions are pinned.** Every component in a stack is held at the stack's `pinnedVersion`. The version option in `stack edit` opens a searchable list of the published releases (latest, prereleases, and the current pin marked) to re-pin from, or use `stack up --target-version`. Nothing updates silently.
 
-**Bring your own infrastructure.** Stacks manage Xinity's components, not the infrastructure beneath them: `stack init` takes your PostgreSQL and Redis connection URLs as given (migrations are then run for you). To have the CLI provision that infrastructure first, use the interactive assistants (`xinity up infra-postgres`, `xinity up infra-redis`, with `--target-host` for remote machines) and feed the resulting URLs into the stack. For a guided single-machine setup that can provision everything in one pass, `xinity up all` remains the right tool.
+**Bring your own infrastructure.** Stacks manage Xinity's components, not the infrastructure beneath them: `stack init` takes your PostgreSQL connection URL, and a Redis one if your gateways should share a cache, as given (migrations are then run for you). To have the CLI provision that infrastructure first, use the interactive assistants (`xinity up infra-postgres`, `xinity up infra-redis`, with `--target-host` for remote machines) and feed the resulting URLs into the stack. For a guided single-machine setup that can provision everything in one pass, `xinity up all` remains the right tool.
 
 Host addresses are anything ssh accepts (`root@10.0.0.5`, an ssh alias) or `local` for the machine the CLI runs on. A fleet is a named group of daemon hosts sharing configuration overrides, e.g. one pool per GPU type.
 

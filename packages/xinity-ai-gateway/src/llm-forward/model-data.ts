@@ -36,7 +36,7 @@ export function getInfoClient() {
   return _infoClient;
 }
 
-import { redis } from "../redis";
+import { cache } from "../cache";
 
 const log = rootLogger.child({ name: "model-data" });
 
@@ -64,30 +64,20 @@ export function invalidateModelSources(): void {
 }
 
 const DEPLOYMENT_CACHE_PREFIX = "gateway:deployment:";
-const SCAN_BATCH = 200;
 
 /** The notified deployment id cannot be mapped back to the org and specifier keying this cache. */
 export async function invalidateDeployments(): Promise<void> {
-  let cursor = "0";
   try {
-    do {
-      const [next, keys] = await redis.send("SCAN", [
-        cursor, "MATCH", `${DEPLOYMENT_CACHE_PREFIX}*`, "COUNT", String(SCAN_BATCH),
-      ]) as [string, string[]];
-      if (keys.length > 0) {
-        await redis.send("DEL", keys);
-      }
-      cursor = next;
-    } while (cursor !== "0");
+    await cache.delPrefix(DEPLOYMENT_CACHE_PREFIX);
   } catch (err) {
-    log.warn({ err }, "Redis error clearing deployment cache");
+    log.warn({ err }, "Cache error clearing deployment cache");
   }
 }
 
 async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
   const cacheKey = `${DEPLOYMENT_CACHE_PREFIX}${orgId}:${specifier}`;
   try {
-    const cached = await redis.get(cacheKey);
+    const cached = await cache.get(cacheKey);
     if (cached) {
       const d = JSON.parse(cached) as CachedDeployment;
       const deploymentForCalc = {
@@ -103,7 +93,7 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
       };
     }
   } catch (err) {
-    log.warn({ err }, "Redis error reading deployment cache");
+    log.warn({ err }, "Cache error reading deployment cache");
   }
 
   const [deployment] = await getDB().select().from(modelDeploymentT).where(sql`
@@ -129,8 +119,8 @@ async function publicModelSpecifierToModelSource(orgId: string, specifier: strin
     canaryProgressUntil: deployment.canaryProgressUntil ? new Date(deployment.canaryProgressUntil).valueOf() : null,
   };
 
-  void redis.set(cacheKey, JSON.stringify(cachedData), "EX", config.cache.modelTtlSeconds())
-    .catch((err: unknown) => log.warn({ err }, "Redis error in set deployment cache"));
+  void cache.set(cacheKey, JSON.stringify(cachedData), config.cache.modelTtlSeconds())
+    .catch((err: unknown) => log.warn({ err }, "Cache error in set deployment cache"));
 
   return {
     deploymentId: deployment.id,

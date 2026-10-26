@@ -10,6 +10,7 @@ Optional services live behind their own profiles:
 - `--profile searxng` adds web search.
 - `--profile infoserver` adds a self-hosted model registry (the dashboard otherwise uses the public one at `https://sysinfo.xinity.ai`).
 - `--profile monitoring` adds Prometheus + Grafana.
+- `--profile redis` adds Redis, which the gateway uses once `REDIS_URL_FILE=/run/secrets/redis_url` is set in `.env`. Without it the gateway keeps its cache in process. Redis only pays off when several gateways share one cache, for even load balancing and a cache that stays warm across them.
 
 Daemons (the GPU inference workers) are not in this stack. Install them per inference node with the Xinity CLI: see [deployment/cli/README.md](../cli/README.md).
 
@@ -25,18 +26,19 @@ Daemons (the GPU inference workers) are not in this stack. Install them per infe
 ### 1. Configure environment
 
 ```bash
-cp example.env .env
-./setup.sh    # generates secrets, prompts for admin emails and optional Caddy settings
+./setup.sh
 ```
 
-What you must set in `.env` (the setup script handles most of these):
+Roughly, the script:
 
-- `POSTGRES_PASSWORD`, `REDIS_PASSWORD`: `openssl rand -hex 32`
-- `INSTANCE_ADMIN_EMAILS`: at least one email. Required for a usable instance in the default single-tenant mode.
-- For HTTPS: `DOMAIN`, `ACME_EMAIL`, `ORIGIN`, `HTTP_OVERRIDE_ORIGIN`, `GATEWAY_URL`.
-- For SearXNG: `SEARXNG_SECRET` (`openssl rand -hex 32`).
+- creates `.env` from `example.env` and generates `POSTGRES_PASSWORD` and `SEARXNG_SECRET` in it,
+- asks for the instance admin email(s) and whether anyone may sign up on their own,
+- optionally asks for a domain for the `caddy` profile, and derives `DOMAIN`, `ORIGIN`, `HTTP_OVERRIDE_ORIGIN` and `GATEWAY_URL` from it,
+- generates the app secrets, the Redis password and the connection URLs into `secrets/` as Docker secrets.
 
-`BETTER_AUTH_SECRET`, `METRICS_AUTH` and `XINITY_SECRET_KEY` are not `.env` variables. `setup.sh` generates them directly into `secrets/` as Docker secrets. See `example.env` for everything else: multi-tenancy toggle, mail, S3 object storage, gateway tuning. S3 is optional and points at storage you already run, and the bucket has to exist first, since an upload to a missing one is dropped rather than failing the request.
+Re-running it is safe. An existing `.env` is only replaced on confirmation, otherwise the script fills in what it lacks. Secrets in `secrets/` are generated once and kept.
+
+`example.env` lists everything else: mail, S3 object storage, gateway tuning. S3 is optional and points at storage you already run, and the bucket has to exist first, since an upload to a missing one is dropped rather than failing the request.
 
 ### 2. Run database migrations
 
@@ -50,7 +52,6 @@ xinity up db
 `xinity up db` is interactive:
 
 - Answer **yes** to "Do you have a connection URL for an existing database?", then enter `postgresql://<POSTGRES_USER>:<POSTGRES_PASSWORD>@127.0.0.1:5432/<POSTGRES_DB>` using values from your `.env`. Do **not** pick "No, help me set one up". That path installs a native PostgreSQL on the host.
-- After applying migrations, the command moves on to a Redis discovery step. Press **Esc** to dismiss it; Redis has no schema and the Compose stack already configures its own Redis from `.env`.
 
 Migrations are tracked, so re-running `xinity up db` after a release upgrade is safe.
 
@@ -107,7 +108,7 @@ xinity configure apiKey <paste-key-here>
 
 For single-server deployments, plain `.env` (mode 600) is fine. Container env shows up in `docker inspect`, which is acceptable when the operator owns the host.
 
-`setup.sh` already generates `secrets/db_connection_url`, `secrets/better_auth_secret`, `secrets/metrics_auth`, `secrets/tether_secret`, and `secrets/xinity_secret_key`, and `docker-compose.yml` wires them into the relevant services as `*_FILE` environment variables (e.g. `DB_CONNECTION_URL_FILE`, `TETHER_SECRET_FILE`).
+`setup.sh` already generates `secrets/db_connection_url`, `secrets/better_auth_secret`, `secrets/metrics_auth`, `secrets/tether_secret`, `secrets/redis_password`, `secrets/redis_url`, and `secrets/xinity_secret_key`, and `docker-compose.yml` wires them into the relevant services as `*_FILE` environment variables (e.g. `DB_CONNECTION_URL_FILE`, `TETHER_SECRET_FILE`).
 
 Two secrets are also needed off this host. Every inference node authenticates to the tether with `secrets/tether_secret` as `TETHER_SECRET`, and decrypts dashboard-managed settings with `secrets/xinity_secret_key` as `XINITY_SECRET_KEY`, which it refuses to start without. `cat` both and supply them when `xinity up daemon` prompts. The key belongs to the deployment, so every node gets this same value rather than one of its own.
 
@@ -115,12 +116,12 @@ With the `caddy` profile, nodes reach the tether at `TETHER_URL=https://tether.<
 
 For any other *Xinity* service env var `VAR`, set `VAR_FILE` to a file path and the service reads the file at startup (direct env vars take precedence over the `_FILE` variant); wire it in via a `docker-compose.override.yml` using Compose's `secrets:` block.
 
-This convention does not apply to `POSTGRES_PASSWORD`/`REDIS_PASSWORD`. Postgres and Redis are vanilla upstream images that this stack passes plain env vars to, not `_FILE` paths. Keep those in `.env` (mode 600), or add your own Compose override that maps them to Postgres/Redis's own secret-file support if you need them off-disk-in-env.
+This convention does not apply to `POSTGRES_PASSWORD`. Postgres is a vanilla upstream image that this stack passes a plain env var to, not a `_FILE` path. Keep it in `.env` (mode 600), or add your own Compose override that maps it to Postgres's own secret-file support if you need it off-disk-in-env.
 
 ### Volumes
 
 - `postgres-data`: Postgres data
-- `redis-data`: Redis persistence
+- `redis-data`: Redis persistence (`redis` profile)
 - `caddy-data`, `caddy-config`: Caddy's ACME account, issued certs, runtime config
 - `./models.yaml`: mounted read-only into the infoserver container when the profile is active
 
@@ -220,8 +221,6 @@ HTTP_OVERRIDE_ORIGIN=https://dashboard.example.com
 
 ## Security checklist
 
-- Strong `.env` (the setup script handles secret generation).
-- `chmod 600 .env`.
 - Consider `_FILE` secrets for production (see above).
 - Firewall: allow only 80 / 443 publicly (everything else should be internal).
 - `docker compose pull` on a schedule and re-`up -d` to pick up image updates.

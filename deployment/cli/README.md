@@ -40,7 +40,7 @@ The daemon is always deployed separately on each inference node, regardless of h
 ## Choosing a Path
 
 - **One machine, batteries included:** `xinity up all` guides you through everything interactively and can provision things like the database for you along the way. Start here if you don't have a database available, dont know how to set up dependencies yourself, or want to run everything on the same machine.
-- **Multiple machines, infrastructure already available:** define a stack. It manages all hosts from one declarative definition, but expects a reachable PostgreSQL and Redis to point at. 
+- **Multiple machines, infrastructure already available:** define a stack. It manages all hosts from one declarative definition, but expects a reachable PostgreSQL, and Redis if you use one, to point at. 
 
 ## Deploy over Multiple Machines with a Stack (recommended)
 
@@ -64,7 +64,7 @@ Key properties:
 
 Host addresses are anything ssh accepts; use `root@ip` for zero prompts, or a sudo-capable user (one password prompt per host, asked up front).
 
-**Bring your own infrastructure.** A stack deploys and reconciles Xinity's own components; it deliberately does not provision the infrastructure underneath them. `stack init` asks for your PostgreSQL and Redis connection URLs as given facts (migrations are then handled for you). If you need that infrastructure created first, the assistants under `xinity up infra-*` do exactly that, and the URLs they produce go straight into the stack's shared settings.
+**Bring your own infrastructure.** A stack deploys and reconciles Xinity's own components; it deliberately does not provision the infrastructure underneath them. `stack init` asks for your PostgreSQL connection URL, and optionally a Redis one for a cache the gateways share, as given facts (migrations are then handled for you). If you need that infrastructure created first, the assistants under `xinity up infra-*` do exactly that, and the URLs they produce go straight into the stack's shared settings.
 
 ## Deploy on a Single Machine
 

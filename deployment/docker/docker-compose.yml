@@ -21,7 +21,10 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    profiles: [redis]
+    command: ["sh", "-c", "exec redis-server --requirepass \"$$(cat /run/secrets/redis_password)\""]
+    secrets:
+      - redis_password
     volumes:
       - redis-data:/data
     networks:
@@ -40,6 +43,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+        required: false
     env_file:
       - path: .env
         required: false
@@ -47,7 +51,7 @@ services:
       HOST: 0.0.0.0
       PORT: ${GATEWAY_PORT:-4121}
       DB_CONNECTION_URL_FILE: /run/secrets/db_connection_url
-      REDIS_URL_FILE: /run/secrets/redis_url
+      REDIS_URL_FILE: ${REDIS_URL_FILE:-}
       XINITY_SECRET_KEY_FILE: /run/secrets/xinity_secret_key
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
       WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-searxng}
@@ -230,6 +234,8 @@ networks:
 secrets:
   db_connection_url:
     file: ./secrets/db_connection_url
+  redis_password:
+    file: ./secrets/redis_password
   redis_url:
     file: ./secrets/redis_url
   better_auth_secret:

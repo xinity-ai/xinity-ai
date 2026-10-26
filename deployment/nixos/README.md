@@ -59,7 +59,6 @@ The `environmentFiles` entries must contain at minimum:
 
 ```bash
 DB_CONNECTION_URL=postgresql://xinity:PASSWORD@localhost/xinity
-REDIS_URL=redis://:PASSWORD@localhost:6379   # percent-encode @ / # ? in the password
 BETTER_AUTH_SECRET=<random 32+ char string>
 TETHER_SECRET=<random 32+ char string>
 ```
@@ -75,7 +74,7 @@ Every part of the stack is a toggle, so you can keep the convenience of `allinon
 | Toggle | Default | Change it when |
 |---|---|---|
 | `database.enable` | on | PostgreSQL lives on another host |
-| `redis.enable` | on | Redis lives on another host |
+| `redis.enable` | on | Redis lives on another host, or a single gateway keeps its cache in process |
 | `migrateOnStart` | on | you apply the bundled database's migrations out-of-band |
 | `gateway.enable` | on | the gateway runs elsewhere |
 | `dashboard.enable` | on | the dashboard runs elsewhere |

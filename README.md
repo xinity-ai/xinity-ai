@@ -233,7 +233,7 @@ See [Package details](#package-details) below for per-package dev commands.
 | Service | Requires running |
 |---|---|
 | **Infoserver** | nothing (standalone) |
-| **Gateway** | Postgres, Redis, Infoserver |
+| **Gateway** | Postgres, Infoserver, and Redis when `REDIS_URL` is set |
 | **Dashboard** | Postgres, Infoserver, Mailhog (for auth emails) |
 | **Daemon** | Postgres, Infoserver, Ollama or vLLM |
 
@@ -299,7 +299,7 @@ Each package's `example.env` is the authoritative source for its variables. Copy
 | Variable | Gateway | Dashboard | Daemon | Infoserver |
 |---|---|---|---|---|
 | `DB_CONNECTION_URL` | yes | yes | yes | no |
-| `REDIS_URL` | yes | no | no | no |
+| `REDIS_URL` | optional | no | no | no |
 | `INFOSERVER_URL` | yes | yes | yes | no |
 | `BETTER_AUTH_SECRET` | no | yes | no | no |
 | `MAIL_URL` / `MAIL_FROM` | no | yes | no | no |

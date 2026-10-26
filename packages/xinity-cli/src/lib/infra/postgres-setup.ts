@@ -95,7 +95,8 @@ export function parsePostgresEnv(content: string): { db?: string; user?: string;
 }
 
 function readinessProbe(host: Host, compose: ComposeCmd, user: string): () => Promise<boolean> {
-  const probe = execCommand(compose, POSTGRES, "pg_isready", "-U", user);
+  // TCP, because the image's first-init server is socket-only and would read as ready.
+  const probe = execCommand(compose, POSTGRES, "pg_isready", "-h", "127.0.0.1", "-U", user);
   return async () => {
     const res = await host.withElevation(probe, "Check PostgreSQL readiness");
     return res.success;
