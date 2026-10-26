@@ -132,24 +132,21 @@ download_asset "$ASSET_NAME" "${TMP_DIR}/${ASSET_NAME}" \
 
 # ── Checksum verification ───────────────────────────────────────────────────
 
-if download_asset "SHASUMS256.txt" "${TMP_DIR}/SHASUMS256.txt" 2>/dev/null; then
-  EXPECTED="$(grep "$ASSET_NAME" "${TMP_DIR}/SHASUMS256.txt" | awk '{print $1}')"
-  if [[ -n "$EXPECTED" ]]; then
-    if command -v sha256sum &>/dev/null; then
-      ACTUAL="$(sha256sum "${TMP_DIR}/${ASSET_NAME}" | awk '{print $1}')"
-    else
-      ACTUAL="$(shasum -a 256 "${TMP_DIR}/${ASSET_NAME}" | awk '{print $1}')"
-    fi
-    if [[ "$EXPECTED" = "$ACTUAL" ]]; then
-      pass "SHA256 verified"
-    else
-      fail "SHA256 mismatch: expected ${EXPECTED}, got ${ACTUAL}"
-    fi
-  else
-    warn "Asset not found in SHASUMS256.txt, skipping verification"
-  fi
+VERIFY_DOCS="https://github.com/${REPO}/blob/main/docs/security/release-verification.md"
+
+download_asset "SHASUMS256.txt" "${TMP_DIR}/SHASUMS256.txt" 2>/dev/null \
+  || fail "Could not fetch SHASUMS256.txt for ${TAG}. See ${VERIFY_DOCS}"
+EXPECTED="$(awk -v name="$ASSET_NAME" '$2 == name { print $1 }' "${TMP_DIR}/SHASUMS256.txt")"
+[[ -n "$EXPECTED" ]] || fail "${ASSET_NAME} is not listed in SHASUMS256.txt. See ${VERIFY_DOCS}"
+if command -v sha256sum &>/dev/null; then
+  ACTUAL="$(sha256sum "${TMP_DIR}/${ASSET_NAME}" | awk '{print $1}')"
 else
-  warn "Could not fetch checksums, skipping verification"
+  ACTUAL="$(shasum -a 256 "${TMP_DIR}/${ASSET_NAME}" | awk '{print $1}')"
+fi
+if [[ "$EXPECTED" = "$ACTUAL" ]]; then
+  pass "SHA256 verified"
+else
+  fail "SHA256 mismatch: expected ${EXPECTED}, got ${ACTUAL}"
 fi
 
 # ── Extract and install ─────────────────────────────────────────────────────
