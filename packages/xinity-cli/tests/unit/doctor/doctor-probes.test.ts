@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkHealthEndpoint, checkSmtp, probeDaemonHealth } from "../../../src/lib/doctor/doctor-probes.ts";
+import { checkHealthEndpoint, checkSmtp, probeDaemonHealth, readDeprecations } from "../../../src/lib/doctor/doctor-probes.ts";
 import { FakeHost } from "../../helpers/fake-host.ts";
 
 const SINCE = "2026-10-05T10:00:00.000Z";
@@ -157,5 +157,13 @@ describe("checkSmtp", () => {
 
       expect(check.status).toBe("warn");
     });
+  });
+});
+
+describe("readDeprecations", () => {
+  test("tells a service with nothing deprecated apart from one that does not report", () => {
+    expect(readDeprecations({ ok: true, deprecations: [] })).toEqual([]);
+    expect(readDeprecations({ ok: true })).toBeNull();
+    expect(readDeprecations(undefined)).toBeNull();
   });
 });

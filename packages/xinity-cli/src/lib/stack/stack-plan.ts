@@ -21,6 +21,7 @@ import { manifestWriteFailure, readManifest, saveStackMembership, type StackMemb
 import { describeMigrationStep, migrationScriptComment, runMigrations } from "../up/migrator.ts";
 import { connectHost } from "../remote/remote-host.ts";
 import { type ComponentAction, describeComponentAction, planComponentAction, reviewGate, scriptComponentSection } from "../up/up-plan.ts";
+import { deprecationGate } from "../up/deprecation-gate.ts";
 import { componentFields, splitValuesByCategory, readExistingEnvState, diffEnv, missingRequiredFields } from "../config/env-prompt.ts";
 import {
   type StackDefinition, type StackHost, type FleetDefinition,
@@ -631,6 +632,14 @@ export async function runStackFlow(
     renderStackPlan(plan);
     if (stackPlanIsEmpty(plan)) {
       pass("Stack", "Everything is current and configured; nothing to apply");
+      return true;
+    }
+    const gateTargets = plan.hostPlans.flatMap((hp) => {
+      const host = hosts.get(hp.address);
+      return host ? hp.actions.map((action) => ({ host, action, where: hp.address })) : [];
+    });
+    if (!(await deprecationGate(gateTargets, { dryRun: !!opts.dryRun }))) {
+      cancel("Cancelled, nothing was changed on the hosts.");
       return true;
     }
     if (opts.dryRun) {

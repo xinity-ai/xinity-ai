@@ -1,7 +1,7 @@
 import "zod/compile";
 
 import { z } from "zod";
-import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
+import { DYNAMIC_CONFIG_CHANNEL, databaseDeprecationChecks, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
 import { nodeRegistrationSchema, installationStateReportSchema, interconnectReportSchema, heartbeatReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, canonicalInterconnectReport, canonicalHeartbeatReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, INTERCONNECT_PATH, HEARTBEAT_PATH, KEEPALIVE_INTERVAL_HEADER, createDependencyProbe, createHealthHandler, parseMetricsAuth, probeOwnHealth, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config, configStore } from "./config";
@@ -279,6 +279,7 @@ const server = Bun.serve({
   routes: {
     "/health": httpMetrics.route("/health", createHealthHandler({
       readiness: { database: databaseProbe.check },
+      deprecations: databaseDeprecationChecks(getDB),
       credentials: parseMetricsAuth(config.metrics.auth),
     })),
     "/metrics": handleMetrics,

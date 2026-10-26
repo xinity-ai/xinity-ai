@@ -11,7 +11,7 @@ import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts"
 import {
   type CheckResult,
   checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkHealthEndpoint, probeDaemonHealth, checkSmtp,
-  checkInfoserverUrl, NO_COUPLING, type DaemonCoupling,
+  checkInfoserverUrl, NO_COUPLING, type DaemonCoupling, fetchHealthDetail, healthCheckHost, readDeprecations, serviceBaseUrl,
   fileExistsCheck, serviceActiveCheck, isLocalUrl,
 } from "./doctor-probes.ts";
 
@@ -291,11 +291,6 @@ async function pushInfoserverCheck(checks: CheckResult[], values: Record<string,
   checks.push(result);
 }
 
-function healthCheckHost(values: Record<string, string>): string {
-  const bindHost = values.HOST || "0.0.0.0";
-  return bindHost === "0.0.0.0" ? "localhost" : bindHost;
-}
-
 async function checkGatewayConnectivity(
   values: Record<string, string>,
   serviceActive: boolean,
@@ -354,10 +349,6 @@ function dashboardHealthProbe(values: Record<string, string>, scheme: "https" | 
   return { baseUrl: `${scheme}://${healthCheckHost(values)}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}`, curlArgs };
 }
 
-function daemonBaseUrl(values: Record<string, string>): string {
-  return `http://${healthCheckHost(values)}:${values.PORT || "4044"}`;
-}
-
 async function checkDaemonConnectivity(
   values: Record<string, string>,
   serviceActive: boolean,
@@ -368,7 +359,11 @@ async function checkDaemonConnectivity(
   if (!serviceActive) {
     return { checks, coupling: NO_COUPLING };
   }
-  const health = await probeDaemonHealth(host, daemonBaseUrl(values), values.METRICS_AUTH);
+  const baseUrl = serviceBaseUrl("daemon", values);
+  if (!baseUrl) {
+    return { checks: [...checks, { label: "Health endpoint", status: "skip", message: "Listens on a unix socket" }], coupling: NO_COUPLING };
+  }
+  const health = await probeDaemonHealth(host, baseUrl, values.METRICS_AUTH);
   return { checks: [...checks, ...health.checks], coupling: health.coupling };
 }
 
@@ -542,6 +537,21 @@ async function checkDaemonDrivers(
   return checks;
 }
 
+async function deprecationChecks(component: Component, values: Record<string, string>, host: Host): Promise<CheckResult[]> {
+  const baseUrl = serviceBaseUrl(component, values);
+  if (!baseUrl || !values.METRICS_AUTH) {
+    return [];
+  }
+  const detail = await fetchHealthDetail(host, baseUrl, values.METRICS_AUTH);
+  const reports = detail.kind === "answered" ? readDeprecations(detail.body) ?? [] : [];
+  return reports.map((report) => ({
+    label: "Deprecation",
+    status: "warn",
+    message: `${report.id}, removed in ${report.removedIn}`,
+    detail: report.message,
+  }));
+}
+
 async function checkComponent(
   component: Component,
   entry: ComponentEntry,
@@ -586,6 +596,10 @@ async function checkComponent(
         )),
       );
       break;
+  }
+
+  if (serviceActive && component !== "daemon") {
+    checks.push(...(await deprecationChecks(component, configResult.values, host)));
   }
 
   return {

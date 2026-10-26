@@ -1,6 +1,8 @@
 import postgres from "postgres";
 import { expectedMigrationCount } from "common-db";
-import { groupMemberHealthSchema, interconnectPortSchema, parseMetricsAuth, tetherConnectionSchema, type GroupMemberHealth, type InterconnectPort, type TetherConnection } from "common-env";
+import { z } from "zod";
+import { groupMemberHealthSchema, interconnectPortSchema, parseMetricsAuth, tetherConnectionSchema, type DeprecationReport, type GroupMemberHealth, type InterconnectPort, type TetherConnection } from "common-env";
+import { type Component, DAEMON_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "../core/component-meta.ts";
 import { getUnitStatusOn, type Host } from "../core/host.ts";
 import { defaultPortForProtocol } from "../remote/remote-host.ts";
 
@@ -142,34 +144,77 @@ export type DaemonCoupling = { interconnect: InterconnectPort[]; groupMembers: G
 
 export const NO_COUPLING: DaemonCoupling = { interconnect: [], groupMembers: [] };
 
-// Fetched through a tunnel rather than curl on the host, so the credential never reaches a command
-// line. Without a credential, or from a daemon that predates a field, there is no check or coupling for it.
+export function healthCheckHost(values: Record<string, string>): string {
+  const bindHost = values.HOST || "0.0.0.0";
+  return bindHost === "0.0.0.0" ? "localhost" : bindHost;
+}
+
+const LISTEN_PORTS: Record<Component, { key: string; fallback: string }> = {
+  gateway: { key: "PORT", fallback: GATEWAY_DEFAULT_PORT },
+  dashboard: { key: "HTTP_PORT", fallback: DASHBOARD_DEFAULT_PORT },
+  daemon: { key: "PORT", fallback: DAEMON_DEFAULT_PORT },
+  infoserver: { key: "PORT", fallback: INFOSERVER_DEFAULT_PORT },
+  tether: { key: "PORT", fallback: TETHER_DEFAULT_PORT },
+};
+
+/** Where the service answers on its own host, or null when it listens on a unix socket, which no tunnel reaches. */
+export function serviceBaseUrl(component: Component, values: Record<string, string>): string | null {
+  if (values.UNIX_SOCKET) {
+    return null;
+  }
+  const scheme = values.XINITY_TLS_CERT || values.XINITY_TLS_CERT_FILE ? "https" : "http";
+  const { key, fallback } = LISTEN_PORTS[component];
+  return `${scheme}://${healthCheckHost(values)}:${values[key] || fallback}`;
+}
+
+export type HealthDetail =
+  | { kind: "unreachable"; check: CheckResult }
+  | { kind: "answered"; status: number; body: Record<string, unknown> | undefined };
+
+// Fetched through a tunnel rather than curl on the host, so the credential never reaches a command line.
+export async function fetchHealthDetail(host: Host, baseUrl: string, metricsAuth: string | undefined): Promise<HealthDetail> {
+  const tunnel = await host.openTunnel(baseUrl);
+  if (!tunnel.ok) {
+    return { kind: "unreachable", check: { label: "Health endpoint", status: "fail", message: "Could not open tunnel", detail: tunnel.error } };
+  }
+  const [credential] = parseMetricsAuth(metricsAuth);
+  try {
+    const response = await fetch(new URL("/health", tunnel.localUrl), {
+      headers: credential ? { authorization: `Basic ${btoa(`${credential.user}:${credential.pass}`)}` } : {},
+      // The service serves its own certificate, so there is nothing to verify it against.
+      tls: baseUrl.startsWith("https:") ? { rejectUnauthorized: false } : undefined,
+      signal: AbortSignal.timeout(5_000),
+    });
+    return { kind: "answered", status: response.status, body: parseJson(await response.text()) };
+  } catch (err) {
+    return { kind: "unreachable", check: { label: "Health endpoint", status: "fail", message: "Unreachable", detail: String(err) } };
+  } finally {
+    await tunnel.close();
+  }
+}
+
+const deprecationReportSchema = z.object({ id: z.string(), removedIn: z.string(), message: z.string() });
+
+/** Null when the service predates deprecation reports or withheld its details. */
+export function readDeprecations(body: Record<string, unknown> | undefined): DeprecationReport[] | null {
+  return deprecationReportSchema.array().safeParse(body?.deprecations).data ?? null;
+}
+
+// Without a credential, or from a daemon that predates a field, there is no check or coupling for it.
 export async function probeDaemonHealth(
   host: Host,
   baseUrl: string,
   metricsAuth: string | undefined,
 ): Promise<{ checks: CheckResult[]; coupling: DaemonCoupling }> {
-  const tunnel = await host.openTunnel(baseUrl);
-  if (!tunnel.ok) {
-    return { checks: [{ label: "Health endpoint", status: "fail", message: "Could not open tunnel", detail: tunnel.error }], coupling: NO_COUPLING };
+  const detail = await fetchHealthDetail(host, baseUrl, metricsAuth);
+  if (detail.kind === "unreachable") {
+    return { checks: [detail.check], coupling: NO_COUPLING };
   }
-  const [credential] = parseMetricsAuth(metricsAuth);
-  let response: Response;
-  try {
-    response = await fetch(new URL("/health", tunnel.localUrl), {
-      headers: credential ? { authorization: `Basic ${btoa(`${credential.user}:${credential.pass}`)}` } : {},
-      signal: AbortSignal.timeout(5_000),
-    });
-  } catch (err) {
-    return { checks: [{ label: "Health endpoint", status: "fail", message: "Unreachable", detail: String(err) }], coupling: NO_COUPLING };
-  } finally {
-    await tunnel.close();
-  }
-  const health = statusCodeCheck("Health endpoint", response.status, "", PREDATES_HEALTH);
+  const health = statusCodeCheck("Health endpoint", detail.status, "", PREDATES_HEALTH);
   if (health.status !== "pass") {
     return { checks: [health], coupling: NO_COUPLING };
   }
-  const body = parseJson(await response.text());
+  const body = detail.body;
   const tether = tetherConnectionSchema.safeParse(body?.tether).data;
   return {
     checks: tether ? [health, tetherConnectionCheck(tether)] : [health],

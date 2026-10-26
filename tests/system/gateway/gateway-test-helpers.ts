@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { aiApiKeyT, aiApplicationT, aiNodeT, apiResponseT, inferenceCallT, modelDeploymentT, modelInstallationStateT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
+import { aiApiKeyT, aiApplicationT, apiCallT, aiNodeT, apiResponseT, inferenceCallT, modelDeploymentT, modelInstallationStateT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
 import { METRICS_AUTH, getAvailablePort, readProcessOutput, waitForHttp } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
@@ -149,6 +149,18 @@ export async function createOrganizationAndApp(): Promise<{ orgId: string; appId
   createdOrgIds.push(orgId);
   createdAppIds.push(app!.id);
   return { orgId, appId: app!.id };
+}
+
+// The api_call row cascades away with its organization in cleanupTestData.
+export async function createLegacyApiCall(orgId: string): Promise<void> {
+  await getDB().insert(apiCallT).values({
+    organizationId: orgId,
+    model: "legacy-model",
+    specifiedModel: "legacy-model",
+    duration: 1,
+    inputMessages: [],
+    outputMessage: { role: "assistant", content: "" },
+  });
 }
 
 export async function createApiKey(input: {

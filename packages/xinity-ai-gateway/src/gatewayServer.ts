@@ -17,7 +17,7 @@ import { handleTranscription } from "./llm-forward/endpoints/handle-transcriptio
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES } from "./serve-config";
 import { activationRefusal, createDbConfigFeed, createDependencyProbe, createHealthHandler, createSecretUnsealer, parseMetricsAuth, probeOwnHealth, withoutConnectionTimeout, type RouteHandler } from "common-env";
-import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
+import { DYNAMIC_CONFIG_CHANNEL, databaseDeprecationChecks, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
 import { flushUsageEvents } from "./usageRecorder";
@@ -96,6 +96,12 @@ redisProbe?.start(HEALTH_PROBE_INTERVAL_MS);
 const handleHealth = createHealthHandler({
   readiness: { database: databaseProbe.check },
   degraded: redisProbe ? { redis: redisProbe.check } : {},
+  deprecations: {
+    ...databaseDeprecationChecks(getDB),
+    "gateway.web-search-engine-url": async () => config.webSearch.engineUrl
+      ? "WEB_SEARCH_ENGINE_URL is set. Replace it with WEB_SEARCH_PROVIDER=searxng and WEB_SEARCH_CREDENTIAL set to the same URL, then unset it."
+      : null,
+  },
   credentials: parseMetricsAuth(config.metrics.auth),
 });
 

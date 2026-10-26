@@ -11,6 +11,7 @@ export * from "./queries/models";
 export * from "./api-key-hash";
 export * from "./model-calc";
 export * from "./dynamic-config";
+export * from "./deprecation-checks";
 
 export * from "./migrations";
 
