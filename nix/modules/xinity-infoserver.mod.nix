@@ -83,6 +83,12 @@
           description = "Directory for persistent log files. When set, the infoserver writes structured JSON logs to this directory in addition to stdout/journald.";
         };
 
+        metricsAuthFile = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Path to a file containing the METRICS_AUTH credentials that unlock the /health detail view. Loaded via systemd's LoadCredential mechanism.";
+        };
+
         environmentFiles = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
@@ -119,6 +125,9 @@
           // lib.optionalAttrs (cfg.modelLegacyDir != null) {
             MODEL_LEGACY_DIR = cfg.modelLegacyDir;
           }
+          // lib.optionalAttrs (cfg.metricsAuthFile != null) {
+            METRICS_AUTH_FILE = "%d/metrics-auth";
+          }
           // cfg.extraEnvironment;
           serviceConfig = {
             EnvironmentFile = cfg.environmentFiles;
@@ -127,6 +136,8 @@
             RestartSec = 5;
             RestartSteps = 10;
             RestartMaxDelaySec = 300;
+          } // lib.optionalAttrs (cfg.metricsAuthFile != null) {
+            LoadCredential = [ "metrics-auth:${cfg.metricsAuthFile}" ];
           };
         };
       };

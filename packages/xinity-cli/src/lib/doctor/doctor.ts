@@ -10,7 +10,7 @@ import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, I
 import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts";
 import {
   type CheckResult,
-  checkPostgresAndMigrations, checkRedis, checkServiceHealth, probeDaemonHealth, checkSmtp,
+  checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkHealthEndpoint, probeDaemonHealth, checkSmtp,
   checkInfoserverUrl, NO_COUPLING, type DaemonCoupling,
   fileExistsCheck, serviceActiveCheck, isLocalUrl,
 } from "./doctor-probes.ts";
@@ -285,7 +285,7 @@ async function pushInfoserverCheck(checks: CheckResult[], values: Record<string,
   const cache = cacheFor(infoserverCheckCache, host);
   let result = cache.get(url);
   if (!result) {
-    result = await checkServiceHealth(host, "Infoserver", `${url}/health`);
+    result = await checkHealthEndpoint(host, "Infoserver", url);
     cache.set(url, result);
   }
   checks.push(result);
@@ -307,8 +307,8 @@ async function checkGatewayConnectivity(
   await pushInfoserverCheck(checks, values, host);
   if (values.S3_ENDPOINT) checks.push(await checkServiceHealth(host, "S3 endpoint", values.S3_ENDPOINT + "/"));
   if (serviceActive) {
-    const url = `http://${healthCheckHost(values)}:${values.PORT || GATEWAY_DEFAULT_PORT}/healthCheck`;
-    checks.push(await checkServiceHealth(host, "Health endpoint", url));
+    const baseUrl = `http://${healthCheckHost(values)}:${values.PORT || GATEWAY_DEFAULT_PORT}`;
+    checks.push(await checkHealthEndpoint(host, "Health endpoint", baseUrl));
   }
   return checks;
 }
@@ -325,8 +325,8 @@ async function checkDashboardConnectivity(
   if (values.MAIL_URL) checks.push(await checkSmtp(values.MAIL_URL, host));
   if (serviceActive) {
     const probeHealth = (scheme: "https" | "http") => {
-      const { url, curlArgs } = dashboardHealthProbe(values, scheme);
-      return checkServiceHealth(host, "Health endpoint", url, curlArgs);
+      const { baseUrl, curlArgs } = dashboardHealthProbe(values, scheme);
+      return checkHealthEndpoint(host, "Health endpoint", baseUrl, curlArgs);
     };
     if (secretsReadable) {
       checks.push(await probeHealth(values.XINITY_TLS_CERT || values.XINITY_TLS_CERT_FILE ? "https" : "http"));
@@ -340,22 +340,22 @@ async function checkDashboardConnectivity(
 }
 
 /** A socket or our own certificate needs curl told about it, or a healthy dashboard reads as unreachable. */
-function dashboardHealthProbe(values: Record<string, string>, scheme: "https" | "http"): { url: string; curlArgs: string[] } {
+function dashboardHealthProbe(values: Record<string, string>, scheme: "https" | "http"): { baseUrl: string; curlArgs: string[] } {
   // We are the one serving the certificate, so there is nothing to verify it against.
   const curlArgs = scheme === "https" ? ["-k"] : [];
 
   if (values.UNIX_SOCKET) {
     return {
-      url: `${scheme}://localhost/api/health`,
+      baseUrl: `${scheme}://localhost`,
       curlArgs: [...curlArgs, "--unix-socket", values.UNIX_SOCKET],
     };
   }
 
-  return { url: `${scheme}://${healthCheckHost(values)}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}/api/health`, curlArgs };
+  return { baseUrl: `${scheme}://${healthCheckHost(values)}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}`, curlArgs };
 }
 
-function daemonHealthUrl(values: Record<string, string>): string {
-  return `http://${healthCheckHost(values)}:${values.PORT || "4044"}/healthCheck`;
+function daemonBaseUrl(values: Record<string, string>): string {
+  return `http://${healthCheckHost(values)}:${values.PORT || "4044"}`;
 }
 
 async function checkDaemonConnectivity(
@@ -368,7 +368,7 @@ async function checkDaemonConnectivity(
   if (!serviceActive) {
     return { checks, coupling: NO_COUPLING };
   }
-  const health = await probeDaemonHealth(host, daemonHealthUrl(values));
+  const health = await probeDaemonHealth(host, daemonBaseUrl(values), values.METRICS_AUTH);
   return { checks: [...checks, ...health.checks], coupling: health.coupling };
 }
 
@@ -384,7 +384,7 @@ async function checkInfoserverConnectivity(
   for (const { url, components } of discoveredUrls) {
     const compList = components.join(", ");
     checks.push(
-      await checkServiceHealth(host, `Configured URL (${compList})`, `${url}/health`),
+      await checkHealthEndpoint(host, `Configured URL (${compList})`, url),
     );
 
     if (!isLocalUrl(url, localPort)) {
@@ -399,7 +399,7 @@ async function checkInfoserverConnectivity(
   // Local self-check: run via host since the service is on the target machine
   if (serviceActive) {
     checks.push(
-      await checkServiceHealth(host, "Local health", `http://localhost:${localPort}/health`),
+      await checkHealthEndpoint(host, "Local health", `http://localhost:${localPort}`),
     );
     checks.push(
       await checkServiceHealth(host, "Local model catalog", `http://localhost:${localPort}/models/v1.json`),

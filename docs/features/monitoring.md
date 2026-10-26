@@ -4,6 +4,35 @@ The gateway, dashboard, tether, and daemon expose Prometheus metrics (the infose
 
 For deployment-specific monitoring setup, see the [Docker deployment guide](../../deployment/docker/README.md) or the [NixOS deployment guide](../../deployment/nixos/README.md). To have the CLI write a scrape config and run Prometheus for you, use `xinity up infra-prometheus`.
 
+## Health Endpoint
+
+Every service answers `GET /health`: the gateway, dashboard, tether, daemon, and infoserver. It is a readiness check. `200` means the instance can serve its normal traffic, `503` means it cannot. The body is `{"ok":true}` or `{"ok":false}` and always matches the status code.
+
+| Service | Answers `503` when |
+|---|---|
+| Gateway | The database is unreachable |
+| Dashboard | The database is unreachable, or its migrations are not current |
+| Tether | The database is unreachable |
+| Infoserver | No models are loaded |
+| Daemon | Never. A lost tether connection does not stop a node from serving |
+
+A dependency a service keeps working without, such as Redis on the gateway or a failed catalog refresh on the infoserver, never changes the status code.
+
+Use `/health` to route traffic and order startup, not as a liveness probe. A database outage makes every gateway and dashboard answer `503`, and restarting them fixes nothing.
+
+### Details
+
+A request carrying a `METRICS_AUTH` credential (HTTP Basic Auth, the same one `/metrics` takes) gets the full report: the result of every check, plus service details such as the daemon's tether connection and interconnect state. A service without `METRICS_AUTH` never serves the details.
+
+```bash
+curl -u user:pass http://localhost:4121/health
+# {"ok":true,"checks":{"database":"ok","redis":"ok"}}
+```
+
+### Container healthchecks
+
+Each service binary accepts `--health`. It asks the instance running on the same machine for its `/health` and exits `0` on a `200`. The Docker Compose file uses it as the healthcheck of every Xinity container.
+
 ## Prometheus Metrics
 
 Each of the gateway, dashboard, tether, and daemon exposes a `GET /metrics` endpoint in Prometheus text format, protected by HTTP Basic Auth via the `METRICS_AUTH` environment variable (format: `user:pass`, comma-separated for multiple credentials). On the gateway, tether, and daemon this is optional; when unset, the endpoint is open. On the dashboard, `METRICS_AUTH` is required.

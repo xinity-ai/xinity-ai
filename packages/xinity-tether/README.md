@@ -43,7 +43,7 @@ Where the tether listens, and how it keeps daemon connections alive.
 
 | Variable | Default | Description |
 |---|---|---|
-| `METRICS_AUTH` | (unset) | Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple). Secret. |
+| `METRICS_AUTH` | (unset) | Basic auth for the /metrics endpoint and the /health detail view (format: user:pass, comma-separated for multiple). Secret. |
 
 ### Logging
 

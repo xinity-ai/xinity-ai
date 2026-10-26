@@ -1,6 +1,5 @@
 import { version } from "../../../package.json";
 import scalar from "./assets/scalar.html" with { type: "text" };
-import { serverRouter } from "./rpc/gatewayRouter";
 import {
   openaiCompatPaths,
   openaiCompatSchemas,
@@ -14,7 +13,7 @@ export async function createOpenapiSpec() {
   const generator = new OpenAPIGenerator({
     schemaConverters: [new ZodToJsonSchemaConverter()],
   });
-  const spec = await generator.generate(serverRouter, {
+  const spec = await generator.generate({}, {
     info: {
       title: "Xinity AI Gateway",
       version,

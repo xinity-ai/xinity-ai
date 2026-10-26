@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { aiApiKeyT, aiApplicationT, aiNodeT, apiResponseT, inferenceCallT, modelDeploymentT, modelInstallationStateT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
-import { getAvailablePort, readProcessOutput, waitForHttp } from "../test-helpers";
+import { METRICS_AUTH, getAvailablePort, readProcessOutput, waitForHttp } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
 
@@ -90,12 +90,13 @@ export async function ensureGatewayRunning(): Promise<void> {
         DB_CONNECTION_URL,
         REDIS_URL,
         INFOSERVER_URL: infoServerUrl(""),
+        METRICS_AUTH,
       },
       stdout: "pipe",
       stderr: "pipe",
     });
 
-    const healthUrl = `http://${HOST}:${PORT}/healthCheck`;
+    const healthUrl = `http://${HOST}:${PORT}/health`;
     const healthWait = waitForHttp(healthUrl, { timeoutMs: 20_000 });
     const exitWait = gatewayProcess.exited.then(async (code) => {
       const output = await readProcessOutput(gatewayProcess!);

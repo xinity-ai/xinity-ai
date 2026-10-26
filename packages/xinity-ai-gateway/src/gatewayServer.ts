@@ -1,7 +1,5 @@
 import "zod/compile";
 
-import { OpenAPIHandler } from "@orpc/openapi/fetch";
-import { serverRouter } from "./rpc/gatewayRouter";
 import { config, configStore } from "./config";
 import { gatewayConfig } from "./config-schema";
 import { checkMigrations, getDB, subscribe } from "./db";
@@ -18,14 +16,19 @@ import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES } from "./serve-config";
-import { activationRefusal, createDbConfigFeed, createSecretUnsealer, withoutConnectionTimeout, type RouteHandler } from "common-env";
-import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } from "common-db";
+import { activationRefusal, createDbConfigFeed, createDependencyProbe, createHealthHandler, createSecretUnsealer, parseMetricsAuth, probeOwnHealth, withoutConnectionTimeout, type RouteHandler } from "common-env";
+import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
 import { flushUsageEvents } from "./usageRecorder";
 import { flushCallLog } from "./callLogger";
 import { createCacheInvalidation } from "./llm-forward/cache-invalidation";
 import { invalidateModelSources, invalidateDeployments } from "./llm-forward/model-data";
+
+// The container healthcheck: the image ships no curl, so the binary asks the running instance itself.
+if (Bun.argv.includes("--health")) {
+  process.exit(await probeOwnHealth({ ...config.server, tls: !!config.tls }) ? 0 : 1);
+}
 
 process.on("unhandledRejection", (reason) => {
   rootLogger.error({ err: reason }, "Unhandled promise rejection");
@@ -77,8 +80,23 @@ try {
   rootLogger.error({ err }, "Dynamic configuration unavailable, keeping the values this process booted with");
 }
 
-const handler = new OpenAPIHandler(serverRouter, {
-  plugins: [],
+const HEALTH_PROBE_INTERVAL_MS = 10_000;
+
+const databaseProbe = createDependencyProbe({
+  name: "Database",
+  ping: () => getDB().execute(sql`SELECT 1`),
+  log: rootLogger,
+});
+const redisProbe = config.cache.url
+  ? createDependencyProbe({ name: "Redis", ping: () => cache.ping(), log: rootLogger })
+  : undefined;
+databaseProbe.start(HEALTH_PROBE_INTERVAL_MS);
+redisProbe?.start(HEALTH_PROBE_INTERVAL_MS);
+
+const handleHealth = createHealthHandler({
+  readiness: { database: databaseProbe.check },
+  degraded: redisProbe ? { redis: redisProbe.check } : {},
+  credentials: parseMetricsAuth(config.metrics.auth),
 });
 
 const tls = config.tls && { cert: config.tls.cert, key: config.tls.key };
@@ -115,9 +133,10 @@ const serveOptions = {
     "/docs": createScalarPage(),
     "/openapi.json": await createOpenapiSpec(),
     "/metrics": handleMetrics,
+    "/health": handleHealth,
     ...meteredRoutes,
   },
-  fetch: handleRequest,
+  fetch: () => errorResponse("Not found", 404),
   idleTimeout: config.server.idleTimeout,
   // One media part base64-encoded, which grows it by a third, plus room for the rest of the request.
   maxRequestBodySize: Math.ceil((config.maxMediaMb * 1024 * 1024 * 4) / 3) + 8 * 1024 * 1024,
@@ -165,6 +184,8 @@ async function gracefulShutdown(signal: string) {
     server.stop(true);
   }
 
+  databaseProbe.stop();
+  redisProbe?.stop();
   await cacheInvalidation.stop();
   await configStore.stop();
 
@@ -180,15 +201,3 @@ async function gracefulShutdown(signal: string) {
 
 process.on("SIGTERM", () => void gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => void gracefulShutdown("SIGINT"));
-
-async function handleRequest(req: Request): Promise<Response> {
-  const { matched, response } = await handler.handle(req, {
-    prefix: "/",
-    context: { headers: req.headers },
-  });
-
-  if (matched) {
-    return response;
-  }
-  return errorResponse("Not found", 404);
-}

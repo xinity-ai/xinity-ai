@@ -2,7 +2,7 @@ import "zod/compile";
 
 import { z } from "zod";
 import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, interconnectReportSchema, heartbeatReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, canonicalInterconnectReport, canonicalHeartbeatReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, INTERCONNECT_PATH, HEARTBEAT_PATH, KEEPALIVE_INTERVAL_HEADER, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
+import { nodeRegistrationSchema, installationStateReportSchema, interconnectReportSchema, heartbeatReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, canonicalInterconnectReport, canonicalHeartbeatReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, INTERCONNECT_PATH, HEARTBEAT_PATH, KEEPALIVE_INTERVAL_HEADER, createDependencyProbe, createHealthHandler, parseMetricsAuth, probeOwnHealth, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
@@ -35,6 +35,11 @@ const REJECTION_BY_FAILURE: Partial<Record<VerifyFailure, TetherRefusalReason>> 
 
 function rejectUnsigned(endpoint: DaemonEndpoint, reason: VerifyFailure): Response {
   return refuse(endpoint, REJECTION_BY_FAILURE[reason] ?? "unauthorized", unauthorizedDetail(reason), 401);
+}
+
+// The container healthcheck: the image ships no curl, so the binary asks the running instance itself.
+if (Bun.argv.includes("--health")) {
+  process.exit(await probeOwnHealth({ ...config.server, tls: !!config.tls }) ? 0 : 1);
 }
 
 const refusal = activationRefusal(tetherConfig, rootLogger);
@@ -102,40 +107,23 @@ try {
   rootLogger.error({ err }, "Daemons will not receive dynamic configuration changes");
 }
 
-let databaseReachable = true;
-let probingDatabase = false;
-
-async function probeDatabase(): Promise<void> {
-  if (probingDatabase) {
-    return;
-  }
-  probingDatabase = true;
-  try {
-    await getDB().execute(sql`SELECT 1`);
-    if (!databaseReachable) {
-      log.info("Database reachable again");
-    }
-    databaseReachable = true;
-  } catch (err) {
-    if (databaseReachable) {
-      log.error({ err }, "Database unreachable, dropping all daemon connections");
-      dropAllConnections("db_unreachable");
-    }
-    databaseReachable = false;
-  } finally {
-    probingDatabase = false;
-  }
-}
+const databaseProbe = createDependencyProbe({
+  name: "Database",
+  ping: () => getDB().execute(sql`SELECT 1`),
+  log,
+  onUnreachable: () => {
+    log.warn("Dropping all daemon connections until the database is reachable");
+    dropAllConnections("db_unreachable");
+  },
+});
 
 let keepaliveTimer: Timer | undefined;
-let databaseProbeTimer: Timer | undefined;
 configStore.watch(
   (value) => value.server.keepaliveIntervalMs(),
   (intervalMs) => {
     clearInterval(keepaliveTimer);
-    clearInterval(databaseProbeTimer);
     keepaliveTimer = runKeepaliveLoop(intervalMs, config.server.livenessTimeoutMs);
-    databaseProbeTimer = setInterval(() => void probeDatabase(), intervalMs);
+    databaseProbe.start(intervalMs);
   },
 );
 
@@ -289,8 +277,10 @@ const server = Bun.serve({
   ...serveTarget,
   tls,
   routes: {
-    "/health": httpMetrics.route("/health", () =>
-      Response.json({ ok: databaseReachable }, { status: databaseReachable ? 200 : 503 })),
+    "/health": httpMetrics.route("/health", createHealthHandler({
+      readiness: { database: databaseProbe.check },
+      credentials: parseMetricsAuth(config.metrics.auth),
+    })),
     "/metrics": handleMetrics,
     "/api/v1/stream": httpMetrics.route("/api/v1/stream", handleSSEStream),
     "/api/v1/status": httpMetrics.route("/api/v1/status", handleStatus),
@@ -305,7 +295,7 @@ log.info({ ...serveTarget, tls: !!tls }, `Tether started (${tls ? "https" : "htt
 async function shutdown() {
   const requestsDrained = server.stop();
   clearInterval(keepaliveTimer);
-  clearInterval(databaseProbeTimer);
+  databaseProbe.stop();
   await configStore.stop();
   await configBroadcast.stop();
   sendShutdownToAll();

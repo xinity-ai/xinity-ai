@@ -83,7 +83,7 @@ Where the gateway caches, and the lifetimes of what it keeps there.
 
 | Variable | Default | Description |
 |---|---|---|
-| `METRICS_AUTH` | (unset) | Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple). Secret. |
+| `METRICS_AUTH` | (unset) | Basic auth for the /metrics endpoint and the /health detail view (format: user:pass, comma-separated for multiple). Secret. |
 
 ### Logging
 

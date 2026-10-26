@@ -1,6 +1,6 @@
 import postgres from "postgres";
 import { expectedMigrationCount } from "common-db";
-import { groupMemberHealthSchema, interconnectPortSchema, tetherConnectionSchema, type GroupMemberHealth, type InterconnectPort, type TetherConnection } from "common-env";
+import { groupMemberHealthSchema, interconnectPortSchema, parseMetricsAuth, tetherConnectionSchema, type GroupMemberHealth, type InterconnectPort, type TetherConnection } from "common-env";
 import { getUnitStatusOn, type Host } from "../core/host.ts";
 import { defaultPortForProtocol } from "../remote/remote-host.ts";
 
@@ -97,16 +97,32 @@ export async function checkServiceHealth(
   url: string,
   curlArgs: readonly string[] = [],
 ): Promise<CheckResult> {
-  const result = await host.run([
+  const result = await curlStatus(host, url, curlArgs);
+  return statusCodeCheck(label, parseInt(result.output.trim(), 10), result.output);
+}
+
+const PREDATES_HEALTH = `The service predates /health. Please update it.`;
+
+export async function checkHealthEndpoint(
+  host: Host,
+  label: string,
+  baseUrl: string,
+  curlArgs: readonly string[] = [],
+): Promise<CheckResult> {
+  const result = await curlStatus(host, `${baseUrl}/health`, curlArgs);
+  return statusCodeCheck(label, parseInt(result.output.trim(), 10), result.output, PREDATES_HEALTH);
+}
+
+function curlStatus(host: Host, url: string, curlArgs: readonly string[]) {
+  return host.run([
     "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
     "--connect-timeout", "5", "--max-time", "5",
     ...curlArgs,
     url,
   ]);
-  return statusCodeCheck(label, parseInt(result.output.trim(), 10), result.output);
 }
 
-function statusCodeCheck(label: string, statusCode: number, curlOutput: string): CheckResult {
+function statusCodeCheck(label: string, statusCode: number, curlOutput: string, notFoundDetail?: string): CheckResult {
   if (isNaN(statusCode) || statusCode === 0) {
     return {
       label,
@@ -118,27 +134,42 @@ function statusCodeCheck(label: string, statusCode: number, curlOutput: string):
   if (statusCode >= 200 && statusCode < 300) {
     return { label, status: "pass", message: `Reachable (${statusCode})` };
   }
-  return { label, status: "fail", message: `Returned ${statusCode}` };
+  const failed: CheckResult = { label, status: "fail", message: `Returned ${statusCode}` };
+  return statusCode === 404 && notFoundDetail ? { ...failed, detail: notFoundDetail } : failed;
 }
 
 export type DaemonCoupling = { interconnect: InterconnectPort[]; groupMembers: GroupMemberHealth[] };
 
 export const NO_COUPLING: DaemonCoupling = { interconnect: [], groupMembers: [] };
 
-// A daemon that predates a field reports no check or coupling for it.
-export async function probeDaemonHealth(host: Host, url: string): Promise<{ checks: CheckResult[]; coupling: DaemonCoupling }> {
-  const result = await host.run([
-    "curl", "-s", "-w", "\n%{http_code}",
-    "--connect-timeout", "5", "--max-time", "5",
-    url,
-  ]);
-  const lines = result.output.split("\n");
-  const statusCode = parseInt(lines.pop() ?? "", 10);
-  const health = statusCodeCheck("Health endpoint", statusCode, result.output);
+// Fetched through a tunnel rather than curl on the host, so the credential never reaches a command
+// line. Without a credential, or from a daemon that predates a field, there is no check or coupling for it.
+export async function probeDaemonHealth(
+  host: Host,
+  baseUrl: string,
+  metricsAuth: string | undefined,
+): Promise<{ checks: CheckResult[]; coupling: DaemonCoupling }> {
+  const tunnel = await host.openTunnel(baseUrl);
+  if (!tunnel.ok) {
+    return { checks: [{ label: "Health endpoint", status: "fail", message: "Could not open tunnel", detail: tunnel.error }], coupling: NO_COUPLING };
+  }
+  const [credential] = parseMetricsAuth(metricsAuth);
+  let response: Response;
+  try {
+    response = await fetch(new URL("/health", tunnel.localUrl), {
+      headers: credential ? { authorization: `Basic ${btoa(`${credential.user}:${credential.pass}`)}` } : {},
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch (err) {
+    return { checks: [{ label: "Health endpoint", status: "fail", message: "Unreachable", detail: String(err) }], coupling: NO_COUPLING };
+  } finally {
+    await tunnel.close();
+  }
+  const health = statusCodeCheck("Health endpoint", response.status, "", PREDATES_HEALTH);
   if (health.status !== "pass") {
     return { checks: [health], coupling: NO_COUPLING };
   }
-  const body = parseJson(lines.join("\n"));
+  const body = parseJson(await response.text());
   const tether = tetherConnectionSchema.safeParse(body?.tether).data;
   return {
     checks: tether ? [health, tetherConnectionCheck(tether)] : [health],
@@ -257,7 +288,7 @@ export async function checkInfoserverUrl(
 ): Promise<CheckResult[]> {
   const suffix = labelSuffix ? ` (${labelSuffix})` : "";
   return [
-    await checkServiceHealth(host, `Health${suffix}`, `${url}/health`),
+    await checkHealthEndpoint(host, `Health${suffix}`, url),
     await probeInfoserverVersion(host, url, `Version${suffix}`),
     await checkServiceHealth(host, `Model catalog${suffix}`, `${url}/models/v1.json`),
   ];

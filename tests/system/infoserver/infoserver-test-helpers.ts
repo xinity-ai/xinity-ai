@@ -1,4 +1,4 @@
-import { getAvailablePort, readProcessOutput, waitForHttp } from "../test-helpers";
+import { METRICS_AUTH, getAvailablePort, readProcessOutput, waitForHttp } from "../test-helpers";
 export { getAvailablePort };
 
 const HOST = process.env.INFOSERVER_HOST ?? "127.0.0.1";
@@ -34,6 +34,7 @@ export async function ensureInfoServerRunning(): Promise<void> {
         PORT: port,
         MODEL_INFO_DIR,
         MODEL_LEGACY_DIR,
+        METRICS_AUTH,
         // Lets each test present its own client address, so one test spending a
         // rate-limit bucket cannot throttle the next.
         HTTP_IP_HEADER: "x-forwarded-for",
@@ -95,6 +96,7 @@ export async function withInfoServer<T>(
     PORT: port,
     MODEL_INFO_DIR,
     MODEL_LEGACY_DIR,
+    METRICS_AUTH,
   };
   for (const [key, value] of Object.entries(overrides)) {
     if (value === undefined) {
@@ -115,7 +117,8 @@ export async function withInfoServer<T>(
 
   try {
     await Promise.race([
-      waitForHttp(`http://${HOST}:${port}/health`, { timeoutMs: 20_000 }),
+      // Not /health: that stays 503 for a server started on an empty catalog.
+      waitForHttp(`http://${HOST}:${port}/version.json`, { timeoutMs: 20_000 }),
       proc.exited.then(async (code) => {
         const output = await readProcessOutput(proc);
         throw new Error(`Info server exited before health check (code ${code}). stderr: ${output.stderr || "<empty>"}`);

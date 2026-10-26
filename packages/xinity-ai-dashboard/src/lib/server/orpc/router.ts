@@ -1,4 +1,3 @@
-import { os } from "@orpc/server";
 import { apiCallRouter } from "./procedures/api-call.procedure";
 import { apiKeyRouter } from "./procedures/api-key.procedure";
 import { applicationRouter } from "./procedures/application.procedure";
@@ -15,12 +14,6 @@ import { clusterRouter } from "./procedures/cluster.procedure";
 import { computeRouter } from "./procedures/compute.procedure";
 import { auditRouter } from "./procedures/audit.procedure";
 import { dynamicConfigRouter } from "./procedures/dynamic-config.procedure";
-import z from "zod";
-
-const health = os
-  .route({ method: "GET", path: "/health" })
-  .output(z.object({ status: z.string() }))
-  .handler(() => ({ status: "ok" }));
 
 /**
  * Exported router object mounted by the ORPC server.
@@ -42,5 +35,4 @@ export const router = {
   compute: computeRouter,
   audit: auditRouter,
   dynamicConfig: dynamicConfigRouter,
-  health,
 };

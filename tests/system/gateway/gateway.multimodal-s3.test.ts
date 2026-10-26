@@ -120,7 +120,7 @@ beforeAll(async () => {
     stderr: "pipe",
   });
 
-  const healthUrl = gatewayUrl("/healthCheck");
+  const healthUrl = gatewayUrl("/health");
   const exitWait = gatewayProcess.exited.then(async (code) => {
     const output = await readProcessOutput(gatewayProcess!);
     throw new Error(
@@ -326,7 +326,7 @@ describe("multimodal image storage (SeaweedFS S3)", () => {
         const out = await readProcessOutput(noS3Gateway);
         throw new Error(`Gateway (no-S3) exited (code ${code}): ${out.stderr}`);
       });
-      await Promise.race([waitForHttp(noS3Url("/healthCheck"), { timeoutMs: 15_000 }), exitWait]);
+      await Promise.race([waitForHttp(noS3Url("/health"), { timeoutMs: 15_000 }), exitWait]);
 
       const { orgId, appId } = await createOrganizationAndApp();
       const { fullKey } = await createApiKey({ orgId, appId });

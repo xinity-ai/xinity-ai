@@ -62,7 +62,7 @@ export function catalogGroup(): GroupDef<CatalogConfig> {
 export type MetricsConfig = { auth?: string };
 
 const METRICS_AUTH_DESCRIPTION =
-  "Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple)";
+  "Basic auth for the /metrics endpoint and the /health detail view (format: user:pass, comma-separated for multiple)";
 
 export function metricsAuthField(opts: { required: true }): ConfigField<string>;
 export function metricsAuthField(opts?: { required?: false }): ConfigField<string | undefined>;

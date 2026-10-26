@@ -1,5 +1,6 @@
 import "zod/compile";
 
+import { createHealthHandler, parseMetricsAuth, probeOwnHealth } from "common-env";
 import { createLegacyModelJsonSchema, createModelJsonSchema } from "common-env/model-catalog";
 import { version } from "../../package.json";
 import { config } from "./config";
@@ -13,6 +14,11 @@ import { createRateLimiter, withRateLimit, type RateLimiter, type RouteHandler }
 import type { SerializedCatalog } from "./catalog";
 
 const port = config.server.port;
+
+// The container healthcheck: the image ships no curl, so the binary asks the running instance itself.
+if (Bun.argv.includes("--health")) {
+  process.exit(await probeOwnHealth({ port, tls: false }) ? 0 : 1);
+}
 
 catalog.configure(config.catalog.maxIncludeDepth, config.catalog.infoDir, config.catalog.legacyDir);
 
@@ -78,28 +84,29 @@ function serveCatalogBody(
   };
 }
 
-/** Aggregate mirrors the pre-split shape so existing monitoring keeps working. */
-function healthBody() {
-  const health = catalog.getCatalogHealth();
-  const modelCount = health.models.modelCount + health.legacy.modelCount;
-  const lastRefreshError = health.models.lastRefreshError ?? health.legacy.lastRefreshError;
-
-  return {
-    ok: modelCount > 0 && lastRefreshError === null,
-    catalog: {
-      modelCount,
-      lastRefreshAt: health.models.lastRefreshAt ?? health.legacy.lastRefreshAt,
-      lastRefreshError,
+// A failed refresh keeps serving the last good catalog, so it degrades the service without
+// taking it out of rotation.
+const handleHealth = createHealthHandler({
+  readiness: {
+    models: () => {
+      const { models, legacy } = catalog.getCatalogHealth();
+      return models.modelCount + legacy.modelCount > 0 ? null : "no models loaded";
     },
-    models: health.models,
-    legacy: health.legacy,
-  };
-}
+  },
+  degraded: {
+    refresh: () => {
+      const { models, legacy } = catalog.getCatalogHealth();
+      return models.lastRefreshError ?? legacy.lastRefreshError;
+    },
+  },
+  details: catalog.getCatalogHealth,
+  credentials: parseMetricsAuth(config.metrics.auth),
+});
 
 const server = Bun.serve({
   port,
   routes: {
-    "/health": () => Response.json(healthBody()),
+    "/health": handleHealth,
     "/version.json": Response.json({ version }),
     "/schemas/model.v2.json": Response.json(createModelJsonSchema()),
 

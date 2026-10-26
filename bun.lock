@@ -122,7 +122,6 @@
       "devDependencies": {
         "@orpc/client": "catalog:orpc",
         "@orpc/openapi": "catalog:orpc",
-        "@orpc/server": "catalog:orpc",
         "@orpc/zod": "catalog:orpc",
         "@types/bun": "catalog:",
         "@types/turndown": "^5.0.6",
