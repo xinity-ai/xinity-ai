@@ -345,7 +345,7 @@ export async function checkInfoserverUrl(
   return [
     await checkHealthEndpoint(host, `Health${suffix}`, url),
     await probeInfoserverVersion(host, url, `Version${suffix}`),
-    await checkServiceHealth(host, `Model catalog${suffix}`, `${url}/models/v1.json`),
+    await checkServiceHealth(host, `Model catalog${suffix}`, `${url}/models/v2.json`),
   ];
 }
 
