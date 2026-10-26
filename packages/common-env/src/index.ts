@@ -58,6 +58,7 @@ export * from "./config/shared-groups";
 export * from "./config/analyze";
 export * from "./deployment-settings";
 export * from "./metrics-auth";
+export * from "./health";
 export * from "./metrics-format";
 export * from "./process-metrics";
 export * from "./http-metrics";

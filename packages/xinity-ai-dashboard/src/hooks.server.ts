@@ -19,6 +19,7 @@ import { loadDeploymentId } from "$lib/server/lib/instance/deployment-id";
 import { stampClientAddress } from "$lib/server/lib/auth/client-address";
 import { flushAuditEvents } from "$lib/server/audit/audit-forwarder";
 import { onShutdown, installShutdownHandlers } from "$lib/server/shutdown";
+import { startHealthProbe } from "$lib/server/lib/instance/health";
 
 const log = rootLogger.child({ name: "hooks" });
 
@@ -51,13 +52,14 @@ const MIGRATION_ERROR_ALLOWED_PATH_PREFIXES = [
   "/api/",
   "/rpc/",
   "/metrics",
+  "/health",
   "/log",
   "/_app/",
 ];
 
 /**
  * Redirects all page requests to /migration-error/ when migrations are outdated.
- * API, RPC, metrics, and static asset paths are allowed through.
+ * API, RPC, metrics, health, and static asset paths are allowed through.
  */
 const migrationGuard: Handle = ({ event, resolve }) => {
   if (!isMigrationOk()) {
@@ -162,6 +164,9 @@ configStore.watch(
  * suppress the default termination and leave the process running after a stop.
  */
 onShutdown("notifications", () => stopNotifications?.());
+if (!building) {
+  onShutdown("health-probe", startHealthProbe());
+}
 onShutdown("dynamic-config", () => configStore.stop());
 onShutdown("audit-forwarder", flushAuditEvents);
 installShutdownHandlers();

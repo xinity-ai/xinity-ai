@@ -4,6 +4,7 @@ import { rootLogger } from "./logger";
 
 export type Cache = {
   check(): Promise<string | undefined>;
+  ping(): Promise<void>;
   get(key: string): Promise<string | null>;
   mget(keys: string[]): Promise<(string | null)[]>;
   set(key: string, value: string, ttlSeconds: number): Promise<void>;
@@ -47,6 +48,9 @@ export function redisCache(url: string): Cache {
           ? `Redis at ${target} rejected the credential in REDIS_URL: ${message}`
           : `Redis at ${target} is unreachable: ${message}`;
       }
+    },
+    async ping() {
+      await redis.send("PING", []);
     },
     get: (key) => redis.get(key),
     mget: async (keys) => (await redis.send("MGET", keys)) as (string | null)[],
@@ -129,6 +133,7 @@ export function memoryCache(maxChars = MEMORY_CACHE_MAX_CHARS): Cache {
       rootLogger.info("Cache kept in process");
       return undefined;
     },
+    ping: async () => {},
     get: async (key) => read(key)?.value ?? null,
     mget: async (keys) => keys.map((key) => read(key)?.value ?? null),
     set: async (key, value, ttlSeconds) => write(key, value, ttlSeconds),

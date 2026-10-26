@@ -49,7 +49,7 @@ Client-side permission checks use `src/lib/state/permissions.svelte.ts`.
 ### Routing
 
 - `(authenticated)/` route group, all protected pages
-- Public routes: `/login`, `/api`, `/rpc`, `/log`, `/metrics`
+- Public routes: `/login`, `/api`, `/rpc`, `/log`, `/metrics`, `/health`
 - Dynamic params use UUID matchers: `[applicationId=uuid]`
 
 ### UI

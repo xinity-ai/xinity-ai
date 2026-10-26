@@ -20,7 +20,7 @@ async function fetchSpec(): Promise<OpenApiSpec> {
 }
 
 describe("xinity-ai-gateway openapi spec", () => {
-  it("documents every OpenAI-compatible /v1/* route alongside oRPC routes", async () => {
+  it("documents every OpenAI-compatible /v1/* route", async () => {
     const spec = await fetchSpec();
     const paths = Object.keys(spec.paths);
     expect(paths).toEqual(expect.arrayContaining([
@@ -31,7 +31,6 @@ describe("xinity-ai-gateway openapi spec", () => {
       "/v1/rerank",
       "/v1/responses",
       "/v1/responses/{responseId}",
-      "/healthCheck",
     ]));
   });
 

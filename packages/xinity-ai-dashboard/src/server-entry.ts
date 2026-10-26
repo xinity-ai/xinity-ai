@@ -10,10 +10,15 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { activationRefusal, type TlsConfig } from "common-env";
+import { activationRefusal, probeOwnHealth, type TlsConfig } from "common-env";
 import { dashboardConfig } from "./lib/server/config-schema";
 import { config } from "./lib/server/config";
 import { rootLogger } from "./lib/server/logging";
+
+// The container healthcheck: the image ships no curl, so the binary asks the running instance itself.
+if (Bun.argv.includes("--health")) {
+  process.exit(await probeOwnHealth({ ...config.server, tls: !!config.tls }) ? 0 : 1);
+}
 
 const refusal = activationRefusal(dashboardConfig, rootLogger);
 if (refusal) {

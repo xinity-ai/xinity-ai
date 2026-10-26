@@ -153,7 +153,7 @@ Off unless `AUDIT_SINK_URL` is set.
 
 | Variable | Default | Description |
 |---|---|---|
-| `METRICS_AUTH` | (required) | Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple). Secret. |
+| `METRICS_AUTH` | (required) | Basic auth for the /metrics endpoint and the /health detail view (format: user:pass, comma-separated for multiple). Secret. |
 
 ### Object storage
 

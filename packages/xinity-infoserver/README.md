@@ -243,6 +243,12 @@ Only needed when something sits in front of this service.
 | `HTTP_IP_HEADER` | (unset) | Header the client IP is forwarded in (e.g. x-forwarded-for). Without it, requests all appear to come from the proxy. |
 | `HTTP_XFF_DEPTH` | `1` | Number of proxies in front. Anything further left in the header is client-supplied and forgeable. |
 
+### Metrics endpoint
+
+| Variable | Default | Description |
+|---|---|---|
+| `METRICS_AUTH` | (unset) | Basic auth for the /metrics endpoint and the /health detail view (format: user:pass, comma-separated for multiple). Secret. |
+
 ### Logging
 
 | Variable | Default | Description |
@@ -311,7 +317,7 @@ deployments keep resolving. The two directories never mix and nothing is transla
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/health` | GET | Health check (per-catalog model count, last refresh time, last error) |
+| `/health` | GET | Readiness: `200` with models loaded, `503` without. With the `METRICS_AUTH` credential it adds the per-catalog model count, last refresh time and last error |
 | `/version.json` | GET | Server version info |
 | `/models/v2.json` | GET | The whole catalog, `ETag`-validated. Also what an `includes` entry points at |
 | `/models/v2.digest.json` | GET | Content digest alone, for cheap change polling |

@@ -115,7 +115,7 @@ The control plane this node reports to.
 
 | Variable | Default | Description |
 |---|---|---|
-| `METRICS_AUTH` | (unset) | Basic auth for the /metrics endpoint (format: user:pass, comma-separated for multiple). Secret. |
+| `METRICS_AUTH` | (unset) | Basic auth for the /metrics endpoint and the /health detail view (format: user:pass, comma-separated for multiple). Secret. |
 | `METRICS_SAMPLE_INTERVAL_MS` | `20000` | GPU telemetry sampling interval in milliseconds. |
 
 ### vLLM

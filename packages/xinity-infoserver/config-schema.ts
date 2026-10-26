@@ -7,7 +7,9 @@ import {
   defineGroup,
   env,
   expert,
+  metricsGroup,
   proxyGroup,
+  type MetricsConfig,
   type ProxyConfig,
 } from "common-env";
 import { loggingGroup, type LoggingConfig } from "common-log";
@@ -66,6 +68,7 @@ export type InfoserverConfig = {
   catalog: Catalog;
   rateLimit: RateLimit;
   proxy: ProxyConfig;
+  metrics: MetricsConfig;
   log: LoggingConfig;
 };
 
@@ -74,5 +77,6 @@ export const infoserverConfig = defineConfig<InfoserverConfig>({
   catalog,
   rateLimit,
   proxy: proxyGroup(),
+  metrics: metricsGroup(),
   log: loggingGroup(),
 });

@@ -124,7 +124,6 @@ describe("MCP tool visibility", () => {
     expect(toolNames).toContain("apiKey_create");
     expect(toolNames).toContain("deployment_list");
     expect(toolNames).toContain("application_list");
-    expect(toolNames).toContain("health");
     expect(toolNames).toContain("dynamicConfig_list");
   });
 

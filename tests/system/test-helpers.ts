@@ -75,3 +75,6 @@ export async function waitForHttp(url: string, options?: { timeoutMs?: number; i
 
   throw new Error(`Timed out waiting for ${url}. Last error: ${String(lastError)}`);
 }
+
+export const METRICS_AUTH = "ops:secret";
+export const metricsAuthHeaders = { authorization: `Basic ${btoa(METRICS_AUTH)}` };

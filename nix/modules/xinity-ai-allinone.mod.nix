@@ -1040,7 +1040,7 @@
           metricsAuthFile = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
             default = null;
-            description = "Path to file containing metrics auth. Applied to gateway and dashboard.";
+            description = "Path to file containing metrics auth. Applied to the gateway, dashboard, tether, daemon and infoserver.";
           };
           s3AccessKeyIdFile = lib.mkOption {
             type = lib.types.nullOr lib.types.str;
@@ -1367,6 +1367,7 @@
             enable = true;
             port = lib.mkDefault cfg.infoserver.port;
             modelInfoDir = lib.mkDefault cfg.infoserver.modelInfoDir;
+            metricsAuthFile = lib.mkDefault metricsAuthFile;
             environmentFiles = lib.mkDefault envFiles;
           };
 

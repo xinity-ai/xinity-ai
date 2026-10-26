@@ -1,4 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { metricsAuthHeaders } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl, stopInfoServer, withInfoServer } from "./infoserver-test-helpers";
 import { version } from "../../../package.json";
 import { resolveConfig } from "common-env";
@@ -27,15 +31,19 @@ afterAll(async () => {
 });
 
 describe("xinity-infoserver", () => {
-  it("responds with health status", async () => {
+  it("answers ready without revealing details", async () => {
     const res = await fetch(infoServerUrl("/health"));
-    expect(res.ok).toBe(true);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+  });
+
+  it("reports catalog state to a credentialed caller", async () => {
+    const res = await fetch(infoServerUrl("/health"), { headers: metricsAuthHeaders });
     const body = await res.json() as any;
     expect(body.ok).toBe(true);
-    expect(body.catalog).toBeDefined();
-    expect(body.catalog.modelCount).toBeGreaterThanOrEqual(0);
-    expect(body.catalog.lastRefreshAt).toBeTruthy();
-    expect(body.catalog.lastRefreshError).toBeNull();
+    expect(body.checks).toEqual({ models: "ok", refresh: "ok" });
+    expect(body.models.lastRefreshAt).toBeTruthy();
+    expect(body.models.lastRefreshError).toBeNull();
   });
 
   it("returns the current version", async () => {
@@ -55,12 +63,11 @@ describe("xinity-infoserver", () => {
   });
 
   it("reports both catalogs separately in health", async () => {
-    const res = await fetch(infoServerUrl("/health"));
+    const res = await fetch(infoServerUrl("/health"), { headers: metricsAuthHeaders });
     const body = await res.json() as any;
 
     expect(body.models.modelCount).toBeGreaterThan(0);
     expect(body.legacy.modelCount).toBeGreaterThan(0);
-    expect(body.catalog.modelCount).toBe(body.models.modelCount + body.legacy.modelCount);
   });
 
   it("serves current-format entries and never v1 ones", async () => {
@@ -107,10 +114,23 @@ describe("xinity-infoserver", () => {
         const dump = await (await fetch(url("/models/v1.json"))).json() as any;
         expect(dump.models).toEqual({});
 
-        const health = await (await fetch(url("/health"))).json() as any;
+        const health = await (await fetch(url("/health"), { headers: metricsAuthHeaders })).json() as any;
         expect(health.legacy.modelCount).toBe(0);
         expect(health.ok).toBe(true);
       });
+    });
+
+    it("answers 503 while no models are loaded", async () => {
+      const emptyDir = await mkdtemp(join(tmpdir(), "infoserver-empty-"));
+      try {
+        await withInfoServer({ MODEL_INFO_DIR: emptyDir, MODEL_LEGACY_DIR: undefined }, async (url) => {
+          const res = await fetch(url("/health"));
+          expect(res.status).toBe(503);
+          expect(await res.json()).toEqual({ ok: false });
+        });
+      } finally {
+        await rm(emptyDir, { recursive: true, force: true });
+      }
     });
 
     it("refuses to start when a file in the current directory cannot be used", async () => {

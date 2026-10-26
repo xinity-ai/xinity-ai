@@ -1,5 +1,5 @@
 import type { Server } from "bun";
-import { withoutConnectionTimeout } from "common-env";
+import { createHealthHandler, parseMetricsAuth, withoutConnectionTimeout } from "common-env";
 import { OpenAPIHandler } from "@orpc/openapi/fetch";
 
 import { router } from "../../rpc/router";
@@ -8,6 +8,16 @@ import { rootLogger } from "../../logger";
 import { createOpenapiSpec, createScalarPage } from "./openai";
 import { handleProxyRequest } from "./proxy";
 import { handleDaemonMetrics, httpMetrics } from "./metrics";
+import { tetherConnection } from "../tether-client";
+import { lastInterconnectCheck } from "../statekeeper";
+import { groupMembersHealth } from "../model-installation/vllm";
+
+// No readiness checks intentionally: a broken tether must not make a serving node look down.
+const handleHealth = createHealthHandler({
+  readiness: {},
+  details: () => ({ tether: tetherConnection(), interconnect: lastInterconnectCheck(), groupMembers: groupMembersHealth() }),
+  credentials: parseMetricsAuth(config.metrics.auth),
+});
 
 export async function startServer() {
   const handler = new OpenAPIHandler(router, {
@@ -23,6 +33,7 @@ export async function startServer() {
     routes: {
       "/": httpMetrics.route("/", () => createScalarPage()),
       "/openapi.json": httpMetrics.route("/openapi.json", () => Response.json(spec)),
+      "/health": httpMetrics.route("/health", handleHealth),
     },
     async fetch(req: Request, server: Server<unknown>) {
       const url = new URL(req.url);
