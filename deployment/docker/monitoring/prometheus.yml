@@ -30,6 +30,17 @@ scrape_configs:
       username: metrics
       password_file: /run/secrets/metrics_password
 
+  # Uncomment when running the infoserver profile. With the hosted catalog there
+  # is nothing to scrape, and an active job would only report a target that is down.
+  # - job_name: xinity-infoserver
+  #   static_configs:
+  #     - targets:
+  #         - infoserver:8090
+  #   metrics_path: /metrics
+  #   basic_auth:
+  #     username: metrics
+  #     password_file: /run/secrets/metrics_password
+
   # Daemon targets are discovered dynamically from the dashboard's node registry,
   # so this stays current as the node set changes, no per-node edits or reloads.
   - job_name: xinity-daemon

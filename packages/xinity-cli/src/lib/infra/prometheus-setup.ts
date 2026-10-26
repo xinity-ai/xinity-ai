@@ -105,6 +105,8 @@ export function buildPrometheusConfig(opts: {
   dashboardScheme?: string;
   tetherTarget: string;
   tetherScheme?: string;
+  infoserverTarget?: string;
+  infoserverScheme?: string;
   daemonSdUrl: string;
   sdAuth?: BasicAuth;
   daemonAuth?: BasicAuth;
@@ -118,6 +120,7 @@ export function buildPrometheusConfig(opts: {
     ...staticJobLines("xinity-gateway", opts.gatewayTarget, opts.gatewayScheme),
     ...staticJobLines("xinity-dashboard", opts.dashboardTarget, opts.dashboardScheme),
     ...staticJobLines("xinity-tether", opts.tetherTarget, opts.tetherScheme),
+    ...(opts.infoserverTarget ? staticJobLines("xinity-infoserver", opts.infoserverTarget, opts.infoserverScheme) : []),
     "  # Daemon targets are discovered dynamically from the dashboard's node",
     "  # registry; this stays current as the node set changes, no edits needed.",
     "  - job_name: xinity-daemon",
@@ -216,10 +219,18 @@ export async function planPrometheusProvision(host: Host): Promise<PrometheusPro
   if (dashboardUrl === undefined) return undefined;
   const tetherUrl = await promptBaseUrl("Tether base URL", TETHER_DEFAULT_PORT);
   if (tetherUrl === undefined) return undefined;
+  const infoserverUrl = await promptOrUndefined(text({
+    message: "Infoserver base URL (blank when using the hosted catalog)",
+    placeholder: "",
+    defaultValue: "",
+    validate: (value) => (value?.trim() ? validateUrl(value) : undefined),
+  }));
+  if (infoserverUrl === undefined) return undefined;
 
   const gateway = scrapeTarget(gatewayUrl);
   const dashboard = scrapeTarget(dashboardUrl);
   const tether = scrapeTarget(tetherUrl);
+  const infoserver = infoserverUrl.trim() ? scrapeTarget(infoserverUrl.trim()) : undefined;
 
   // Daemons are discovered dynamically from the dashboard, so there is no static
   // target list to maintain. Auth is optional: the SD endpoint is often left open
@@ -252,6 +263,8 @@ export async function planPrometheusProvision(host: Host): Promise<PrometheusPro
       dashboardScheme: dashboard.scheme,
       tetherTarget: tether.target,
       tetherScheme: tether.scheme,
+      infoserverTarget: infoserver?.target,
+      infoserverScheme: infoserver?.scheme,
       daemonSdUrl,
       sdAuth: parseBasicAuth(sdAuthRaw),
       daemonAuth: parseBasicAuth(daemonAuthRaw),
@@ -304,7 +317,7 @@ export async function applyPrometheusProvision(prov: PrometheusProvision, host: 
 export async function prometheusSetup(host: Host, dryRun: boolean): Promise<string | undefined> {
   log.step(bold("Prometheus metrics store setup"));
   log.info(
-    "Prometheus scrapes the gateway, dashboard, tether, and daemon /metrics endpoints.\n" +
+    "Prometheus scrapes the gateway, dashboard, tether, daemon, and optionally infoserver /metrics endpoints.\n" +
     "It runs as a Docker container and powers the live GPU overlay on the Compute page.",
   );
 

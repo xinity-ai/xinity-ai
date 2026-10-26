@@ -46,6 +46,17 @@ describe("buildPrometheusConfig", () => {
     expect(cfg.scrape_configs.some((j) => j.basic_auth)).toBe(false);
   });
 
+  test("the infoserver is scraped only when a target is given", () => {
+    const jobNames = (cfg: ReturnType<typeof parseConfig>) => cfg.scrape_configs.map((j) => j.job_name);
+
+    expect(jobNames(parseConfig(buildPrometheusConfig(base)))).not.toContain("xinity-infoserver");
+
+    const cfg = parseConfig(buildPrometheusConfig({ ...base, infoserverTarget: "localhost:8090" }));
+    const infoserver = cfg.scrape_configs.find((j) => j.job_name === "xinity-infoserver")!;
+    expect(infoserver.static_configs![0]!.targets).toEqual(["localhost:8090"]);
+    expect(infoserver.metrics_path).toBe("/metrics");
+  });
+
   test("credentials attach to the SD request and the daemon scrape independently", () => {
     const cfg = parseConfig(buildPrometheusConfig({
       ...base,
