@@ -1,6 +1,6 @@
 # Monitoring
 
-The gateway, dashboard, tether, and daemon expose Prometheus metrics (the infoserver does not). Pre-built Grafana dashboards are included for visualization. Service discovery lets Prometheus find daemon nodes automatically.
+The gateway, dashboard, tether, daemon, and infoserver expose Prometheus metrics. Pre-built Grafana dashboards are included for visualization. Service discovery lets Prometheus find daemon nodes automatically.
 
 For deployment-specific monitoring setup, see the [Docker deployment guide](../../deployment/docker/README.md) or the [NixOS deployment guide](../../deployment/nixos/README.md). To have the CLI write a scrape config and run Prometheus for you, use `xinity up infra-prometheus`.
 
@@ -35,7 +35,7 @@ Each service binary accepts `--health`. It asks the instance running on the same
 
 ## Prometheus Metrics
 
-Each of the gateway, dashboard, tether, and daemon exposes a `GET /metrics` endpoint in Prometheus text format, protected by HTTP Basic Auth via the `METRICS_AUTH` environment variable (format: `user:pass`, comma-separated for multiple credentials). On the gateway, tether, and daemon this is optional; when unset, the endpoint is open. On the dashboard, `METRICS_AUTH` is required.
+Each of the gateway, dashboard, tether, daemon, and infoserver exposes a `GET /metrics` endpoint in Prometheus text format, protected by HTTP Basic Auth via the `METRICS_AUTH` environment variable (format: `user:pass`, comma-separated for multiple credentials). On the gateway, tether, daemon, and infoserver this is optional; when unset, the endpoint is open. On the dashboard, `METRICS_AUTH` is required.
 
 ### Shared runtime metrics
 
@@ -113,6 +113,21 @@ Only the shared runtime and HTTP metrics above.
 A daemon connection is meant to last as long as the node is up, so the connection-duration histogram is the primary health signal: observations in the low buckets mean the fleet is reconnecting, and `reason` says why. `cancel` covers anything that tore down the socket from the far side (daemon restart, network drop, an idle timeout closing the connection), `superseded` means the same node opened a second connection, `write_failed` and `keepalive_failed` mean the tether could no longer write to the stream, `shutdown` is a clean tether stop.
 
 `protocol_mismatch` rejections are the signal to watch after upgrading: daemons running an older protocol are refused at the handshake and retry indefinitely, so a nonzero rate means part of the fleet is stuck on the wrong version.
+
+### Infoserver metrics
+
+Catalog metrics carry `catalog`: `models` for the current format, `legacy` for the deprecated v1 catalog.
+
+| Metric | Type | Labels | Description |
+|---|---|---|---|
+| `infoserver_catalog_models` | gauge | `catalog` | Models the catalog currently serves |
+| `infoserver_catalog_last_success_timestamp_seconds` | gauge | `catalog` | Unix time the catalog last swapped in a freshly loaded set of models |
+| `infoserver_catalog_refreshes_total` | counter | `catalog`, `outcome` (`success`, `failure`) | Catalog refreshes. A failure keeps serving the previous catalog |
+| `infoserver_catalog_refresh_duration_seconds` | histogram | `catalog` | Time to re-read the model files and re-fetch includes |
+| `infoserver_include_fetch_failures_total` | counter | `catalog` | Include URLs that could not be fetched during a refresh |
+| `infoserver_rate_limited_total` | counter | `limiter` (`export`, `api`) | Requests refused with 429 by a per-client rate limit |
+
+A catalog that has gone stale shows as `time() - infoserver_catalog_last_success_timestamp_seconds` growing past a few refresh intervals. Requests to the deprecated v1 surface appear in `http_requests_total` under the `/models/v1.*` and `/api/v1/*` routes.
 
 ### Daemon metrics
 
@@ -223,6 +238,7 @@ Key options:
 | `gatewayTarget` | `localhost:4121` | Gateway metrics target |
 | `dashboardTarget` | `localhost:5121` | Dashboard metrics target |
 | `tetherTarget` | `localhost:4020` | Tether metrics target |
+| `infoserverTarget` | `null` | Infoserver metrics target, scraped only when set |
 | `grafana.port` | `6121` | Grafana port |
 | `logs.port` | `6122` | Loki port |
 | `logs.retentionPeriod` | `168h` (7 days) | Log retention |
