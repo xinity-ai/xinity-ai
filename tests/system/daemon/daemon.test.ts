@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { aiNodeT, modelDeploymentT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
+import { aiNodeT, deploymentT, deploymentLegacyT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
 import {
   createTempStateDir,
   getAvailablePort,
@@ -45,7 +45,10 @@ afterAll(async () => {
   }
   // Deleting a deployment also deletes its installations.
   for (const id of createdDeploymentIds) {
-    try { await db.delete(modelDeploymentT).where(sql`${modelDeploymentT.id} = ${id}`); } catch {}
+    try {
+      await db.delete(deploymentT).where(sql`${deploymentT.legacyId} = ${id}`);
+      await db.delete(deploymentLegacyT).where(sql`${deploymentLegacyT.id} = ${id}`);
+    } catch {}
   }
   for (const id of createdOrganizationIds) {
     try { await db.delete(organizationT).where(sql`${organizationT.id} = ${id}`); } catch {}
@@ -55,15 +58,17 @@ afterAll(async () => {
 async function createDeployment(specifier: string): Promise<string> {
   const organizationId = `org-${randomUUID()}`;
   await db.insert(organizationT).values({ id: organizationId, name: "Daemon System Tests", slug: `daemon-tests-${randomUUID()}` });
-  const [deployment] = await db.insert(modelDeploymentT).values({
+  const [legacy] = await db.insert(deploymentLegacyT).values({ specifier }).returning();
+  await db.insert(deploymentT).values({
     organizationId,
     name: "Daemon Test Model",
     publicSpecifier: `${specifier}-${randomUUID()}`,
-    specifier,
-  }).returning();
-  createdDeploymentIds.push(deployment!.id);
+    type: "legacy",
+    legacyId: legacy!.id,
+  });
+  createdDeploymentIds.push(legacy!.id);
   createdOrganizationIds.push(organizationId);
-  return deployment!.id;
+  return legacy!.id;
 }
 
 async function waitForCondition(fn: () => boolean, timeoutMs = 10_000): Promise<void> {

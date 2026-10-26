@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { aiApiKeyT, aiApplicationT, apiCallT, aiNodeT, apiResponseT, inferenceCallT, modelDeploymentT, modelInstallationStateT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
+import { aiApiKeyT, aiApplicationT, apiCallT, aiNodeT, apiResponseT, inferenceCallT, deploymentT, deploymentLegacyT, modelInstallationStateT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
 import { METRICS_AUTH, getAvailablePort, readProcessOutput, waitForHttp } from "../test-helpers";
 import { ensureInfoServerRunning, infoServerUrl } from "../infoserver/infoserver-test-helpers";
 import { ensureSystemReady } from "../guard";
@@ -15,6 +15,7 @@ const createdOrgIds: string[] = [];
 const createdAppIds: string[] = [];
 const createdApiKeyIds: string[] = [];
 const createdDeploymentIds: string[] = [];
+const createdLegacyIds: string[] = [];
 const createdNodeIds: string[] = [];
 const createdInstallationIds: string[] = [];
 
@@ -25,7 +26,8 @@ export async function cleanupTestData(): Promise<void> {
   const createdRows: Array<[any, string[]]> = [
     [modelInstallationT, createdInstallationIds],
     [aiNodeT, createdNodeIds],
-    [modelDeploymentT, createdDeploymentIds],
+    [deploymentT, createdDeploymentIds],
+    [deploymentLegacyT, createdLegacyIds],
     [aiApiKeyT, createdApiKeyIds],
     [aiApplicationT, createdAppIds],
     [organizationT, createdOrgIds],
@@ -197,11 +199,16 @@ export async function createModelDeployment(input: {
 }): Promise<{ id: string; publicSpecifier: string }> {
   const publicSpecifier = input.publicSpecifier ?? `model-${randomUUID()}`;
   const specifier = input.specifier ?? publicSpecifier;
-  const [deployment] = await getDB().insert(modelDeploymentT).values({
+  const [legacy] = await getDB().insert(deploymentLegacyT).values({ specifier }).returning();
+  createdLegacyIds.push(legacy!.id);
+  // The entry shares the legacy row's id, so installations can be created against `id`.
+  const [deployment] = await getDB().insert(deploymentT).values({
+    id: legacy!.id,
     organizationId: input.orgId,
     name: input.name ?? "Gateway Test Model",
     publicSpecifier,
-    specifier,
+    type: "legacy",
+    legacyId: legacy!.id,
     deletedAt: input.deletedAt,
   }).returning();
 
