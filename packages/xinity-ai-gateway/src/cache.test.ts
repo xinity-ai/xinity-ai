@@ -41,6 +41,15 @@ describe("memoryCache", () => {
     expect(await cache.tryIncr("n", 2, 10)).toBe(true);
   });
 
+  test("a refused tryIncr does not extend the counter's expiry", async () => {
+    const cache = memoryCache();
+    expect(await cache.tryIncr("n", 1, 10)).toBe(true);
+    now += 9_000;
+    expect(await cache.tryIncr("n", 1, 10)).toBe(false);
+    now += 1_000;
+    expect(await cache.get("n")).toBeNull();
+  });
+
   test("decr does not bring back an expired counter", async () => {
     const cache = memoryCache();
     await cache.incr("n", 1);

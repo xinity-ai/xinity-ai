@@ -147,9 +147,11 @@ export function memoryCache(maxChars = MEMORY_CACHE_MAX_CHARS): Cache {
     },
     tryIncr: async (key, limit, ttlSeconds) => {
       const current = Number(read(key)?.value ?? 0);
-      const admitted = current < limit;
-      write(key, String(admitted ? current + 1 : current), ttlSeconds);
-      return admitted;
+      if (current >= limit) {
+        return false;
+      }
+      write(key, String(current + 1), ttlSeconds);
+      return true;
     },
     decr: async (key) => {
       const entry = read(key);
