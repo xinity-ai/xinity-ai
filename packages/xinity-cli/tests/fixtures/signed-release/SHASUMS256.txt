@@ -1,0 +1,2 @@
+24eba8395c31accaf3eda510dcdd25b585e561b473919a96925b8a7cdde97768  app-linux-arm64.tar.gz
+dace82371525b81729329d6d579bc783ef95cd6a25f635cf1efc594862dbe52c  app-linux-x64.tar.gz

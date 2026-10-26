@@ -1,4 +1,4 @@
-import { fetchChecksums, verifySha256, resolveDirectUrl, downloadAsset, type Release } from "./github.ts";
+import { fetchChecksums, verifySha256, resolveDirectUrl, downloadAsset, type Release, type ReleaseChecksums } from "./github.ts";
 import { type Component, BIN_DIR, DASHBOARD_DIR, binaryBaseName } from "../core/component-meta.ts";
 import type { Host } from "../core/host.ts";
 import type { StepEvent } from "../term/step-event.ts";
@@ -11,15 +11,30 @@ export function assetSizeMb(asset: { size: number }): string {
   return (asset.size / 1024 / 1024).toFixed(1);
 }
 
+const SIGNATURE_NOTES: Record<ReleaseChecksums["signature"], { success: string; warning: string | null }> = {
+  online: { success: "Checksum and signature verified", warning: null },
+  cache: {
+    success: "Checksum and signature verified",
+    warning: "Could not update Sigstore trust data, verified against the cached copy",
+  },
+  embedded: {
+    success: "Checksum and signature verified",
+    warning: "Could not update Sigstore trust data, verified against the copy built into this CLI",
+  },
+  unsigned: {
+    success: "Checksum verified",
+    warning: "This release predates signed releases, its checksums are not signature-verified",
+  },
+};
+
 async function* verifyReleaseChecksum(
   release: Release,
   assetName: string,
   filePath: string,
   verify: (path: string, expected: string) => Promise<boolean>,
-  successLabel: string,
 ): AsyncGenerator<StepEvent, boolean> {
   yield { type: "spinner", id: "checksum", message: "Verifying checksum…" };
-  let checksums: Map<string, string> | null;
+  let checksums: ReleaseChecksums | null;
   try {
     checksums = await fetchChecksums(release);
   } catch (err) {
@@ -32,7 +47,7 @@ async function* verifyReleaseChecksum(
     yield { type: "warn", label: "Checksum", detail: "No SHASUMS256.txt found in release, skipping verification" };
     return true;
   }
-  const expected = checksums.get(assetName);
+  const expected = checksums.hashes.get(assetName);
   if (!expected) {
     yield { type: "spinner", id: "checksum", message: "Verification failed", done: true };
     yield { type: "fail", label: "Checksum", detail: `No checksum entry for ${assetName} in SHASUMS256.txt` };
@@ -44,7 +59,11 @@ async function* verifyReleaseChecksum(
     yield { type: "fail", label: "Checksum", detail: "SHA256 mismatch, the download may be corrupted" };
     return false;
   }
-  yield { type: "spinner", id: "checksum", message: successLabel, done: true };
+  const note = SIGNATURE_NOTES[checksums.signature];
+  yield { type: "spinner", id: "checksum", message: note.success, done: true };
+  if (note.warning) {
+    yield { type: "warn", label: "Signature", detail: note.warning };
+  }
   return true;
 }
 
@@ -76,7 +95,7 @@ export async function* downloadAndVerify(
   }
   yield { type: "spinner", id: "download", message: "Downloaded", done: true };
 
-  const verified = yield* verifyReleaseChecksum(release, assetName, filePath, verifySha256, "Checksum verified");
+  const verified = yield* verifyReleaseChecksum(release, assetName, filePath, verifySha256);
   return verified ? filePath : null;
 }
 
@@ -120,7 +139,6 @@ export async function* downloadAndVerifyOnHost(
   const verified = yield* verifyReleaseChecksum(
     release, assetName, destPath,
     (path, expected) => host.verifySha256(path, expected),
-    "Checksum verified",
   );
   if (!verified) {
     await host.run(["rm", "-rf", tmpDir]);
