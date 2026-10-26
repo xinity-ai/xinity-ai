@@ -12,6 +12,7 @@ import { matchesEtag } from "./http-cache";
 import { resolveClientIp } from "./client-ip";
 import { createRateLimiter, withRateLimit, type RateLimiter, type RouteHandler } from "./rate-limit";
 import type { SerializedCatalog } from "./catalog";
+import { createMetricsHandler, httpMetrics, rateLimitedTotal, type LimiterLabel } from "./metrics";
 
 const port = config.server.port;
 
@@ -39,20 +40,33 @@ const DEPRECATION_HEADERS: Record<string, string> = {
   Link: '<https://github.com/xinity-ai/xinity-ai/blob/main/packages/xinity-infoserver/README.md#model-format-versions>; rel="deprecation"',
 };
 
-const exportLimiter = createRateLimiter({ perMinute: config.rateLimit.exportPerMinute });
-const apiLimiter = createRateLimiter({ perMinute: config.rateLimit.apiPerMinute });
+const limiters: Record<LimiterLabel, RateLimiter> = {
+  export: createRateLimiter({ perMinute: config.rateLimit.exportPerMinute }),
+  api: createRateLimiter({ perMinute: config.rateLimit.apiPerMinute }),
+};
 
 const clientIpConfig = config.proxy;
 
-function limited(limiter: RateLimiter, handler: RouteHandler): RouteHandler {
+function limited(limiter: LimiterLabel, handler: RouteHandler): RouteHandler {
   if (!config.rateLimit.enabled) {
     return handler;
   }
-  return withRateLimit(
-    limiter,
+  const guarded = withRateLimit(
+    limiters[limiter],
     (req, server) => resolveClientIp(req, server, clientIpConfig),
     handler,
   );
+  return async (req, server) => {
+    const res = await guarded(req, server);
+    if (res.status === 429) {
+      rateLimitedTotal.inc({ limiter });
+    }
+    return res;
+  };
+}
+
+function metered(route: string, handler: RouteHandler): RouteHandler {
+  return (req, server) => httpMetrics.track({ method: req.method, route }, () => handler(req, server), (res) => res.status);
 }
 
 function legacyRoute(handler: RouteHandler): RouteHandler {
@@ -103,42 +117,46 @@ const handleHealth = createHealthHandler({
   credentials: parseMetricsAuth(config.metrics.auth),
 });
 
+const handlerRoutes: Record<string, RouteHandler> = {
+  "/health": handleHealth,
+
+  "/models/v2.json": limited("export", serveCatalogBody(modelCatalog, s => s.json, "application/json; charset=utf-8")),
+  // Exists so polling for change is cheap enough to leave on a loose ceiling,
+  // which a conditional GET of the catalog itself cannot be: it shares a URL
+  // with the full fetch, so the two cannot be limited apart.
+  "/models/v2.digest.json": limited("api", () => Response.json(
+    { digest: modelCatalog.getSerializedCatalog().digest },
+    { headers: { "Cache-Control": CACHE_CONTROL } },
+  )),
+
+  // Deprecated v1 surface, removed before 1.0.0. Serves MODEL_LEGACY_DIR only.
+  "/models/v1.yaml": legacyRoute(limited("export", serveCatalogBody(legacyCatalog, s => s.yaml, "application/yaml"))),
+  "/models/v1.json": legacyRoute(limited("export", serveCatalogBody(legacyCatalog, s => s.json, "application/json; charset=utf-8"))),
+  "/api/v1/models": legacyRoute(limited("api", handleModelList)),
+  "/api/v1/models/resolve": legacyRoute(limited("api", handleBatchResolve)),
+  "/api/v1/models/family/:family": legacyRoute(limited("api", handleModelsByFamily)),
+  "/api/v1/models/:specifier": legacyRoute(limited("api", handleModelBySpecifier)),
+};
+
 const server = Bun.serve({
   port,
   routes: {
-    "/health": handleHealth,
     "/version.json": Response.json({ version }),
     "/schemas/model.v2.json": Response.json(createModelJsonSchema()),
-
-    "/models/v2.json": limited(exportLimiter, serveCatalogBody(modelCatalog, s => s.json, "application/json; charset=utf-8")),
-    // Exists so polling for change is cheap enough to leave on a loose ceiling,
-    // which a conditional GET of the catalog itself cannot be: it shares a URL
-    // with the full fetch, so the two cannot be limited apart.
-    "/models/v2.digest.json": limited(apiLimiter, () => Response.json(
-      { digest: modelCatalog.getSerializedCatalog().digest },
-      { headers: { "Cache-Control": CACHE_CONTROL } },
-    )),
-
-    // Deprecated v1 surface, removed before 1.0.0. Serves MODEL_LEGACY_DIR only.
-    "/models/v1.yaml": legacyRoute(limited(exportLimiter, serveCatalogBody(legacyCatalog, s => s.yaml, "application/yaml"))),
-    "/models/v1.json": legacyRoute(limited(exportLimiter, serveCatalogBody(legacyCatalog, s => s.json, "application/json; charset=utf-8"))),
     "/schemas/model.v1.json": new Response(JSON.stringify(createLegacyModelJsonSchema()), {
       headers: { "Content-Type": "application/json; charset=utf-8", ...DEPRECATION_HEADERS },
     }),
-    "/api/v1/models": legacyRoute(limited(apiLimiter, handleModelList)),
-    "/api/v1/models/resolve": legacyRoute(limited(apiLimiter, handleBatchResolve)),
-    "/api/v1/models/family/:family": legacyRoute(limited(apiLimiter, handleModelsByFamily)),
-    "/api/v1/models/:specifier": legacyRoute(limited(apiLimiter, handleModelBySpecifier)),
+    "/metrics": createMetricsHandler(config.metrics.auth, catalog.getCatalogHealth),
+    ...Object.fromEntries(Object.entries(handlerRoutes).map(([route, handler]) => [route, metered(route, handler)])),
   },
-  fetch() {
-    return new Response("Not Found", { status: 404 });
-  },
+  fetch: metered("<unmatched>", () => new Response("Not Found", { status: 404 })),
 });
 
 if (config.rateLimit.enabled) {
   setInterval(() => {
-    exportLimiter.sweep();
-    apiLimiter.sweep();
+    for (const limiter of Object.values(limiters)) {
+      limiter.sweep();
+    }
   }, 60_000).unref();
 }
 

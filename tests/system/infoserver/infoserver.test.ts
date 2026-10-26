@@ -46,6 +46,16 @@ describe("xinity-infoserver", () => {
     expect(body.models.lastRefreshError).toBeNull();
   });
 
+  it("serves metrics to a credentialed scraper only", async () => {
+    expect((await fetch(infoServerUrl("/metrics"))).status).toBe(401);
+
+    const res = await fetch(infoServerUrl("/metrics"), { headers: metricsAuthHeaders });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toMatch(/^infoserver_catalog_models\{catalog="models"\} [1-9]/m);
+    expect(text).toContain("infoserver_build_info{");
+  });
+
   it("returns the current version", async () => {
     const res = await fetch(infoServerUrl("/version.json"));
     expect(res.ok).toBe(true);

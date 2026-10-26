@@ -29,6 +29,7 @@ const {
   getCatalogHealth,
   stopAutoRefresh,
 } = await import("./server-catalog");
+const { createMetricsHandler } = await import("./metrics");
 
 // The fixtures below are v1-shaped, so they load through the legacy directory.
 const { get, resolveBatch, getAll, getByFamily, getSerializedCatalog } = legacyCatalog;
@@ -663,6 +664,51 @@ describe("server-catalog", () => {
 
       expect(reported).toEqual(["mismatched-vllm"]);
       expect(modelCatalog.get("mismatched-vllm")).toBeDefined();
+    });
+  });
+
+  describe("metrics", () => {
+    const scrape = createMetricsHandler(undefined, getCatalogHealth);
+
+    async function value(series: string): Promise<number> {
+      const text = await scrape(new Request("http://localhost/metrics")).text();
+      const line = text.split("\n").find((l) => l.startsWith(`${series} `));
+      return line ? Number(line.slice(series.length + 1)) : 0;
+    }
+
+    it("counts a clean refresh as a success and reports the catalog size", async () => {
+      const { dirPath } = await writeYamlInOwnDir(makeModelYaml({
+        "llama-3.3-70b": baseModel,
+        "nomic-embed-text": embeddingModel,
+      }), fileIndex++);
+      configure(10, undefined, dirPath);
+      const before = await value(`infoserver_catalog_refreshes_total{catalog="legacy",outcome="success"}`);
+
+      await refresh();
+
+      expect(await value(`infoserver_catalog_refreshes_total{catalog="legacy",outcome="success"}`)).toBe(before + 1);
+      expect(await value(`infoserver_catalog_models{catalog="legacy"}`)).toBe(2);
+      expect(await value(`infoserver_catalog_last_success_timestamp_seconds{catalog="legacy"}`)).toBeGreaterThan(0);
+    });
+
+    it("counts an unreachable include as a fetch failure and the refresh as failed", async () => {
+      const failingInclude = Bun.serve({ port: 0, fetch: () => new Response("Server Error", { status: 500 }) });
+      try {
+        const { dirPath } = await writeYamlInOwnDir(
+          makeModelYaml({ "local-model": baseModel }, [`http://localhost:${failingInclude.port}/bad.yaml`]),
+          fileIndex++,
+        );
+        configure(10, undefined, dirPath);
+        const failuresBefore = await value(`infoserver_include_fetch_failures_total{catalog="legacy"}`);
+        const refreshFailuresBefore = await value(`infoserver_catalog_refreshes_total{catalog="legacy",outcome="failure"}`);
+
+        await refresh();
+
+        expect(await value(`infoserver_include_fetch_failures_total{catalog="legacy"}`)).toBe(failuresBefore + 1);
+        expect(await value(`infoserver_catalog_refreshes_total{catalog="legacy",outcome="failure"}`)).toBe(refreshFailuresBefore + 1);
+      } finally {
+        await failingInclude.stop(true);
+      }
     });
   });
 });
