@@ -1,13 +1,13 @@
-import type { lifecycleStateEnum, ModelDeployment } from "common-db";
+import type { lifecycleStateEnum } from "common-db";
 import { couplingDocsUrl, deriveInterconnectOverview, describeCouplingIssue, describePortIssue, type InstallationGroup, type InterconnectPort, type IssueDescription, type PortIssue } from "common-env";
-import type { DeploymentWithStatus, ReplicaStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
+import type { DeploymentOutput, DeploymentWithStatus, ReplicaStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
 import { foldDeployment, foldReplicas, isProgressBearingPhase, toDisplayPhase, type ReplicaMember } from "./deployment-phase";
 
 type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
 
 /** One row of the deployment status join, narrowed to the columns the fold reads. */
 export type DeploymentStatusRow = {
-  model_deployment: ModelDeployment;
+  deployment: DeploymentOutput;
   model_installation: { id: string; group: InstallationGroup | null; gpuIds: string[]; estCapacity: number; hostCapacity: number | null } | null;
   model_installation_state: {
     lifecycleState: LifecycleState;
@@ -28,10 +28,10 @@ type Member = ReplicaMember & { nodeId: string; node: string; interconnect: Inte
  * no replica at all: its state row stopped updating when the daemon went away.
  */
 export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): DeploymentWithStatus[] {
-  const deploymentMap = new Map<string, { deployment: ModelDeployment; members: Member[] }>();
+  const deploymentMap = new Map<string, { deployment: DeploymentOutput; members: Member[] }>();
 
   for (const row of rows) {
-    const deployment = row.model_deployment;
+    const deployment = row.deployment;
     let entry = deploymentMap.get(deployment.id);
     if (!entry) {
       entry = { deployment, members: [] };

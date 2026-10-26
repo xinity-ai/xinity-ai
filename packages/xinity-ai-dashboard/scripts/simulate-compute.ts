@@ -21,7 +21,8 @@ import { join } from "node:path";
 import { readFileSync } from "node:fs";
 import {
   aiNodeT,
-  modelDeploymentT,
+  deploymentT,
+  deploymentLegacyT,
   modelInstallationT,
   modelInstallationStateT,
   organizationT,
@@ -30,6 +31,7 @@ import {
   asc,
   sql,
   inArray,
+  type SQL,
 } from "common-db";
 import type { GpuInfo } from "common-env";
 
@@ -225,6 +227,13 @@ async function main() {
     throw new Error("DB_CONNECTION_URL not set and no root .env found");
   }
   const db = preconfigureDB(process.env.DB_CONNECTION_URL).getDB();
+  const deleteDeployments = async (where: SQL) => {
+    const deleted = await db.delete(deploymentT).where(where).returning({ legacyId: deploymentT.legacyId });
+    const legacyIds = deleted.flatMap(({ legacyId }) => (legacyId ? [legacyId] : []));
+    if (legacyIds.length > 0) {
+      await db.delete(deploymentLegacyT).where(inArray(deploymentLegacyT.id, legacyIds));
+    }
+  };
 
   const arg1 = process.argv[2];
   const presetName = (arg1 === "small" || arg1 === "large") ? arg1 : undefined;
@@ -245,7 +254,7 @@ async function main() {
     await db.delete(usageEventT).where(inArray(usageEventT.nodeId, ids));
     await db.delete(aiNodeT).where(inArray(aiNodeT.id, ids));
   }
-  await db.delete(modelDeploymentT).where(sql`${modelDeploymentT.publicSpecifier} LIKE ${SIM_DEPLOYMENT_PREFIX + "%"}`);
+  await deleteDeployments(sql`${deploymentT.publicSpecifier} LIKE ${SIM_DEPLOYMENT_PREFIX + "%"}`);
 
   // Create deployments (one per unique model specifier across all machines).
   const uniqueModels = new Map<string, ModelSpec>();
@@ -259,17 +268,21 @@ async function main() {
   const deploymentIdBySpecifier = new Map<string, string>();
   for (const publicSpecifier of uniqueModels.keys()) {
     const replicaCount = machines.filter((m) => m.models.some((m2) => m2.publicSpecifier === publicSpecifier)).length;
-    const [dep] = await db.insert(modelDeploymentT).values({
+    const [legacy] = await db.insert(deploymentLegacyT).values({
+      specifier: publicSpecifier,
+      replicas: replicaCount,
+      progress: 100,
+    }).returning();
+    await db.insert(deploymentT).values({
       organizationId: org.id,
       name: publicSpecifier,
       publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${publicSpecifier}`,
-      specifier: publicSpecifier,
-      replicas: replicaCount,
+      type: "legacy",
+      legacyId: legacy!.id,
       enabled: true,
-      progress: 100,
-    }).returning();
-    deploymentIds.push(dep!.id);
-    deploymentIdBySpecifier.set(publicSpecifier, dep!.id);
+    });
+    deploymentIds.push(legacy!.id);
+    deploymentIdBySpecifier.set(publicSpecifier, legacy!.id);
   }
 
   // Create nodes and their model installations.
@@ -354,7 +367,7 @@ async function main() {
       await db.delete(aiNodeT).where(inArray(aiNodeT.id, nodeIds));
     }
     if (deploymentIds.length > 0) {
-      await db.delete(modelDeploymentT).where(inArray(modelDeploymentT.id, deploymentIds));
+      await deleteDeployments(inArray(deploymentT.legacyId, deploymentIds));
     }
     console.log("Done.");
     process.exit(0);

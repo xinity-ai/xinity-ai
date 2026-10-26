@@ -1,7 +1,7 @@
 import { getDB } from "$lib/server/db";
 import {
   sql, inArray,
-  aiApplicationT, modelDeploymentT,
+  aiApplicationT, deploymentT,
   usageEventT, usageSummaryT, NIL_APP_UUID, invitationT,
 } from "common-db";
 import type { PageServerLoad } from "./$types";
@@ -246,15 +246,15 @@ async function loadTables(db: DB, orgId: string, includeDeployments: boolean): P
 
     includeDeployments
       ? db.select({
-        name: modelDeploymentT.name,
+        name: deploymentT.name,
       })
-        .from(modelDeploymentT)
+        .from(deploymentT)
         .where(sql`
-          ${modelDeploymentT.organizationId} = ${orgId}
+          ${deploymentT.organizationId} = ${orgId}
         AND
-          ${modelDeploymentT.deletedAt} IS NULL
+          ${deploymentT.deletedAt} IS NULL
         `)
-        .orderBy(sql`${modelDeploymentT.createdAt} DESC`)
+        .orderBy(sql`${deploymentT.createdAt} DESC`)
         .limit(3)
       : [],
   ]);
@@ -315,13 +315,13 @@ async function loadChecklist(db: DB, orgId: string): Promise<ChecklistData> {
     checkInvitation,
     checkApplication,
   ] = await Promise.all([
-    db.select({ id: modelDeploymentT.id })
-      .from(modelDeploymentT)
+    db.select({ id: deploymentT.id })
+      .from(deploymentT)
       .where(
         sql`
-          ${modelDeploymentT.organizationId} = ${orgId}
+          ${deploymentT.organizationId} = ${orgId}
         AND
-          ${modelDeploymentT.deletedAt} IS NULL
+          ${deploymentT.deletedAt} IS NULL
         `,
       )
       .limit(1),

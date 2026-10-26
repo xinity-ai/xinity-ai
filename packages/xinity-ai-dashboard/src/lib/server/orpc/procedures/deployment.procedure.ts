@@ -1,14 +1,15 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
-import { inArray, sql, modelDeploymentT, modelInstallationT, modelInstallationStateT, aiNodeT, deploymentMatchesInstallation, installationOnLiveNode, stateOfInstallation, type ModelDeployment, type SQL } from "common-db";
+import { inArray, sql, deploymentT, deploymentLegacyT, modelInstallationT, modelInstallationStateT, deploymentMatchesInstallation, legacyOfDeployment, stateOfInstallation, type Deployment } from "common-db";
 import z from "zod";
-import { DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, DeploymentWithStatusDto, KvCacheSizeDto, ProgressDto, ReplicasDto, type DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
+import { DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, DeploymentWithStatusDto, KvCacheSizeDto, ProgressDto, ReplicasDto, type DeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
-import { requirementsForDeployments, type DeploymentPlan } from "$lib/server/lib/deployments/requirements";
+import { requirementsForDeployments, type DeploymentPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
+import { byType, DASHBOARD_DEPLOYMENT_TYPES } from "$lib/server/lib/deployments/deployment-types";
+import { createLegacy, validateCanaryModelTypes } from "$lib/server/lib/deployments/legacy-deployment";
 import { deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
-import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
+import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import { rootLogger } from "$lib/server/logging";
-import { foldDeploymentStatusRows } from "$lib/server/lib/deployments/deployment-status";
 import { findOrgName } from "$lib/server/lib/org-queries";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
@@ -30,23 +31,6 @@ async function assertModelsInCatalog(
   if (missing) {
     throw errors.BAD_REQUEST({ message: `Model "${missing.specifier}" was not found in the model catalog` });
   }
-}
-
-async function resolveType(specifier: string): Promise<string | undefined> {
-  const resolution = await resolveSchedulable(specifier, null);
-  return resolution.status === "found" ? resolution.model.type : undefined;
-}
-
-async function validateCanaryModelTypes(canarySpecifier: string, replacedSpecifier: string | null): Promise<string | null> {
-  if (!replacedSpecifier) return null;
-  const [canaryType, replacedType] = await Promise.all([
-    resolveType(canarySpecifier),
-    resolveType(replacedSpecifier),
-  ]);
-  if (canaryType && replacedType && canaryType !== replacedType) {
-    return `Cannot mix model types in a canary deployment: the canary is "${canaryType}" but the model it replaces is "${replacedType}"`;
-  }
-  return null;
 }
 
 const CapacityCheckInput = z.object({
@@ -123,9 +107,9 @@ const SHORTFALL_REASONS: Record<ShortfallReason, (shortfall: Shortfall) => strin
 
 const DRAFT_DEPLOYMENT_ID = "draft";
 
-function draftPlan(draft: z.infer<typeof CapacityCheckInput>): DeploymentPlan {
+function draftPlan(draft: z.infer<typeof CapacityCheckInput>, id = DRAFT_DEPLOYMENT_ID): DeploymentPlan {
   return {
-    id: draft.deploymentId ?? DRAFT_DEPLOYMENT_ID,
+    id,
     specifier: draft.specifier,
     earlySpecifier: draft.earlySpecifier ?? null,
     replicas: draft.replicas,
@@ -140,8 +124,8 @@ function draftPlan(draft: z.infer<typeof CapacityCheckInput>): DeploymentPlan {
 }
 
 // A deployment being changed is planned without its own installations, which the change replaces.
-async function checkDeploymentCapacity(deployment: DeploymentPlan, replacedDeploymentId?: string): Promise<CapacityCheckResult> {
-  const { replicas, shortfalls } = await previewPlacement(requirementsForDeployments([deployment]), replacedDeploymentId);
+async function checkDeploymentCapacity(requirements: ModelRequirementTable, replacedDeploymentId?: string): Promise<CapacityCheckResult> {
+  const { replicas, shortfalls } = await previewPlacement(requirements, replacedDeploymentId);
   const blocking = shortfalls.find((shortfall) => shortfall.reason !== "catalog_unavailable");
   const shortfall = blocking ?? shortfalls[0];
   return {
@@ -164,82 +148,32 @@ async function checkDeploymentCapacity(deployment: DeploymentPlan, replacedDeplo
 }
 
 const matchActiveDeploymentInOrg = (id: string, orgId: string) =>
-  sql`${modelDeploymentT.id} = ${id}
-    AND ${modelDeploymentT.organizationId} = ${orgId}
-    AND ${modelDeploymentT.deletedAt} IS NULL`;
+  sql`${deploymentT.id} = ${id}
+    AND ${deploymentT.organizationId} = ${orgId}
+    AND ${deploymentT.deletedAt} IS NULL`;
 
-async function internalUpdateDeployment(orgId: string, id: string, params: Partial<ModelDeployment>): Promise<ModelDeployment | undefined> {
-  const [deployment] = await getDB().update(modelDeploymentT)
+async function internalUpdateDeployment(orgId: string, id: string, params: Partial<Deployment>): Promise<Deployment | undefined> {
+  const [deployment] = await getDB().update(deploymentT)
     .set(params)
     .where(matchActiveDeploymentInOrg(id, orgId))
     .returning();
   return deployment;
 }
 
-async function findActiveDeploymentInOrg(id: string, orgId: string): Promise<ModelDeployment | undefined> {
-  const [deployment] = await getDB().select().from(modelDeploymentT)
+async function findActiveDeploymentInOrg(id: string, orgId: string): Promise<Deployment | undefined> {
+  const [deployment] = await getDB().select().from(deploymentT)
     .where(matchActiveDeploymentInOrg(id, orgId))
     .limit(1);
   return deployment;
 }
 
-// ---------------------------------------------------------------------------
-// Shared status schema and query helper
-// ---------------------------------------------------------------------------
-
-/**
- * Runs the status join query and aggregates installation phase info for the given deployments.
- * `where` should narrow to the specific deployment rows you want (org condition + optional id filter).
- */
-async function queryDeploymentsWithStatus(where: SQL | undefined): Promise<DeploymentWithStatus[]> {
-  const rows = await getDB()
-    .select()
-    .from(modelDeploymentT)
-    .leftJoin(modelInstallationT, sql`
-      ${deploymentMatchesInstallation}
-    AND
-      ${modelInstallationT.deletedAt} IS NULL
-    `)
-    .leftJoin(modelInstallationStateT, stateOfInstallation)
-    .leftJoin(aiNodeT, installationOnLiveNode)
-    .where(where);
-
-  return foldDeploymentStatusRows(rows);
+async function readDeployment(entry: Deployment) {
+  const [deployment] = await DASHBOARD_DEPLOYMENT_TYPES[entry.type].read([entry]);
+  return deployment;
 }
 
-async function lookupIsMissingFromCatalog(specifier: string | null): Promise<boolean> {
-  if (!specifier) return false;
-  try {
-    const resolution = await resolveSchedulable(specifier, null);
-    return resolution.status === "not_found";
-  } catch {
-    return false;
-  }
-}
-
-async function markDeploymentsMissingFromCatalog(deployments: DeploymentWithStatus[]): Promise<void> {
-  const candidates = deployments.filter(d => !d.status && d.enabled);
-  await Promise.all(candidates.map(async (entry) => {
-    const [primaryMissing, earlyMissing] = await Promise.all([
-      lookupIsMissingFromCatalog(entry.specifier ?? null),
-      lookupIsMissingFromCatalog(entry.earlySpecifier ?? null),
-    ]);
-    if (primaryMissing || earlyMissing) {
-      entry.status = { phase: "not_in_catalog", progress: null, error: null };
-    }
-  }));
-}
-
-async function markDeploymentsOnDeprecatedCatalog(deployments: DeploymentWithStatus[]): Promise<void> {
-  await Promise.all(deployments.map(async (entry) => {
-    const [primary, early] = await Promise.all([
-      resolvesOnlyAsLegacy(entry.specifier ?? null),
-      resolvesOnlyAsLegacy(entry.earlySpecifier ?? null),
-    ]);
-    if (primary || early) {
-      entry.deprecatedModel = true;
-    }
-  }));
+function sharedFieldsOf({ name, description, enabled, publicSpecifier }: Partial<DeploymentInput>) {
+  return { name, description, enabled, publicSpecifier };
 }
 
 const listDeployments = rootOs.use(withOrganization)
@@ -248,16 +182,12 @@ const listDeployments = rootOs.use(withOrganization)
   .input(z.object({ withStatus: z.coerce.boolean().default(false) }))
   .output(DeploymentWithStatusDto.array())
   .handler(async ({ context, input }) => {
-    const orgCondition = sql`
-      ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
-      AND ${modelDeploymentT.deletedAt} IS NULL
-    `;
-    if (input?.withStatus) {
-      const results = await queryDeploymentsWithStatus(orgCondition);
-      await Promise.all([markDeploymentsMissingFromCatalog(results), markDeploymentsOnDeprecatedCatalog(results)]);
-      return results;
-    }
-    return await getDB().select().from(modelDeploymentT).where(orgCondition);
+    const entries = await getDB().select().from(deploymentT).where(sql`
+      ${deploymentT.organizationId} = ${context.activeOrganizationId}
+      AND ${deploymentT.deletedAt} IS NULL
+    `);
+    const deployments = await byType(entries, (type, ofType) => input?.withStatus ? type.withStatus(ofType) : type.read(ofType));
+    return deployments.flat();
   });
 /** Updates a deployment and triggers a sync. */
 const updateDeployment = rootOs
@@ -273,46 +203,35 @@ const updateDeployment = rootOs
   .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    if (input.specifier) {
-      const mismatch = await validateCanaryModelTypes(input.specifier, input.earlySpecifier ?? null);
-      if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
-    }
-
     const current = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!current) throw errors.NOT_FOUND();
+    const type = DASHBOARD_DEPLOYMENT_TYPES[current.type];
 
-    // When the deployment is enabled and not being disabled, block changes to restricted fields
-    const staysEnabled = current.enabled && input.enabled !== false;
-    if (staysEnabled) {
-      const restrictedFields = [
-        "kvCacheSize", "earlyKvCacheSize", "preferredDriver",
-        "specifier", "earlySpecifier",
-      ] as const;
-      const changed = restrictedFields.filter(field =>
-        input[field] !== undefined && input[field] !== current[field],
-      );
-      if (changed.length > 0) {
-        throw errors.BAD_REQUEST({
-          message: `Cannot change ${changed.join(", ")} while the deployment is enabled. Disable it first.`,
-        });
-      }
+    const review = await type.reviewUpdate(current, input);
+    if ("rejected" in review) {
+      throw errors.BAD_REQUEST({ message: review.rejected });
     }
-
-    const reenabling = input.enabled && !current.enabled;
-    const scalingUp = staysEnabled && input.replicas !== undefined && input.replicas > current.replicas;
-    if (reenabling || scalingUp) {
-      const merged = { ...current, ...input };
-      const result = await checkDeploymentCapacity(merged, scalingUp ? current.id : undefined);
+    if (review.mustFit) {
+      const result = await checkDeploymentCapacity(review.mustFit.requirements, review.mustFit.replacing);
       if (!result.deployable) {
         throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
       }
     }
 
-    const deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, input)
-      .catch((err: unknown) => {
-        rlog.error(err);
-        throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" });
-      });
+    const updated = await getDB().transaction(async (tx) => {
+      const [entry] = await tx.update(deploymentT)
+        .set({ ...sharedFieldsOf(input), updatedAt: new Date() })
+        .where(matchActiveDeploymentInOrg(input.id, context.activeOrganizationId))
+        .returning();
+      if (entry) {
+        await type.update(tx, entry, input);
+      }
+      return entry;
+    }).catch((err: unknown) => {
+      rlog.error(err);
+      throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" });
+    });
+    const deployment = updated && await readDeployment(updated);
     if (!deployment) {
       throw errors.NOT_FOUND();
     }
@@ -337,13 +256,13 @@ const toggleEnabled = rootOs
       const current = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
       if (!current) throw errors.NOT_FOUND();
       if (!current.enabled) {
-        const result = await checkDeploymentCapacity(current);
+        const result = await checkDeploymentCapacity(await DASHBOARD_DEPLOYMENT_TYPES[current.type].requirements([current]));
         if (!result.deployable) {
           throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
         }
       }
     }
-    const deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, input);
+    const deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, { enabled: input.enabled });
     if (!deployment) {
       throw errors.NOT_FOUND();
     }
@@ -363,15 +282,11 @@ const getDeployment = rootOs
   .output(DeploymentWithStatusDto)
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
-    if (input.withStatus) {
-      const results = await queryDeploymentsWithStatus(matchActiveDeploymentInOrg(input.id, context.activeOrganizationId));
-      const [first] = results;
-      if (!first) throw errors.NOT_FOUND();
-      await Promise.all([markDeploymentsMissingFromCatalog(results), markDeploymentsOnDeprecatedCatalog(results)]);
-      return first;
-    }
-
-    const deployment = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
+    const entry = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
+    if (!entry) throw errors.NOT_FOUND();
+    const [deployment] = input.withStatus
+      ? await DASHBOARD_DEPLOYMENT_TYPES[entry.type].withStatus([entry])
+      : [await readDeployment(entry)];
     if (!deployment) throw errors.NOT_FOUND();
     return deployment;
   });
@@ -389,10 +304,7 @@ Immediately unregisters it, and drops it completely.
   .input(z.object({ id: z.uuid() }))
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
-    const [deployment] = await getDB().update(modelDeploymentT)
-      .set({ deletedAt: new Date() })
-      .where(matchActiveDeploymentInOrg(input.id, context.activeOrganizationId))
-      .returning();
+    const deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, { deletedAt: new Date() });
     if (!deployment) {
       throw errors.NOT_FOUND();
     }
@@ -417,11 +329,13 @@ const retryDeployment = rootOs
     const failed = await getDB()
       .select({ id: modelInstallationT.id, group: modelInstallationT.group })
       .from(modelInstallationT)
+      .innerJoin(deploymentLegacyT, deploymentMatchesInstallation)
+      .innerJoin(deploymentT, legacyOfDeployment)
       .innerJoin(modelInstallationStateT, sql`
         ${stateOfInstallation}
         AND ${modelInstallationStateT.lifecycleState} = ${"failed"}
       `)
-      .where(sql`${modelInstallationT.deploymentId} = ${deployment.id} AND ${modelInstallationT.deletedAt} IS NULL`);
+      .where(sql`${deploymentT.id} = ${deployment.id} AND ${modelInstallationT.deletedAt} IS NULL`);
 
     // A daemon keeps a failure it has seen and a group keeps its spent restarts, so fresh installations
     // replace the failed ones, a group as a whole, instead of their states being cleared.
@@ -449,17 +363,18 @@ const findDeployment = rootOs
   .output(DeploymentDto)
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
-    const [deployment] = await getDB().select().from(modelDeploymentT)
+    const [entry] = await getDB().select().from(deploymentT)
       .where(sql`
-        ${modelDeploymentT.publicSpecifier} = ${input.publicSpecifier}
-        AND ${modelDeploymentT.organizationId} = ${context.activeOrganizationId}
-        AND ${modelDeploymentT.deletedAt} IS NULL
+        ${deploymentT.publicSpecifier} = ${input.publicSpecifier}
+        AND ${deploymentT.organizationId} = ${context.activeOrganizationId}
+        AND ${deploymentT.deletedAt} IS NULL
       `)
       .limit(1);
+    const deployment = entry && await readDeployment(entry);
     if (!deployment) {
       throw errors.NOT_FOUND();
     }
-    return deployment as z.infer<typeof DeploymentDto>;
+    return deployment;
   });
 export const createDeployment = rootOs
   .use(withOrganization)
@@ -490,23 +405,31 @@ export const createDeployment = rootOs
     if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
 
     if (input.enabled) {
-      const result = await checkDeploymentCapacity(draftPlan(input));
+      const result = await checkDeploymentCapacity(requirementsForDeployments([draftPlan(input)]));
       if (!result.deployable) {
         throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
       }
     }
 
     try {
-      const [deployment] = await getDB()
-        .insert(modelDeploymentT)
-        .values({
-          ...input,
-          specifier: primarySpecifier,
-          earlySpecifier,
-          organizationId: context.activeOrganizationId,
-        })
-        .returning();
-      if (!deployment) throw new Error("Insert into modelDeploymentT returned no row");
+      const entry = await getDB().transaction(async (tx) => {
+        const legacyId = await createLegacy(tx, { ...input, specifier: primarySpecifier, earlySpecifier });
+        const [entry] = await tx
+          .insert(deploymentT)
+          .values({
+            name: input.name,
+            description: input.description,
+            enabled: input.enabled,
+            publicSpecifier: input.publicSpecifier,
+            type: "legacy",
+            legacyId,
+            organizationId: context.activeOrganizationId,
+          })
+          .returning();
+        return entry;
+      });
+      const deployment = entry && await readDeployment(entry);
+      if (!deployment) throw new Error("Insert into deploymentT returned no row");
       void syncDeployedModels();
       const orgName = await findOrgName(context.activeOrganizationId);
       void notifyOrgMembers({
@@ -537,8 +460,10 @@ const checkCapacity = rootOs
   })
   .input(CapacityCheckInput)
   .output(CapacityCheckOutput)
-  .handler(async ({ input }): Promise<CapacityCheckResult> =>  {
-    return checkDeploymentCapacity(draftPlan(input), input.deploymentId);
+  .handler(async ({ context, input }): Promise<CapacityCheckResult> =>  {
+    const replaced = input.deploymentId ? await findActiveDeploymentInOrg(input.deploymentId, context.activeOrganizationId) : undefined;
+    const replacedId = replaced?.legacyId ?? undefined;
+    return checkDeploymentCapacity(requirementsForDeployments([draftPlan(input, replacedId)]), replacedId);
   });
 
 export const deploymentRouter = rootOs.prefix("/deployment").router({

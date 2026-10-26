@@ -1,4 +1,4 @@
-import { calcCanaryProgress, type ModelDeployment } from "common-db";
+import { calcCanaryProgress, type DeploymentLegacy } from "common-db";
 import type { DeploymentSettings } from "common-env";
 import type { Provider } from "common-env/model-catalog";
 import { requirementKey } from "./placement";
@@ -7,7 +7,7 @@ export type ModelRequirement = { deploymentId: string; specifier: string; replic
 export type ModelRequirementTable = Record<string, ModelRequirement>;
 
 export type DeploymentPlan = Pick<
-  ModelDeployment,
+  DeploymentLegacy,
   "id" | "specifier" | "earlySpecifier" | "replicas" | "kvCacheSize" | "earlyKvCacheSize" | "preferredDriver" | "settings" | "progress" | "canaryProgressFrom" | "canaryProgressUntil"
 >;
 

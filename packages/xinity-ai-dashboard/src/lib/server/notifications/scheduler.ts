@@ -1,17 +1,14 @@
 import {
   sql,
-  modelDeploymentT,
+  deploymentT,
   modelInstallationT,
-  modelInstallationStateT,
   aiNodeT,
   usageEventT,
   organizationT,
   count,
-  deploymentMatchesInstallation,
   type SQL,
   nodeIsLive,
   installationOnLiveNode,
-  stateOfInstallation,
 } from "common-db";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
@@ -20,6 +17,7 @@ import { building } from "$app/env";
 import { notifyOrgMembers } from "./notification.service";
 import { NotificationType } from "./events";
 import { type DeploymentPhase, type DisplayPhase, type ReplicaMember, foldDeployment, foldReplicas, toDisplayPhase } from "$lib/server/lib/deployments/deployment-phase";
+import { byType, enabledDeployments } from "$lib/server/lib/deployments/deployment-types";
 import type { InstallationGroup } from "common-env";
 
 const log = rootLogger.child({ name: "notification.scheduler" });
@@ -142,36 +140,8 @@ export function foldDeploymentPhaseRows(rows: DeploymentPhaseRow[]): Map<string,
 }
 
 async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
-  const rows = await getDB()
-    .select({
-      deploymentId: modelDeploymentT.id,
-      deploymentName: modelDeploymentT.name,
-      organizationId: modelDeploymentT.organizationId,
-      orgName: organizationT.name,
-      publicSpecifier: modelDeploymentT.publicSpecifier,
-      desiredReplicas: modelDeploymentT.replicas,
-      installationId: modelInstallationT.id,
-      installationGroup: modelInstallationT.group,
-      liveNodeId: aiNodeT.id,
-      lifecycleState: modelInstallationStateT.lifecycleState,
-      errorMessage: modelInstallationStateT.errorMessage,
-    })
-    .from(modelDeploymentT)
-    .where(sql`
-      ${modelDeploymentT.enabled}
-    AND
-      ${modelDeploymentT.deletedAt} IS NULL
-    `)
-    .leftJoin(organizationT, sql`${organizationT.id} = ${modelDeploymentT.organizationId}`)
-    .leftJoin(modelInstallationT, sql`
-      ${deploymentMatchesInstallation}
-    AND
-      ${modelInstallationT.deletedAt} IS NULL
-    `)
-    .leftJoin(modelInstallationStateT, stateOfInstallation)
-    .leftJoin(aiNodeT, installationOnLiveNode);
-
-  return foldDeploymentPhaseRows(rows);
+  const rows = await byType(await enabledDeployments(), (type, entries) => type.phases(entries));
+  return foldDeploymentPhaseRows(rows.flat());
 }
 
 function dispatchDeploymentPhaseNotification(
@@ -315,13 +285,13 @@ async function checkCapacity(state: SchedulerState) {
 async function countActiveDeployments(orgId: string): Promise<number> {
   const [row] = await getDB()
     .select({ count: count() })
-    .from(modelDeploymentT)
+    .from(deploymentT)
     .where(sql`
-      ${modelDeploymentT.organizationId} = ${orgId}
+      ${deploymentT.organizationId} = ${orgId}
     AND
-      ${modelDeploymentT.enabled}
+      ${deploymentT.enabled}
     AND
-      ${modelDeploymentT.deletedAt} IS NULL
+      ${deploymentT.deletedAt} IS NULL
     `);
   return row?.count ?? 0;
 }

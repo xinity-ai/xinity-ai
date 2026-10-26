@@ -1,4 +1,4 @@
-import { sql, organizationT, aiApplicationT, modelDeploymentT, inferenceCallT, apiResponseT } from "common-db";
+import { inArray, sql, organizationT, aiApplicationT, deploymentT, deploymentLegacyT, inferenceCallT, apiResponseT } from "common-db";
 import { getDB } from "$lib/server/db";
 
 export async function findOrgName(organizationId: string): Promise<string | null> {
@@ -26,8 +26,8 @@ export async function findOrgDeleteBlockers(organizationId: string): Promise<str
     db.select(total).from(aiApplicationT).where(sql`
       ${aiApplicationT.organizationId} = ${organizationId} AND ${aiApplicationT.deletedAt} IS NULL
     `),
-    db.select(total).from(modelDeploymentT).where(sql`
-      ${modelDeploymentT.organizationId} = ${organizationId} AND ${modelDeploymentT.deletedAt} IS NULL
+    db.select(total).from(deploymentT).where(sql`
+      ${deploymentT.organizationId} = ${organizationId} AND ${deploymentT.deletedAt} IS NULL
     `),
   ]);
 
@@ -59,11 +59,15 @@ export async function purgeSoftDeletedOrgDependents(organizationId: string): Pro
       `)
       .returning({ id: aiApplicationT.id });
     const deployments = await tx
-      .delete(modelDeploymentT)
+      .delete(deploymentT)
       .where(sql`
-        ${modelDeploymentT.organizationId} = ${organizationId} AND ${modelDeploymentT.deletedAt} IS NOT NULL
+        ${deploymentT.organizationId} = ${organizationId} AND ${deploymentT.deletedAt} IS NOT NULL
       `)
-      .returning({ id: modelDeploymentT.id });
+      .returning({ legacyId: deploymentT.legacyId });
+    const legacyIds = deployments.flatMap(({ legacyId }) => (legacyId ? [legacyId] : []));
+    if (legacyIds.length > 0) {
+      await tx.delete(deploymentLegacyT).where(inArray(deploymentLegacyT.id, legacyIds));
+    }
     return applications.length + deployments.length;
   });
 }

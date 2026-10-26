@@ -3,6 +3,7 @@
  */
 import { z } from "zod";
 import { OPTIMIZATION_GOALS } from "common-env/deployment-settings";
+import { DEPLOYMENT_TYPES } from "common-env/deployment-types";
 import { CommonDto, commonInputFilter } from "./common.dto";
 
 export const DeploymentSettingsDto = z.object({
@@ -15,6 +16,7 @@ export const DeploymentSettingsDto = z.object({
 export const DeploymentDto = CommonDto.extend({
   name: z.string().trim(),
 
+  type: z.enum(DEPLOYMENT_TYPES),
   enabled: z.boolean(),
   publicSpecifier: z.string().trim()
     .refine(s => !s.endsWith("-deep-research"), {
@@ -35,13 +37,14 @@ export const DeploymentDto = CommonDto.extend({
   preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
   settings: DeploymentSettingsDto.optional(),
 });
+export type DeploymentOutput = z.infer<typeof DeploymentDto>;
 
 export const ReplicasDto = z.number().int().min(1);
 export const ProgressDto = z.number().int().min(0).max(100);
 export const KvCacheSizeDto = z.number().positive();
 
 // Stored rows are read back through DeploymentDto, so the stricter rules apply to what is written only.
-export const DeploymentInputDto = DeploymentDto.omit(commonInputFilter).extend({
+export const DeploymentInputDto = DeploymentDto.omit({ ...commonInputFilter, type: true }).extend({
   publicSpecifier: DeploymentDto.shape.publicSpecifier
     .pipe(z.string().min(5).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, {
       message: "Use letters, digits and . _ -, starting with a letter or digit",
@@ -51,6 +54,7 @@ export const DeploymentInputDto = DeploymentDto.omit(commonInputFilter).extend({
   kvCacheSize: KvCacheSizeDto.nullish(),
   earlyKvCacheSize: KvCacheSizeDto.nullish(),
 });
+export type DeploymentInput = z.infer<typeof DeploymentInputDto>;
 
 // Zod still applies a default under .optional(), so .partial() alone would reset omitted fields.
 export const DeploymentUpdateDto = DeploymentInputDto
@@ -61,6 +65,7 @@ export const DeploymentUpdateDto = DeploymentInputDto
   })
   .partial()
   .required({ id: true });
+export type DeploymentUpdate = z.infer<typeof DeploymentUpdateDto>;
 
 const ReplicaPhaseDto = z.enum(["ready", "downloading", "installing", "failed", "scheduling"]);
 

@@ -1,4 +1,4 @@
-import { inArray, modelDeploymentT, sql, modelInstallationT, modelInstallationStateT, aiNodeT, nodeIsLive, type ModelInstallation, type AiNode } from "common-db";
+import { inArray, sql, modelInstallationT, modelInstallationStateT, aiNodeT, nodeIsLive, type ModelInstallation, type AiNode } from "common-db";
 import { DOES_NOT_FIT_ON_NODE, GROUP_MEMBER_FEATURE, deriveInterconnectOverview, freeMemberAddress, resolveOptimizeFor, settingsEqual, sharedRdmaSubnets, type Coupling, type FootprintPart, type InstallationGroup, type OptimizationGoal } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
@@ -11,18 +11,15 @@ import { buildClusterState, chargeCapacity, chargeOf, freeGbOn, poolCharge, rank
 import { ENGINE_SCHEDULERS } from "./engines";
 import type { MemberSlot, NodeSlot, PlacementRequest } from "./engines/engine";
 import { firstFreePort, type Placement } from "./placement";
-import { requirementsForDeployments, type ModelRequirementTable } from "./requirements";
+import { byType, enabledDeployments } from "./deployment-types";
+import type { ModelRequirementTable } from "./requirements";
 import type { Capacity, DeploymentStrategy } from "./strategy";
 
 const log = rootLogger.child({ name: "orchestration.mod" })
 
 export async function assembleModelRequirementTable(): Promise<ModelRequirementTable> {
-  const enabledDeployments = await getDB().select().from(modelDeploymentT).where(sql`
-    ${modelDeploymentT.enabled}
-  AND
-    ${modelDeploymentT.deletedAt} IS NULL
-  `);
-  return requirementsForDeployments(enabledDeployments);
+  const tables = await byType(await enabledDeployments(), (type, entries) => type.requirements(entries));
+  return Object.assign({}, ...tables);
 }
 
 /** Trims installations that exceed required replica count; mutates state to free their capacity. */

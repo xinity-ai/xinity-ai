@@ -2,10 +2,10 @@ import { describe, test, expect } from "bun:test";
 import { couplingIssuesOf, foldDeploymentStatusRows, type DeploymentStatusRow } from "./deployment-status";
 import type { InterconnectPath, InterconnectPort } from "common-env";
 
-const DEPLOYMENT: DeploymentStatusRow["model_deployment"] = {
+const DEPLOYMENT: DeploymentStatusRow["deployment"] = {
   id: "dep-1",
-  organizationId: "org-1",
   name: "My Deployment",
+  type: "legacy",
   description: null,
   enabled: true,
   publicSpecifier: "qwen3.6-27b",
@@ -20,7 +20,6 @@ const DEPLOYMENT: DeploymentStatusRow["model_deployment"] = {
   earlyKvCacheSize: null,
   preferredDriver: null,
   settings: { version: 1 },
-  deletedAt: null,
   createdAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-01-01"),
 };
@@ -34,7 +33,7 @@ function installation(id: string, group: Installation["group"]): Installation {
 
 function row(overrides: Partial<DeploymentStatusRow> = {}): DeploymentStatusRow {
   return {
-    model_deployment: DEPLOYMENT,
+    deployment: DEPLOYMENT,
     model_installation: installation("inst-1", null),
     model_installation_state: state(),
     ai_node: { id: "192.0.2.1", interconnect: [], machineName: "gx10-a", host: "192.0.2.1" },
@@ -124,7 +123,7 @@ describe("foldDeploymentStatusRows", () => {
     const other = { ...DEPLOYMENT, id: "dep-2", name: "Other" };
     const result = foldDeploymentStatusRows([
       ...replicas(2),
-      row({ model_deployment: other, model_installation: installation("inst-x", null) }),
+      row({ deployment: other, model_installation: installation("inst-x", null) }),
     ]);
     expect(result).toHaveLength(2);
     expect(result.find(d => d.id === "dep-1")!.status!.replicas).toHaveLength(2);

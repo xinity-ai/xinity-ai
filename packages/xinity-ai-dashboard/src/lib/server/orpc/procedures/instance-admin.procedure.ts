@@ -4,7 +4,7 @@ import { getDB } from "$lib/server/db";
 import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import { adminCreateUser, adminResetPassword, INTERNAL_SIGNIN_DISABLED_MESSAGE } from "$lib/server/auth-server";
-import { userT, accountT, memberT, organizationT, auditEventT, sessionT, dashboardApiKeyT, deploymentMatchesInstallation, sql, and, count } from "common-db";
+import { userT, accountT, memberT, organizationT, auditEventT, sessionT, dashboardApiKeyT, deploymentMatchesInstallation, legacyOfDeployment, sql, and, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
 import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/calls/legacy-postfill";
 import { countDatabaseBackedMedia, moveMediaToS3 } from "$lib/server/lib/calls/media-migration";
@@ -375,13 +375,14 @@ const listOrganizations = rootOs
           createdAt: organizationT.createdAt,
           ssoSelfManage: organizationT.ssoSelfManage,
           memberCount: sql<number>`(SELECT count(*) FROM "member" WHERE "member"."organization_id" = "organization"."id")`.as("memberCount"),
-          deploymentCount: sql<number>`(SELECT count(*) FROM "model_deployment" WHERE "model_deployment"."organization_id" = "organization"."id" AND "model_deployment"."deleted_at" IS NULL)`.as("deploymentCount"),
+          deploymentCount: sql<number>`(SELECT count(*) FROM "deployment" WHERE "deployment"."organization_id" = "organization"."id" AND "deployment"."deleted_at" IS NULL)`.as("deploymentCount"),
           totalCapacity: sql<number>`(
             SELECT coalesce(sum("model_installation"."est_capacity"), 0)
-            FROM "model_deployment"
+            FROM "deployment"
+            INNER JOIN "deployment_legacy" ON ${legacyOfDeployment}
             INNER JOIN "model_installation" ON ${deploymentMatchesInstallation}
-            WHERE "model_deployment"."organization_id" = "organization"."id"
-              AND "model_deployment"."deleted_at" IS NULL
+            WHERE "deployment"."organization_id" = "organization"."id"
+              AND "deployment"."deleted_at" IS NULL
               AND "model_installation"."deleted_at" IS NULL
           )`.as("total_capacity"),
         })

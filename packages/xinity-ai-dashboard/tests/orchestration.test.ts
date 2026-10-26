@@ -4,7 +4,7 @@ import { buildClusterState, freeGbOn, rankServers, resourcesOf } from "../src/li
 import { layoutForVllm, vllmScheduler } from "../src/lib/server/lib/deployments/engines/vllm";
 import { requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
 import type { DeploymentStrategy } from "../src/lib/server/lib/deployments/strategy";
-import type { AiNode, ModelDeployment, ModelInstallation } from "common-db";
+import type { AiNode, DeploymentLegacy, ModelInstallation } from "common-db";
 import type { SchedulableModel } from "../src/lib/server/lib/models/model-catalog";
 import { FOOTPRINT_PART_MEMORY, GROUP_MEMBER_FEATURE, type FootprintEntry } from "common-env";
 
@@ -506,13 +506,8 @@ describe("orchestration: settings drift", () => {
 });
 
 describe("orchestration: requirements per deployment", () => {
-  function makeDeployment(overrides: Partial<ModelDeployment> & { id: string; specifier: string }): ModelDeployment {
+  function makeDeployment(overrides: Partial<DeploymentLegacy> & { id: string; specifier: string }): DeploymentLegacy {
     return {
-      organizationId: "org-1",
-      name: overrides.id,
-      description: null,
-      enabled: true,
-      publicSpecifier: overrides.id,
       earlySpecifier: null,
       replicas: 1,
       canaryProgressUntil: null,
@@ -523,7 +518,6 @@ describe("orchestration: requirements per deployment", () => {
       earlyKvCacheSize: null,
       preferredDriver: null,
       settings: { version: 1 },
-      deletedAt: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       ...overrides,
