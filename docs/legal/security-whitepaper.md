@@ -106,7 +106,7 @@ Gateway API keys are stored as argon2id hashes. A 25-character specifier prefix 
 
 ### 4.3 Binary integrity and supply chain
 
-All release binaries are distributed with SHA-256 checksums (`SHASUMS256.txt`). The Xinity CLI verifies the SHA-256 hash of every binary it downloads before installation. Secrets in systemd service configurations are stored in mode-600 credential files using systemd's `LoadCredential`, separate from non-secret environment variables.
+All release binaries are distributed with SHA-256 checksums (`SHASUMS256.txt`). The checksum list and all container images are signed with Sigstore keyless signing by the release workflow, so a signature proves a file was built by that workflow, and every signature is recorded in Sigstore's public transparency log. The Xinity CLI verifies the signature of the checksum list and the SHA-256 hash of every binary it downloads before installation, and refuses files that fail either check. Secrets in systemd service configurations are stored in mode-600 credential files using systemd's `LoadCredential`, separate from non-secret environment variables.
 
 ### 4.4 Persistent call logging
 

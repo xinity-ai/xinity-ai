@@ -38,7 +38,7 @@ Submitting an empty value unsets a key unless it is required, and Escape leaves 
 
 ### Self-update (`xinity update`)
 
-Downloads the latest release, verifies SHA-256, and atomically replaces the binary with rollback on failure. `--check` reports whether an update is available without installing.
+Downloads the latest release, verifies its signature and SHA-256 (see [Verifying releases](../security/release-verification.md)), and atomically replaces the binary with rollback on failure. `--check` reports whether an update is available without installing.
 
 ### Remote management (`--target-host`)
 

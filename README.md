@@ -170,6 +170,7 @@ Detailed guides for each part of the platform:
 | [Monitoring](docs/features/monitoring.md) | Prometheus metrics (all services), Grafana dashboards, service discovery |
 | [Model Registry](docs/features/model-registry.md) | Infoserver API, model definition schema, registry composition, tag resolution |
 | [Reverse proxy](docs/security/reverse-proxy.md) | nginx and Caddy templates, streaming and upload requirements, rate limiting, protecting `/metrics` |
+| [Verifying releases](docs/security/release-verification.md) | Signed checksums and container images, what the CLI and install scripts check, verifying by hand with cosign |
 
 ## Quick start (local development)
 
