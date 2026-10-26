@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { loadConfig } from "../config/config.ts";
 import { localRun } from "../core/host.ts";
 import { cliAssetSuffix, platformLabel } from "../core/platform.ts";
+import { trustedRoot, verifyChecksumSignature, type TrustSource } from "./release-signature.ts";
 
 const DEFAULT_PROJECT_URL = "https://github.com/xinity-ai/xinity-ai";
 
@@ -31,12 +32,16 @@ export function getProjectUrl(): string {
   return loadConfig().githubProjectUrl ?? DEFAULT_PROJECT_URL;
 }
 
-/** Extract "owner/repo" from a GitHub URL and return the API base. */
-function getApiBase(): string {
+/** Extract "owner/repo" from the configured GitHub project URL. */
+function getProjectSlug(): string {
   const url = getProjectUrl();
   const match = url.match(/github\.com\/([^/]+\/[^/]+)/);
   if (!match) throw new Error(`Invalid GitHub project URL: ${url}`);
-  return `https://api.github.com/repos/${match[1]}`;
+  return match[1]!;
+}
+
+function getApiBase(): string {
+  return `https://api.github.com/repos/${getProjectSlug()}`;
 }
 
 async function discoverToken(): Promise<string | undefined> {
@@ -166,26 +171,64 @@ export async function downloadAsset(
   return destPath;
 }
 
-/** Fetch and parse SHASUMS256.txt from a release into a Map<filename, hash>, or null if the release has none. */
-export async function fetchChecksums(
-  release: Release,
-): Promise<Map<string, string> | null> {
-  const asset = release.assets.find((a) => a.name === "SHASUMS256.txt");
-  if (!asset) return null;
+const CHECKSUMS_ASSET = "SHASUMS256.txt";
+const CHECKSUMS_SIGNATURE_ASSET = "SHASUMS256.txt.sigstore.json";
+const FIRST_SIGNED_RELEASE = "0.26.4";
 
+export type ReleaseChecksums = {
+  hashes: Map<string, string>;
+  signature: TrustSource | "unsigned";
+};
+
+function isSignedRelease(release: Release): boolean {
+  return Bun.semver.order(release.tagName.replace(/^v/, ""), FIRST_SIGNED_RELEASE) >= 0;
+}
+
+async function fetchAssetBytes(release: Release, name: string): Promise<Buffer> {
+  const asset = release.assets.find((a) => a.name === name);
+  if (!asset) {
+    throw new Error(`Release ${release.tagName} has no ${name}`);
+  }
   const headers = await apiHeaders("application/octet-stream");
   const res = await fetch(asset.apiUrl, { headers });
   if (!res.ok) {
-    throw new Error(`Fetching SHASUMS256.txt failed: ${res.status} ${res.statusText}`);
+    throw new Error(`Fetching ${name} failed: ${res.status} ${res.statusText}`);
   }
+  return Buffer.from(await res.arrayBuffer());
+}
 
-  const text = await res.text();
-  const checksums = new Map<string, string>();
+function parseChecksums(text: string): Map<string, string> {
+  const hashes = new Map<string, string>();
   for (const line of text.split("\n")) {
     const [, hash, name] = line.match(/^([a-f0-9]{64})\s+(.+)$/) ?? [];
-    if (hash && name) checksums.set(name.trim(), hash);
+    if (hash && name) {
+      hashes.set(name.trim(), hash);
+    }
   }
-  return checksums;
+  return hashes;
+}
+
+/** Fetch SHASUMS256.txt, verifying its signature on signed releases. Null only for an older release without checksums. */
+export async function fetchChecksums(release: Release): Promise<ReleaseChecksums | null> {
+  const signed = isSignedRelease(release);
+  if (!signed && !release.assets.some((a) => a.name === CHECKSUMS_ASSET)) {
+    return null;
+  }
+
+  const checksums = await fetchAssetBytes(release, CHECKSUMS_ASSET);
+  const hashes = parseChecksums(checksums.toString("utf8"));
+  if (!signed) {
+    return { hashes, signature: "unsigned" };
+  }
+
+  const bundle = JSON.parse((await fetchAssetBytes(release, CHECKSUMS_SIGNATURE_ASSET)).toString("utf8"));
+  const { root, source } = await trustedRoot();
+  try {
+    verifyChecksumSignature(checksums, bundle, getProjectSlug(), root);
+  } catch (err) {
+    throw new Error(`Signature of ${CHECKSUMS_ASSET} is invalid: ${(err as Error).message}`, { cause: err });
+  }
+  return { hashes, signature: source };
 }
 
 /** Verify a file's SHA256 hash. Returns true if it matches. */
