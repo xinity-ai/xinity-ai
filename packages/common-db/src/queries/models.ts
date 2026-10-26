@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { aiNodeT, modelDeploymentT, modelInstallationStateT, modelInstallationT } from "../schema/models";
+import { aiNodeT, deploymentLegacyT, deploymentT, modelInstallationStateT, modelInstallationT } from "../schema/models";
 
 /**
  * The node is live: available and not removed.
@@ -21,10 +21,16 @@ export const installationOnLiveNode = sql`${aiNodeT.id} = ${modelInstallationT.n
 export const stateOfInstallation = sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`;
 
 /**
- * The installation serves the deployment.
- * Needs `model_deployment` and `model_installation`. Use as the ON when joining one onto the other.
+ * The installation serves the legacy deployment row.
+ * Needs `deployment_legacy` and `model_installation`. Use as the ON when joining one onto the other.
  */
-export const deploymentMatchesInstallation = sql`${modelDeploymentT.id} = ${modelInstallationT.deploymentId}`;
+export const deploymentMatchesInstallation = sql`${deploymentLegacyT.id} = ${modelInstallationT.deploymentId}`;
+
+/**
+ * The legacy row is the one the deployment points at.
+ * Needs `deployment` and `deployment_legacy`. Use as the ON when joining one onto the other.
+ */
+export const legacyOfDeployment = sql`${deploymentLegacyT.id} = ${deploymentT.legacyId}`;
 
 /**
  * The installation is of the given canonical specifier.
