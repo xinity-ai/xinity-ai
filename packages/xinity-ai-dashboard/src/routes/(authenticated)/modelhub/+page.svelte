@@ -3,11 +3,12 @@
   import type { DeploymentDefinition } from "./+page.server";
   import type { ClusterOverview } from "$lib/server/orpc/procedures/cluster.procedure";
   import DeploymentModal from "./DeploymentModal.svelte";
+  import { DEPLOYMENT_TYPE_VIEWS } from "./deployment-types";
   import TestChatModal from "./TestChatModal.svelte";
   import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
   import TestRerankModal from "./TestRerankModal.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
-  import { formatGb, humanDate, humanDuration, updateOptimistically } from "$lib/util";
+  import { formatGb, humanDate, updateOptimistically } from "$lib/util";
   import { browserLogger } from "$lib/browserLogging";
   import { toastState } from "$lib/state/toast.svelte";
   import { copyToClipboard } from "$lib/copy";
@@ -163,14 +164,6 @@
       .filter(d => !deletedIds.has(d.id))
       .toSorted((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
   );
-
-  function deploymentTypeLabel(deployment: DeploymentDefinition): string {
-    if (!deployment?.earlySpecifier) return "Static";
-    if (deployment.canaryProgressWithFeedback) return "Canary (smart-auto)";
-    if (deployment.canaryProgressUntil) return "Canary (time-based)";
-    if (deployment.canaryProgressFrom) return "Canary (manual)";
-    return "Canary";
-  }
 
   function requestDelete(deployment: DeploymentDefinition) {
     deploymentToDelete = deployment;
@@ -355,7 +348,7 @@
                   {#if deployment.replicas > 1}
                     <Badge variant="secondary">{deployment.replicas} replicas</Badge>
                   {/if}
-                  <Badge variant="outline">{deploymentTypeLabel(deployment)}</Badge>
+                  <Badge variant="outline">{DEPLOYMENT_TYPE_VIEWS[deployment.type].label(deployment)}</Badge>
                 </div>
               </div>
             </Card.Header>
@@ -377,26 +370,8 @@
                 </div>
               </div>
 
-              <!-- Deployment Traffic Distribution -->
-              {#if deployment.canaryProgressUntil}
-                <div>
-                  <p class="text-sm text-muted-foreground mb-2">Traffic Distribution</p>
-                  <div class="w-full bg-muted rounded-full h-2">
-                    <div
-                      class="bg-primary h-2 rounded-full transition-all"
-                      style="width: {deployment.progress}%"
-                    ></div>
-                  </div>
-                  <div class="flex flex-wrap mt-1.5 text-xs text-muted-foreground">
-                    <span>{deployment.progress}% to {deployment.publicSpecifier}</span>
-                    {#if deployment.earlySpecifier && 100 - deployment.progress > 0}
-                      <span class="ml-auto">
-                        {100 - deployment.progress}% to {deployment.earlySpecifier}
-                      </span>
-                    {/if}
-                  </div>
-                </div>
-              {/if}
+              {@const Details = DEPLOYMENT_TYPE_VIEWS[deployment.type].details}
+              <Details {deployment} />
 
               <div>
                 <p class="text-sm text-muted-foreground mb-2">Status</p>
@@ -541,31 +516,6 @@
                 <p class="text-sm text-muted-foreground">Created</p>
                 <p class="font-medium">{humanDate(deployment.createdAt)}</p>
               </div>
-
-              {#if (deployment.canaryProgressUntil?.valueOf() || 0) >= Date.now()}
-                <div>
-                  <p class="text-sm text-muted-foreground">Deployment Timeline</p>
-                  <p class="font-medium">
-                    Complete on {humanDate(deployment.canaryProgressUntil!)}
-                  </p>
-                </div>
-
-                <div>
-                  <p class="text-sm text-muted-foreground">Deployment Duration</p>
-                  <p class="font-medium">
-                    {(deployment.canaryProgressUntil &&
-                      deployment.canaryProgressFrom &&
-                      humanDuration(
-                        (deployment.canaryProgressUntil.valueOf() -
-                          deployment.canaryProgressFrom.valueOf()) /
-                          1000 /
-                          60 /
-                          60,
-                      )) ||
-                      "N/A"}
-                  </p>
-                </div>
-              {/if}
             </Card.Content>
 
             {#if permissions.canManageDeployments || deployment.status?.phase === "ready" || deployment.status?.phase === "partial"}
@@ -648,7 +598,8 @@
 />
 
 {#if editDeployment}
-  <DeploymentModal
+  {@const EditModal = DEPLOYMENT_TYPE_VIEWS[editDeployment.type].editModal}
+  <EditModal
     open={true}
     deployment={editDeployment}
     nodeCapabilities={activeNodeCapabilities}
