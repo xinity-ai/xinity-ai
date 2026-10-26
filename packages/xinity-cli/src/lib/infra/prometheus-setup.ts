@@ -85,7 +85,7 @@ function schemeLine(scheme: string | undefined): string[] {
   return scheme === "https" ? ["    scheme: https"] : [];
 }
 
-function staticJobLines(jobName: string, target: string, scheme: string | undefined): string[] {
+function staticJobLines(jobName: string, target: string, scheme: string | undefined, auth: BasicAuth | undefined): string[] {
   return [
     `  - job_name: ${jobName}`,
     ...schemeLine(scheme),
@@ -93,6 +93,7 @@ function staticJobLines(jobName: string, target: string, scheme: string | undefi
     "    static_configs:",
     "      - targets:",
     `          - ${target}`,
+    ...basicAuthLines("    ", auth, "Set if this service's METRICS_AUTH is configured:"),
     "",
   ];
 }
@@ -108,7 +109,7 @@ export function buildPrometheusConfig(opts: {
   infoserverTarget?: string;
   infoserverScheme?: string;
   daemonSdUrl: string;
-  sdAuth?: BasicAuth;
+  serviceAuth?: BasicAuth;
   daemonAuth?: BasicAuth;
 }): string {
   const lines: string[] = [
@@ -117,10 +118,10 @@ export function buildPrometheusConfig(opts: {
     `  evaluation_interval: ${opts.scrapeInterval}`,
     "",
     "scrape_configs:",
-    ...staticJobLines("xinity-gateway", opts.gatewayTarget, opts.gatewayScheme),
-    ...staticJobLines("xinity-dashboard", opts.dashboardTarget, opts.dashboardScheme),
-    ...staticJobLines("xinity-tether", opts.tetherTarget, opts.tetherScheme),
-    ...(opts.infoserverTarget ? staticJobLines("xinity-infoserver", opts.infoserverTarget, opts.infoserverScheme) : []),
+    ...staticJobLines("xinity-gateway", opts.gatewayTarget, opts.gatewayScheme, opts.serviceAuth),
+    ...staticJobLines("xinity-dashboard", opts.dashboardTarget, opts.dashboardScheme, opts.serviceAuth),
+    ...staticJobLines("xinity-tether", opts.tetherTarget, opts.tetherScheme, opts.serviceAuth),
+    ...(opts.infoserverTarget ? staticJobLines("xinity-infoserver", opts.infoserverTarget, opts.infoserverScheme, opts.serviceAuth) : []),
     "  # Daemon targets are discovered dynamically from the dashboard's node",
     "  # registry; this stays current as the node set changes, no edits needed.",
     "  - job_name: xinity-daemon",
@@ -128,7 +129,7 @@ export function buildPrometheusConfig(opts: {
     "    http_sd_configs:",
     `      - url: ${opts.daemonSdUrl}`,
     `        refresh_interval: ${SD_REFRESH_INTERVAL}`,
-    ...basicAuthLines("        ", opts.sdAuth, "Set if the dashboard's METRICS_AUTH is configured (authenticates the SD request):"),
+    ...basicAuthLines("        ", opts.serviceAuth, "Set if the dashboard's METRICS_AUTH is configured (authenticates the SD request):"),
     ...basicAuthLines("    ", opts.daemonAuth, "Set if the daemons' METRICS_AUTH is configured (authenticates the scrape):"),
   ];
 
@@ -232,20 +233,18 @@ export async function planPrometheusProvision(host: Host): Promise<PrometheusPro
   const tether = scrapeTarget(tetherUrl);
   const infoserver = infoserverUrl.trim() ? scrapeTarget(infoserverUrl.trim()) : undefined;
 
-  // Daemons are discovered dynamically from the dashboard, so there is no static
-  // target list to maintain. Auth is optional: the SD endpoint is often left open
-  // (internal only), while the daemon scrape is usually password-protected.
-  const sdAuthRaw = await promptOrUndefined(text({
-    message: "Dashboard METRICS_AUTH for the discovery request (user:pass, blank if none)",
+  // A stack shares one METRICS_AUTH, so the daemon prompt defaults to the services' answer.
+  const serviceAuthRaw = await promptOrUndefined(text({
+    message: "METRICS_AUTH of the gateway, dashboard, tether and infoserver (user:pass, blank if none)",
     placeholder: "",
     defaultValue: "",
   }));
-  if (sdAuthRaw === undefined) return undefined;
+  if (serviceAuthRaw === undefined) return undefined;
 
   const daemonAuthRaw = await promptOrUndefined(text({
     message: "Daemon METRICS_AUTH for scraping daemons (user:pass, blank if none)",
-    placeholder: "",
-    defaultValue: "",
+    placeholder: serviceAuthRaw ? "same as above" : "",
+    defaultValue: serviceAuthRaw,
   }));
   if (daemonAuthRaw === undefined) return undefined;
 
@@ -266,7 +265,7 @@ export async function planPrometheusProvision(host: Host): Promise<PrometheusPro
       infoserverTarget: infoserver?.target,
       infoserverScheme: infoserver?.scheme,
       daemonSdUrl,
-      sdAuth: parseBasicAuth(sdAuthRaw),
+      serviceAuth: parseBasicAuth(serviceAuthRaw),
       daemonAuth: parseBasicAuth(daemonAuthRaw),
     }),
     composeFile: buildComposeFile(port, CONFIG_PATH),
