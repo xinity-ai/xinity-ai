@@ -86,6 +86,12 @@
 
 # Infoserver
 {$INFOSERVER_SUBDOMAIN}.{$DOMAIN} {
+	# /metrics is only password protected when METRICS_AUTH is set on the
+	# infoserver, and is public when it is not. Scrape it over the internal
+	# network instead.
+	@metrics path /metrics
+	respond @metrics 403
+
 	reverse_proxy infoserver:{$INFOSERVER_PORT}
 
 	# Security headers

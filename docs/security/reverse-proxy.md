@@ -35,7 +35,7 @@ Only trust forwarded headers when a proxy you control is the sole path to the da
 
 ## Do not expose /metrics
 
-`/metrics` serves Prometheus exposition. It is password protected only when `METRICS_AUTH` is set on the gateway, and is **fully public when that variable is unset**. Deny it at the proxy and scrape it over your internal network:
+`/metrics` serves Prometheus exposition. It is password protected only when `METRICS_AUTH` is set on the gateway, and is **fully public when that variable is unset**. The same holds for the infoserver. The bundled Caddy configurations deny it on both subdomains. Behind your own proxy, deny it there and scrape it over your internal network:
 
 ```nginx
 location = /metrics {

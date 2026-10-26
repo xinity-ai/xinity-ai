@@ -36,12 +36,18 @@
         }
       '';
 
-      vhost = subdomain: target: headers: lib.optionalAttrs (subdomain != null) {
+      vhostWith = preamble: subdomain: target: headers: lib.optionalAttrs (subdomain != null) {
         "${subdomain}.${cfg.domain}".extraConfig = lib.mkDefault ''
-          reverse_proxy ${target}
+          ${preamble}reverse_proxy ${target}
           ${headerBlock headers}
         '';
       };
+      vhost = vhostWith "";
+      # /metrics is public wherever METRICS_AUTH is unset, so it is scraped over the internal network instead.
+      scrapedVhost = vhostWith ''
+        @metrics path /metrics
+        respond @metrics 403
+      '';
 
       # /health reports database reachability and /metrics belongs to the scrape path.
       tetherVhost = lib.optionalAttrs (cfg.tetherSubdomain != null) {
@@ -177,8 +183,8 @@
           '');
           virtualHosts =
             vhost cfg.dashboardSubdomain dashboardTarget dashboardHeaders
-            // vhost cfg.gatewaySubdomain gatewayTarget commonHeaders
-            // vhost cfg.infoserverSubdomain infoserverTarget commonHeaders
+            // scrapedVhost cfg.gatewaySubdomain gatewayTarget commonHeaders
+            // scrapedVhost cfg.infoserverSubdomain infoserverTarget commonHeaders
             // tetherVhost
             // lib.optionalAttrs (cfg.grafanaOrigin != null)
               (vhost cfg.grafanaSubdomain cfg.grafanaOrigin commonHeaders);
