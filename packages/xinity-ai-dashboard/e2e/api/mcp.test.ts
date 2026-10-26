@@ -59,6 +59,9 @@ const EXCLUDED_TOOLS = [
   "organization_deleteOrganization",
   "onboarding_setupOnboarding",
   "onboarding_cli",
+  "deployment_list",
+  "deployment_create",
+  "deployment_enable",
   "instanceAdmin_listUsers",
   "instanceAdmin_banUser",
   "instanceAdmin_unbanUser",
@@ -122,7 +125,7 @@ describe("MCP tool visibility", () => {
   test("tools/list contains expected included tools", () => {
     expect(toolNames).toContain("apiKey_list");
     expect(toolNames).toContain("apiKey_create");
-    expect(toolNames).toContain("deployment_list");
+    expect(toolNames).toContain("deployments_list");
     expect(toolNames).toContain("application_list");
     expect(toolNames).toContain("dynamicConfig_list");
   });

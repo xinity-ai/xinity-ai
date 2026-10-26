@@ -6,27 +6,32 @@ import LegacyDeploymentDetails from "./LegacyDeploymentDetails.svelte";
 
 type DeploymentTypeView = {
   label: (deployment: DeploymentDefinition) => string;
+  replicas: (deployment: DeploymentDefinition) => number;
+  /** The catalog model the deployment serves, which decides how it can be tested. */
+  modelSpecifier: (deployment: DeploymentDefinition) => string;
   details: Component<{ deployment: DeploymentDefinition }>;
   editModal: Component<ComponentProps<typeof DeploymentModal>>;
 };
 
 export const DEPLOYMENT_TYPE_VIEWS: Record<DeploymentType, DeploymentTypeView> = {
   legacy: {
-    label: (deployment) => {
-      if (!deployment.earlySpecifier) {
+    label: ({ legacy }) => {
+      if (!legacy.earlySpecifier) {
         return "Static";
       }
-      if (deployment.canaryProgressWithFeedback) {
+      if (legacy.canaryProgressWithFeedback) {
         return "Canary (smart-auto)";
       }
-      if (deployment.canaryProgressUntil) {
+      if (legacy.canaryProgressUntil) {
         return "Canary (time-based)";
       }
-      if (deployment.canaryProgressFrom) {
+      if (legacy.canaryProgressFrom) {
         return "Canary (manual)";
       }
       return "Canary";
     },
+    replicas: ({ legacy }) => legacy.replicas,
+    modelSpecifier: ({ legacy }) => legacy.specifier,
     details: LegacyDeploymentDetails,
     editModal: DeploymentModal,
   },

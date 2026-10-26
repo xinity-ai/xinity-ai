@@ -14,15 +14,14 @@ import {
   type Deployment,
   type DeploymentLegacy,
 } from "common-db";
-import type { DeploymentInput, DeploymentOutput, DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
+import type { DeploymentOutput, LegacyDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { foldDeploymentStatusRows } from "./deployment-status";
 import type { DashboardDeploymentType, Transaction } from "./deployment-types";
 import { requirementsForDeployments } from "./requirements";
 
-// The entry's id and timestamps win over the legacy row's own.
-const outputOf = (entry: Deployment, legacy: DeploymentLegacy): DeploymentOutput => ({ ...legacy, ...entry });
+const outputOf = (entry: Deployment, legacy: DeploymentLegacy): DeploymentOutput => ({ ...entry, type: "legacy", legacy });
 
 const idsOf = (entries: Deployment[]) => entries.map(({ id }) => id);
 
@@ -32,13 +31,8 @@ function withLegacyRows(entries: Deployment[]) {
     .where(inArray(deploymentT.id, idsOf(entries)));
 }
 
-function legacyFieldsOf(input: Partial<DeploymentInput>) {
-  const { specifier, earlySpecifier, replicas, canaryProgressUntil, canaryProgressFrom, canaryProgressWithFeedback, progress, kvCacheSize, earlyKvCacheSize, preferredDriver, settings } = input;
-  return { specifier, earlySpecifier, replicas, canaryProgressUntil, canaryProgressFrom, canaryProgressWithFeedback, progress, kvCacheSize, earlyKvCacheSize, preferredDriver, settings };
-}
-
-export async function createLegacy(tx: Transaction, input: Omit<DeploymentInput, "id">): Promise<string> {
-  const [legacy] = await tx.insert(deploymentLegacyT).values({ ...legacyFieldsOf(input), specifier: input.specifier }).returning({ id: deploymentLegacyT.id });
+export async function createLegacy(tx: Transaction, input: LegacyDeploymentInput): Promise<string> {
+  const [legacy] = await tx.insert(deploymentLegacyT).values(input).returning({ id: deploymentLegacyT.id });
   if (!legacy) {
     throw new Error("Insert into deploymentLegacyT returned no row");
   }
@@ -72,12 +66,12 @@ async function lookupIsMissingFromCatalog(specifier: string | null): Promise<boo
   }
 }
 
-async function markDeploymentsMissingFromCatalog(deployments: DeploymentWithStatus[]): Promise<void> {
+async function markDeploymentsMissingFromCatalog(deployments: DeploymentOutput[]): Promise<void> {
   const candidates = deployments.filter(d => !d.status && d.enabled);
   await Promise.all(candidates.map(async (entry) => {
     const [primaryMissing, earlyMissing] = await Promise.all([
-      lookupIsMissingFromCatalog(entry.specifier ?? null),
-      lookupIsMissingFromCatalog(entry.earlySpecifier ?? null),
+      lookupIsMissingFromCatalog(entry.legacy.specifier),
+      lookupIsMissingFromCatalog(entry.legacy.earlySpecifier ?? null),
     ]);
     if (primaryMissing || earlyMissing) {
       entry.status = { phase: "not_in_catalog", progress: null, error: null };
@@ -85,14 +79,14 @@ async function markDeploymentsMissingFromCatalog(deployments: DeploymentWithStat
   }));
 }
 
-async function markDeploymentsOnDeprecatedCatalog(deployments: DeploymentWithStatus[]): Promise<void> {
+async function markDeploymentsOnDeprecatedCatalog(deployments: DeploymentOutput[]): Promise<void> {
   await Promise.all(deployments.map(async (entry) => {
     const [primary, early] = await Promise.all([
-      resolvesOnlyAsLegacy(entry.specifier ?? null),
-      resolvesOnlyAsLegacy(entry.earlySpecifier ?? null),
+      resolvesOnlyAsLegacy(entry.legacy.specifier),
+      resolvesOnlyAsLegacy(entry.legacy.earlySpecifier ?? null),
     ]);
     if (primary || early) {
-      entry.deprecatedModel = true;
+      entry.legacy.deprecatedModel = true;
     }
   }));
 }
@@ -161,8 +155,9 @@ export const legacyDeployment: DashboardDeploymentType = {
   },
 
   async reviewUpdate(entry, input) {
-    if (input.specifier) {
-      const mismatch = await validateCanaryModelTypes(input.specifier, input.earlySpecifier ?? null);
+    const patch = input.legacy ?? {};
+    if (patch.specifier) {
+      const mismatch = await validateCanaryModelTypes(patch.specifier, patch.earlySpecifier ?? null);
       if (mismatch) {
         return { rejected: mismatch };
       }
@@ -176,26 +171,26 @@ export const legacyDeployment: DashboardDeploymentType = {
 
     const staysEnabled = entry.enabled && input.enabled !== false;
     if (staysEnabled) {
-      const changed = RESTRICTED_WHILE_ENABLED.filter(field => input[field] !== undefined && input[field] !== legacy[field]);
+      const changed = RESTRICTED_WHILE_ENABLED.filter(field => patch[field] !== undefined && patch[field] !== legacy[field]);
       if (changed.length > 0) {
         return { rejected: `Cannot change ${changed.join(", ")} while the deployment is enabled. Disable it first.` };
       }
     }
 
     const reenabling = input.enabled && !entry.enabled;
-    const scalingUp = staysEnabled && input.replicas !== undefined && input.replicas > legacy.replicas;
+    const scalingUp = staysEnabled && patch.replicas !== undefined && patch.replicas > legacy.replicas;
     if (!reenabling && !scalingUp) {
       return {};
     }
-    const merged = { ...legacy, ...input, id: legacy.id };
+    const merged = { ...legacy, ...patch };
     return { mustFit: { requirements: requirementsForDeployments([merged]), replacing: scalingUp ? legacy.id : undefined } };
   },
 
   async update(tx, entry, input) {
-    const fields = legacyFieldsOf(input);
-    if (!entry.legacyId || Object.values(fields).every((value) => value === undefined)) {
+    const patch = input.legacy;
+    if (!entry.legacyId || !patch || Object.values(patch).every((value) => value === undefined)) {
       return;
     }
-    await tx.update(deploymentLegacyT).set(fields).where(sql`${deploymentLegacyT.id} = ${entry.legacyId}`);
+    await tx.update(deploymentLegacyT).set(patch).where(sql`${deploymentLegacyT.id} = ${entry.legacyId}`);
   },
 };

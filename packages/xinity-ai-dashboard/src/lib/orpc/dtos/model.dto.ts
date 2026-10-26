@@ -3,7 +3,6 @@
  */
 import { z } from "zod";
 import { OPTIMIZATION_GOALS } from "common-env/deployment-settings";
-import { DEPLOYMENT_TYPES } from "common-env/deployment-types";
 import { CommonDto, commonInputFilter } from "./common.dto";
 
 export const DeploymentSettingsDto = z.object({
@@ -12,60 +11,6 @@ export const DeploymentSettingsDto = z.object({
   maxAudioInputFileSizeMB: z.number().int().min(1).optional(),
   optimizeFor: z.enum(OPTIMIZATION_GOALS).optional(),
 });
-
-export const DeploymentDto = CommonDto.extend({
-  name: z.string().trim(),
-
-  type: z.enum(DEPLOYMENT_TYPES),
-  enabled: z.boolean(),
-  publicSpecifier: z.string().trim()
-    .refine(s => !s.endsWith("-deep-research"), {
-      message: "Deployment names cannot end with '-deep-research' (reserved suffix)",
-    }),
-  /** Canonical model identifier. */
-  specifier: z.string().trim(),
-  /** In a canary rollout, the model traffic moves away from. `specifier` is the canary and `progress` its share. */
-  earlySpecifier: z.string().trim().nullish(),
-  replicas: z.number().default(1),
-  canaryProgressUntil: z.date().nullish(),
-  canaryProgressFrom: z.date().nullish(),
-  canaryProgressWithFeedback: z.boolean().default(false),
-  progress: z.number().default(100),
-  kvCacheSize: z.number().nullish(),
-  earlyKvCacheSize: z.number().nullish(),
-  description: z.string().nullish(),
-  preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
-  settings: DeploymentSettingsDto.optional(),
-});
-export type DeploymentOutput = z.infer<typeof DeploymentDto>;
-
-export const ReplicasDto = z.number().int().min(1);
-export const ProgressDto = z.number().int().min(0).max(100);
-export const KvCacheSizeDto = z.number().positive();
-
-// Stored rows are read back through DeploymentDto, so the stricter rules apply to what is written only.
-export const DeploymentInputDto = DeploymentDto.omit({ ...commonInputFilter, type: true }).extend({
-  publicSpecifier: DeploymentDto.shape.publicSpecifier
-    .pipe(z.string().min(5).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, {
-      message: "Use letters, digits and . _ -, starting with a letter or digit",
-    })),
-  replicas: ReplicasDto.default(1),
-  progress: ProgressDto.default(100),
-  kvCacheSize: KvCacheSizeDto.nullish(),
-  earlyKvCacheSize: KvCacheSizeDto.nullish(),
-});
-export type DeploymentInput = z.infer<typeof DeploymentInputDto>;
-
-// Zod still applies a default under .optional(), so .partial() alone would reset omitted fields.
-export const DeploymentUpdateDto = DeploymentInputDto
-  .extend({
-    replicas: ReplicasDto,
-    canaryProgressWithFeedback: DeploymentDto.shape.canaryProgressWithFeedback.unwrap(),
-    progress: ProgressDto,
-  })
-  .partial()
-  .required({ id: true });
-export type DeploymentUpdate = z.infer<typeof DeploymentUpdateDto>;
 
 const ReplicaPhaseDto = z.enum(["ready", "downloading", "installing", "failed", "scheduling"]);
 
@@ -97,9 +42,79 @@ export const DeploymentStatusDto = z.object({
 });
 export type StatusPhase = z.infer<typeof DeploymentStatusDto>["phase"];
 
-export const DeploymentWithStatusDto = DeploymentDto.extend({
+export const ReplicasDto = z.number().int().min(1);
+export const ProgressDto = z.number().int().min(0).max(100);
+export const KvCacheSizeDto = z.number().positive();
+
+const PublicSpecifierDto = z.string().trim()
+  .refine(s => !s.endsWith("-deep-research"), {
+    message: "Deployment names cannot end with '-deep-research' (reserved suffix)",
+  });
+
+export const DeploymentBaseDto = CommonDto.extend({
+  name: z.string().trim(),
+  description: z.string().nullish(),
+  enabled: z.boolean(),
+  publicSpecifier: PublicSpecifierDto,
   status: DeploymentStatusDto.optional(),
+});
+
+export const LegacyDeploymentDto = z.object({
+  /** Canonical model identifier. */
+  specifier: z.string().trim(),
+  /** In a canary rollout, the model traffic moves away from. `specifier` is the canary and `progress` its share. */
+  earlySpecifier: z.string().trim().nullish(),
+  replicas: z.number().default(1),
+  canaryProgressUntil: z.date().nullish(),
+  canaryProgressFrom: z.date().nullish(),
+  canaryProgressWithFeedback: z.boolean().default(false),
+  progress: z.number().default(100),
+  kvCacheSize: z.number().nullish(),
+  earlyKvCacheSize: z.number().nullish(),
+  preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
+  settings: DeploymentSettingsDto.optional(),
   /** Set while the model is only served by the deprecated catalog. Removed before 1.0.0. */
   deprecatedModel: z.boolean().optional(),
 });
-export type DeploymentWithStatus = z.infer<typeof DeploymentWithStatusDto>;
+export type LegacyDeploymentOutput = z.infer<typeof LegacyDeploymentDto>;
+
+export const DeploymentDto = z.discriminatedUnion("type", [
+  DeploymentBaseDto.extend({ type: z.literal("legacy"), legacy: LegacyDeploymentDto }),
+]);
+export type DeploymentOutput = z.infer<typeof DeploymentDto>;
+
+// Stored rows are read back through DeploymentDto, so the stricter rules apply to what is written only.
+export const DeploymentBaseInputDto = DeploymentBaseDto.omit({ id: true, status: true, ...commonInputFilter }).extend({
+  publicSpecifier: PublicSpecifierDto
+    .pipe(z.string().min(5).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, {
+      message: "Use letters, digits and . _ -, starting with a letter or digit",
+    })),
+});
+
+export const LegacyDeploymentInputDto = LegacyDeploymentDto.omit({ deprecatedModel: true }).extend({
+  replicas: ReplicasDto.default(1),
+  progress: ProgressDto.default(100),
+  kvCacheSize: KvCacheSizeDto.nullish(),
+  earlyKvCacheSize: KvCacheSizeDto.nullish(),
+});
+export type LegacyDeploymentInput = z.infer<typeof LegacyDeploymentInputDto>;
+
+export const DeploymentInputDto = z.discriminatedUnion("type", [
+  DeploymentBaseInputDto.extend({ type: z.literal("legacy"), legacy: LegacyDeploymentInputDto }),
+]);
+
+// Zod still applies a default under .optional(), so .partial() alone would reset omitted fields.
+export const LegacyDeploymentPatchDto = LegacyDeploymentInputDto
+  .extend({
+    replicas: ReplicasDto,
+    canaryProgressWithFeedback: z.boolean(),
+    progress: ProgressDto,
+  })
+  .partial();
+
+/** Changes to the deployment's type-specific part go under the key of its type. */
+export const DeploymentUpdateDto = DeploymentBaseInputDto.partial().extend({
+  id: z.uuid(),
+  legacy: LegacyDeploymentPatchDto.optional(),
+});
+export type DeploymentUpdate = z.infer<typeof DeploymentUpdateDto>;

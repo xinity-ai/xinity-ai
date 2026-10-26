@@ -33,8 +33,8 @@ function loadRootEnv() {
   }
 }
 
-async function preview(body: Record<string, unknown>): Promise<Preview> {
-  const res = await ownerFetch("/api/deployment/check-capacity", { method: "POST", body: JSON.stringify(body) });
+async function preview(legacy: Record<string, unknown>): Promise<Preview> {
+  const res = await ownerFetch("/api/deployments/check-capacity", { method: "POST", body: JSON.stringify({ type: "legacy", legacy }) });
   expect(res.status).toBe(200);
   return (await res.json()) as Preview;
 }

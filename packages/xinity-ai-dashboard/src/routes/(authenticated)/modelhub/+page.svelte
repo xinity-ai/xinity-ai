@@ -74,7 +74,7 @@
 
     const timer = setInterval(async () => {
       await Promise.all(uncleanIds.map(async (id) => {
-        const [err, dep] = await orpc.deployment.get({ id, withStatus: true });
+        const [err, dep] = await orpc.deployments.get({ id, withStatus: true });
         if (!err && dep) {
           deployments = deployments.map(d => d.id === id ? dep : d);
         }
@@ -89,7 +89,7 @@
     if (!browser || !deploymentsLoaded) return;
 
     const timer = setInterval(async () => {
-      const [err, deps] = await orpc.deployment.list({ withStatus: true });
+      const [err, deps] = await orpc.deployments.list({ withStatus: true });
       if (err) { browserLogger.warn({ err }, "Background deployment refresh failed"); return; }
       deployments = deps;
     }, 2 * 60 * 60 * 1000);
@@ -122,7 +122,7 @@
     if (!browser || !deploymentsLoaded) return;
     for (const d of deployments) {
       if (d.status?.phase !== "ready" && d.status?.phase !== "partial") continue;
-      const key = d.specifier;
+      const key = DEPLOYMENT_TYPE_VIEWS[d.type].modelSpecifier(d);
       if (modelKnowledge[key] !== undefined) continue;
       modelKnowledge[key] = { status: "loading" };
       void fetchModelType(key);
@@ -141,7 +141,7 @@
   function testableType(
     deployment: DeploymentDefinition,
   ): "chat" | "embedding" | "rerank" | null {
-    const k = modelKnowledge[deployment.specifier];
+    const k = modelKnowledge[DEPLOYMENT_TYPE_VIEWS[deployment.type].modelSpecifier(deployment)];
     if (k?.status !== "known" || k.type === "transcription") return null;
     return k.type;
   }
@@ -170,7 +170,7 @@
   }
 
   async function refreshDeployments() {
-    const [err, deps] = await orpc.deployment.list({ withStatus: true });
+    const [err, deps] = await orpc.deployments.list({ withStatus: true });
     if (err) {
       browserLogger.warn({ err }, "Failed to refresh deployments");
       toastState.add("Failed to refresh deployments", "error");
@@ -211,7 +211,7 @@
     let failed = false;
 
     await updateOptimistically({
-      apiPromise: () => orpc.deployment.delete({ id: deleting.id }),
+      apiPromise: () => orpc.deployments.delete({ id: deleting.id }),
       update: () => { deletedIds.add(deleting.id); },
       undo: (error) => {
         deletedIds.delete(deleting.id);
@@ -229,7 +229,7 @@
     }
   }
   async function retryDeployment(deployment: DeploymentDefinition) {
-    const [err] = await orpc.deployment.retry({ id: deployment.id });
+    const [err] = await orpc.deployments.retry({ id: deployment.id });
     if (err) {
       toastState.add("Failed to retry deployment", "error");
       return;
@@ -345,8 +345,8 @@
                   {#if !deployment.enabled}
                     <Badge variant="destructive">Disabled</Badge>
                   {/if}
-                  {#if deployment.replicas > 1}
-                    <Badge variant="secondary">{deployment.replicas} replicas</Badge>
+                  {#if DEPLOYMENT_TYPE_VIEWS[deployment.type].replicas(deployment) > 1}
+                    <Badge variant="secondary">{DEPLOYMENT_TYPE_VIEWS[deployment.type].replicas(deployment)} replicas</Badge>
                   {/if}
                   <Badge variant="outline">{DEPLOYMENT_TYPE_VIEWS[deployment.type].label(deployment)}</Badge>
                 </div>
@@ -381,14 +381,14 @@
                   {@render chip("bg-amber-400", "bg-amber-100 text-amber-700", "No node available", false, "The orchestrator could not place this model on any node. Common causes: no node has enough free VRAM for the model weight, or no available node has the required driver. A node that was removed or is powered off no longer counts.")}
                 {:else}
                   {@const cfg = phaseConfig[deployment.status.phase]}
-                  {@const slots = replicaSlots(deployment.replicas, deployment.status.replicas)}
+                  {@const slots = replicaSlots(DEPLOYMENT_TYPE_VIEWS[deployment.type].replicas(deployment), deployment.status.replicas)}
                   {@render chip(cfg.dot, cfg.chip, cfg.label, cfg.pulse)}
                   {#if slots.missing > 0}
                     <span
                       class="ml-2 text-xs text-amber-600 dark:text-amber-500 cursor-help"
-                      title="Only {slots.observed.length} of {deployment.replicas} requested replicas are placed. Each replica needs its own node, so a cluster cannot run more replicas than it has nodes. Other causes: no node has enough free VRAM for the model weight, or no available node has the required driver."
+                      title="Only {slots.observed.length} of {slots.total} requested replicas are placed. Each replica needs its own node, so a cluster cannot run more replicas than it has nodes. Other causes: no node has enough free VRAM for the model weight, or no available node has the required driver."
                     >
-                      {slots.observed.length}/{deployment.replicas} replicas
+                      {slots.observed.length}/{slots.total} replicas
                     </span>
                   {/if}
                   {#if slots.total > 1}
@@ -501,15 +501,6 @@
               <div>
                 <p class="text-sm text-muted-foreground">Model</p>
                 <p class="font-medium">{deployment.publicSpecifier}</p>
-                {#if deployment.deprecatedModel}
-                  <p class="text-xs text-amber-700 dark:text-amber-400 mt-1 flex items-start gap-1.5">
-                    <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>
-                      Uses a model entry in a format that is being retired. It keeps running for now.
-                      Edit this deployment and pick a current entry to move it over.
-                    </span>
-                  </p>
-                {/if}
               </div>
 
               <div>

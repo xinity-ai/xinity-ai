@@ -1,6 +1,6 @@
 import { deploymentT, sql, type Deployment } from "common-db";
 import { DEPLOYMENT_TYPES, type DeploymentType } from "common-env";
-import type { DeploymentInput, DeploymentOutput, DeploymentUpdate, DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
+import type { DeploymentOutput, DeploymentUpdate } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import type { DeploymentPhaseRow } from "$lib/server/notifications/scheduler";
 import { legacyDeployment } from "./legacy-deployment";
@@ -14,13 +14,13 @@ export type UpdateReview =
 
 export type DashboardDeploymentType = {
   read: (entries: Deployment[]) => Promise<DeploymentOutput[]>;
-  withStatus: (entries: Deployment[]) => Promise<DeploymentWithStatus[]>;
+  withStatus: (entries: Deployment[]) => Promise<DeploymentOutput[]>;
   /** What the entries need placed on nodes while they are enabled. */
   requirements: (entries: Deployment[]) => Promise<ModelRequirementTable>;
   phases: (entries: Deployment[]) => Promise<DeploymentPhaseRow[]>;
   /** Why an update cannot be made, or what has to fit for it to be made. Writes nothing. */
   reviewUpdate: (entry: Deployment, input: DeploymentUpdate) => Promise<UpdateReview>;
-  update: (tx: Transaction, entry: Deployment, input: Partial<DeploymentInput>) => Promise<void>;
+  update: (tx: Transaction, entry: Deployment, input: DeploymentUpdate) => Promise<void>;
 };
 
 export const DASHBOARD_DEPLOYMENT_TYPES: Record<DeploymentType, DashboardDeploymentType> = {

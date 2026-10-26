@@ -2,7 +2,7 @@ import type { PageServerLoad } from "./$types";
 import { router } from "$lib/server/orpc/router";
 import { call } from "@orpc/server";
 import { buildClusterOverview, type ClusterOverview } from "$lib/server/orpc/procedures/cluster.procedure";
-import type { DeploymentWithStatus } from "$lib/orpc/dtos/model.dto";
+import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
 import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
 import { isRedirect, isHttpError } from "@sveltejs/kit";
 
@@ -20,14 +20,14 @@ export const load: PageServerLoad = async ({ parent, locals }) => {
 
   if (!activeOrgId) {
     return {
-      deployments: Promise.resolve([] as DeploymentWithStatus[]),
+      deployments: Promise.resolve([] as DeploymentOutput[]),
       applications: [] as ApplicationDto[],
       ...emptyCapacity,
     };
   }
 
   // Stream deployments - page renders immediately with skeletons while this resolves
-  const deployments = call(router.deployment.list, { withStatus: true }, { context: locals });
+  const deployments = call(router.deployments.list, { withStatus: true }, { context: locals });
   const [capacity, applications] = await Promise.all([
     buildClusterOverview(),
     call(router.application.list, {}, { context: locals })
@@ -40,4 +40,4 @@ export const load: PageServerLoad = async ({ parent, locals }) => {
   return { deployments, applications, ...capacity };
 };
 
-export type { DeploymentWithStatus as DeploymentDefinition };
+export type { DeploymentOutput as DeploymentDefinition };

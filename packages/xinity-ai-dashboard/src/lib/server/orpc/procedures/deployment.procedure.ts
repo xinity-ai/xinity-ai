@@ -1,13 +1,13 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { inArray, sql, deploymentT, deploymentLegacyT, modelInstallationT, modelInstallationStateT, deploymentMatchesInstallation, legacyOfDeployment, stateOfInstallation, type Deployment } from "common-db";
 import z from "zod";
-import { DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, DeploymentWithStatusDto, KvCacheSizeDto, ProgressDto, ReplicasDto, type DeploymentInput } from "$lib/orpc/dtos/model.dto";
+import { DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ProgressDto, ReplicasDto, type DeploymentUpdate } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
 import { requirementsForDeployments, type DeploymentPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
 import { byType, DASHBOARD_DEPLOYMENT_TYPES } from "$lib/server/lib/deployments/deployment-types";
 import { createLegacy, validateCanaryModelTypes } from "$lib/server/lib/deployments/legacy-deployment";
-import { deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
+import { DEPLOYMENT_TYPES, deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import { rootLogger } from "$lib/server/logging";
 import { findOrgName } from "$lib/server/lib/org-queries";
@@ -33,7 +33,7 @@ async function assertModelsInCatalog(
   }
 }
 
-const CapacityCheckInput = z.object({
+export const LegacyDraftDto = z.object({
   specifier: z.string().trim(),
   earlySpecifier: z.string().trim().nullish(),
   replicas: ReplicasDto.default(1),
@@ -42,8 +42,15 @@ const CapacityCheckInput = z.object({
   earlyKvCacheSize: KvCacheSizeDto.nullish(),
   preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
   settings: deploymentSettingsSchema.optional(),
-  deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
 });
+
+const CapacityCheckInput = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("legacy"),
+    deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
+    legacy: LegacyDraftDto,
+  }),
+]);
 
 const FootprintPartDto = z.object({
   part: z.enum(Object.keys(FOOTPRINT_PART_MEMORY) as [FootprintPartKind, ...FootprintPartKind[]]),
@@ -79,7 +86,7 @@ const CapacityShortfallDto = z.object({
   })).describe("Each machine that could run the model, the one closest to fitting first"),
 });
 
-const CapacityCheckOutput = z.object({
+export const CapacityCheckOutput = z.object({
   deployable: z.boolean(),
   reason: z.string().optional(),
   replicas: z.array(PlannedReplicaDto).describe("Where each replica would be placed now, as the scheduler would place it"),
@@ -107,7 +114,7 @@ const SHORTFALL_REASONS: Record<ShortfallReason, (shortfall: Shortfall) => strin
 
 const DRAFT_DEPLOYMENT_ID = "draft";
 
-function draftPlan(draft: z.infer<typeof CapacityCheckInput>, id = DRAFT_DEPLOYMENT_ID): DeploymentPlan {
+function draftPlan(draft: z.infer<typeof LegacyDraftDto>, id = DRAFT_DEPLOYMENT_ID): DeploymentPlan {
   return {
     id,
     specifier: draft.specifier,
@@ -172,7 +179,7 @@ async function readDeployment(entry: Deployment) {
   return deployment;
 }
 
-function sharedFieldsOf({ name, description, enabled, publicSpecifier }: Partial<DeploymentInput>) {
+function sharedFieldsOf({ name, description, enabled, publicSpecifier }: DeploymentUpdate) {
   return { name, description, enabled, publicSpecifier };
 }
 
@@ -180,7 +187,7 @@ const listDeployments = rootOs.use(withOrganization)
   .use(requirePermission({ modelDeployment: ["read"] }))
   .route({ path: "/", method: "GET", tags, summary: "List Deployments", description: "Lists deployments accessible to the current user" })
   .input(z.object({ withStatus: z.coerce.boolean().default(false) }))
-  .output(DeploymentWithStatusDto.array())
+  .output(DeploymentDto.array())
   .handler(async ({ context, input }) => {
     const entries = await getDB().select().from(deploymentT).where(sql`
       ${deploymentT.organizationId} = ${context.activeOrganizationId}
@@ -205,6 +212,10 @@ const updateDeployment = rootOs
     const rlog = log.child({ traceId: context.traceId });
     const current = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!current) throw errors.NOT_FOUND();
+    const foreign = DEPLOYMENT_TYPES.find((other) => other !== current.type && input[other] !== undefined);
+    if (foreign) {
+      throw errors.BAD_REQUEST({ message: `This deployment is of type ${current.type}, so it has no ${foreign} part to change` });
+    }
     const type = DASHBOARD_DEPLOYMENT_TYPES[current.type];
 
     const review = await type.reviewUpdate(current, input);
@@ -239,7 +250,7 @@ const updateDeployment = rootOs
     return deployment;
   });
 
-const toggleEnabled = rootOs
+export const toggleEnabled = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["update"] }))
   .use(auditMiddleware)
@@ -248,7 +259,7 @@ const toggleEnabled = rootOs
     path: "/{id}/toggle-enabled", method: "PATCH", tags, summary: "Toggle Deployment Enabled State",
     description: "Updates the deployment, specifically by setting it enabled or disabled",
   })
-  .input(DeploymentDto.pick({ id: true, enabled: true }))
+  .input(z.object({ id: z.uuid(), enabled: z.boolean() }))
   .output(SuccessDto)
   .errors({ NOT_FOUND: {}, INSUFFICIENT_CAPACITY: {} })
   .handler(async ({ context, input, errors }) => {
@@ -279,7 +290,7 @@ const getDeployment = rootOs
     relevant for canary deployments, and exact deployment transition state`,
   })
   .input(z.object({ id: z.uuid(), withStatus: z.coerce.boolean().default(false) }))
-  .output(DeploymentWithStatusDto)
+  .output(DeploymentDto)
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
     const entry = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
@@ -290,7 +301,7 @@ const getDeployment = rootOs
     if (!deployment) throw errors.NOT_FOUND();
     return deployment;
   });
-const deleteDeployment = rootOs
+export const deleteDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["delete"] }))
   .use(auditMiddleware)
@@ -311,7 +322,7 @@ Immediately unregisters it, and drops it completely.
     syncDeployedModels();
     return { success: true };
   });
-const retryDeployment = rootOs
+export const retryDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["update"] }))
   .use(auditMiddleware)
@@ -359,7 +370,7 @@ const findDeployment = rootOs
     summary: "Get Deployment by spec",
     path: "/find/", method: "GET", tags, description: "Endpoint to find deployments via the specifier (public)",
   })
-  .input(DeploymentDto.pick({ publicSpecifier: true }))
+  .input(z.object({ publicSpecifier: z.string().trim() }))
   .output(DeploymentDto)
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
@@ -380,20 +391,20 @@ export const createDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["create"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "modelDeployment.create", resource: "modelDeployment", resourceId: { fromOutput: "id" }, captureInput: ["name", "specifier"] } })
+  .meta({ audit: { action: "modelDeployment.create", resource: "modelDeployment", resourceId: { fromOutput: "id" }, captureInput: ["name", "type", "legacy"] } })
   .route({
     summary: "Create Deployment",
     path: "/", method: "POST", tags, description: `Endpoint to create new deployments`
   })
-  .input(DeploymentInputDto.omit({ id: true }))
+  .input(DeploymentInputDto)
   .output(DeploymentDto)
   .errors({ CONFLICT: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {} })
   .handler(async ({ context, input, errors }) => {
-    if (!input.specifier) {
+    if (!input.legacy.specifier) {
       throw errors.BAD_REQUEST({ message: "specifier is required when creating a deployment" });
     }
-    const primarySpecifier = input.specifier;
-    const earlySpecifier = input.earlySpecifier ?? null;
+    const primarySpecifier = input.legacy.specifier;
+    const earlySpecifier = input.legacy.earlySpecifier ?? null;
 
     await assertModelsInCatalog(
       [primarySpecifier, ...(earlySpecifier ? [earlySpecifier] : [])],
@@ -405,7 +416,7 @@ export const createDeployment = rootOs
     if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
 
     if (input.enabled) {
-      const result = await checkDeploymentCapacity(requirementsForDeployments([draftPlan(input)]));
+      const result = await checkDeploymentCapacity(requirementsForDeployments([draftPlan(input.legacy)]));
       if (!result.deployable) {
         throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
       }
@@ -413,7 +424,7 @@ export const createDeployment = rootOs
 
     try {
       const entry = await getDB().transaction(async (tx) => {
-        const legacyId = await createLegacy(tx, { ...input, specifier: primarySpecifier, earlySpecifier });
+        const legacyId = await createLegacy(tx, { ...input.legacy, earlySpecifier });
         const [entry] = await tx
           .insert(deploymentT)
           .values({
@@ -421,7 +432,7 @@ export const createDeployment = rootOs
             description: input.description,
             enabled: input.enabled,
             publicSpecifier: input.publicSpecifier,
-            type: "legacy",
+            type: input.type,
             legacyId,
             organizationId: context.activeOrganizationId,
           })
@@ -463,10 +474,10 @@ const checkCapacity = rootOs
   .handler(async ({ context, input }): Promise<CapacityCheckResult> =>  {
     const replaced = input.deploymentId ? await findActiveDeploymentInOrg(input.deploymentId, context.activeOrganizationId) : undefined;
     const replacedId = replaced?.legacyId ?? undefined;
-    return checkDeploymentCapacity(requirementsForDeployments([draftPlan(input, replacedId)]), replacedId);
+    return checkDeploymentCapacity(requirementsForDeployments([draftPlan(input.legacy, replacedId)]), replacedId);
   });
 
-export const deploymentRouter = rootOs.prefix("/deployment").router({
+export const deploymentsRouter = rootOs.prefix("/deployments").router({
   create: createDeployment,
   get: getDeployment,
   update: updateDeployment,

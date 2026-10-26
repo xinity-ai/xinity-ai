@@ -1,6 +1,6 @@
 import type { lifecycleStateEnum } from "common-db";
 import { couplingDocsUrl, deriveInterconnectOverview, describeCouplingIssue, describePortIssue, type InstallationGroup, type InterconnectPort, type IssueDescription, type PortIssue } from "common-env";
-import type { DeploymentOutput, DeploymentWithStatus, ReplicaStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
+import type { DeploymentOutput, ReplicaStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
 import { foldDeployment, foldReplicas, isProgressBearingPhase, toDisplayPhase, type ReplicaMember } from "./deployment-phase";
 
 type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
@@ -27,7 +27,7 @@ type Member = ReplicaMember & { nodeId: string; node: string; interconnect: Inte
  * A row whose `ai_node` is null sits on a node that was removed or went offline, so it counts as
  * no replica at all: its state row stopped updating when the daemon went away.
  */
-export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): DeploymentWithStatus[] {
+export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): DeploymentOutput[] {
   const deploymentMap = new Map<string, { deployment: DeploymentOutput; members: Member[] }>();
 
   for (const row of rows) {

@@ -99,7 +99,7 @@
     });
   }
 
-  function deriveAdvancementStrategy(d: DeploymentDefinition) {
+  function deriveAdvancementStrategy(d: DeploymentDefinition["legacy"]) {
     if (!d.earlySpecifier) return "manual" as const;
     if (d.canaryProgressWithFeedback) return "smart-auto" as const;
     if (d.canaryProgressUntil) return "time-based" as const;
@@ -117,38 +117,39 @@
     deploymentName = d.name;
     deploymentNameEdited = true;
     enabled = d.enabled;
-    const hasCanary = Boolean(d.earlySpecifier);
+    const legacy = d.legacy;
+    const hasCanary = Boolean(legacy.earlySpecifier);
     const models = {
-      primarySpecifier: d.earlySpecifier ?? d.specifier,
-      canarySpecifier: hasCanary ? d.specifier : null,
-      kvCacheSize: (hasCanary ? d.earlyKvCacheSize : d.kvCacheSize) ?? null,
-      canaryKvCacheSize: hasCanary ? d.kvCacheSize ?? null : null,
+      primarySpecifier: legacy.earlySpecifier ?? legacy.specifier,
+      canarySpecifier: hasCanary ? legacy.specifier : null,
+      kvCacheSize: (hasCanary ? legacy.earlyKvCacheSize : legacy.kvCacheSize) ?? null,
+      canaryKvCacheSize: hasCanary ? legacy.kvCacheSize ?? null : null,
     };
     selectedPrimarySpecifier = models.primarySpecifier;
     selectedCanarySpecifier = models.canarySpecifier;
     isCanaryEnabled = hasCanary;
-    canaryTraffic = d.progress ?? 100;
+    canaryTraffic = legacy.progress ?? 100;
     kvCacheSize = models.kvCacheSize;
     canaryKvCacheSize = models.canaryKvCacheSize;
-    settings = { ...d.settings ?? { version: 1 } };
-    preferredDriver = d.preferredDriver ?? null;
-    replicas = d.replicas;
+    settings = { ...legacy.settings ?? { version: 1 } };
+    preferredDriver = legacy.preferredDriver ?? null;
+    replicas = legacy.replicas;
     customCodeConsent = false;
     licenseConsent = false;
     shouldAutoSelectCanary = true;
-    advancementStrategy = deriveAdvancementStrategy(d);
-    if (advancementStrategy === "time-based" && d.canaryProgressUntil) {
-      const from = d.canaryProgressFrom ?? new Date();
-      timeBasedDurationHours = Math.max(1, Math.round((d.canaryProgressUntil.getTime() - from.getTime()) / 3_600_000));
+    advancementStrategy = deriveAdvancementStrategy(legacy);
+    if (advancementStrategy === "time-based" && legacy.canaryProgressUntil) {
+      const from = legacy.canaryProgressFrom ?? new Date();
+      timeBasedDurationHours = Math.max(1, Math.round((legacy.canaryProgressUntil.getTime() - from.getTime()) / 3_600_000));
     }
 
     initialSnapshot = {
       ...models,
       name: d.name, publicSpecifier: d.publicSpecifier, enabled: d.enabled,
-      progress: d.progress,
-      canaryProgressWithFeedback: d.canaryProgressWithFeedback,
-      preferredDriver: d.preferredDriver ?? null, replicas: d.replicas,
-      settings: { ...d.settings ?? { version: 1 } },
+      progress: legacy.progress,
+      canaryProgressWithFeedback: legacy.canaryProgressWithFeedback,
+      preferredDriver: legacy.preferredDriver ?? null, replicas: legacy.replicas,
+      settings: { ...legacy.settings ?? { version: 1 } },
     };
   });
 
@@ -219,19 +220,22 @@
     }
     const canary = isCanaryEnabled ? selectedCanarySpecifier : null;
     const draft = {
-      specifier: canary ?? selectedPrimarySpecifier,
-      earlySpecifier: canary ? selectedPrimarySpecifier : null,
-      kvCacheSize: canary ? canaryKvCacheSize : kvCacheSize,
-      earlyKvCacheSize: canary ? kvCacheSize : null,
-      replicas, progress: isCanaryEnabled ? canaryTraffic : 100,
-      preferredDriver,
-      settings: $state.snapshot(settings),
+      type: "legacy" as const,
       deploymentId: deployment?.id,
+      legacy: {
+        specifier: canary ?? selectedPrimarySpecifier,
+        earlySpecifier: canary ? selectedPrimarySpecifier : null,
+        kvCacheSize: canary ? canaryKvCacheSize : kvCacheSize,
+        earlyKvCacheSize: canary ? kvCacheSize : null,
+        replicas, progress: isCanaryEnabled ? canaryTraffic : 100,
+        preferredDriver,
+        settings: $state.snapshot(settings),
+      },
     };
     const gated = shouldGateCapacity;
     const abort = new AbortController();
     const timer = setTimeout(() => {
-      orpc.deployment.checkCapacity(draft, { signal: abort.signal }).then(([error, data]) => {
+      orpc.deployments.checkCapacity(draft, { signal: abort.signal }).then(([error, data]) => {
         if (abort.signal.aborted) return;
         if (error) {
           browserLogger.error({ error }, "Capacity check failed");
@@ -389,37 +393,42 @@
       ? submittedCanaryKvCacheSize : undefined;
 
     const [error] = deployment
-      ? await orpc.deployment.update({
-          ...deployment,
-          specifier: canary ?? primarySpecifier,
-          earlySpecifier: canary ? primarySpecifier : null,
-          kvCacheSize: canary ? submittedCanaryKvCacheSize : submittedKvCacheSize,
-          earlyKvCacheSize: canary ? submittedKvCacheSize : null,
+      ? await orpc.deployments.update({
+          id: deployment.id,
           name: deploymentName.trim(),
           publicSpecifier: publicSpecifier.trim(),
           enabled,
-          progress: isCanaryEnabled ? canaryTraffic : 100,
-          canaryProgressWithFeedback: isCanaryEnabled && advancementStrategy === "smart-auto",
-          canaryProgressFrom: isCanaryEnabled && advancementStrategy !== "manual"
-            ? (deployment.canaryProgressFrom ?? new Date()) : null,
-          canaryProgressUntil: isCanaryEnabled && advancementStrategy === "time-based"
-            ? new Date(Date.now() + timeBasedDurationHours * 3_600_000) : null,
-          preferredDriver: preferredDriver || null, replicas,
-          settings: submittedSettings,
+          legacy: {
+            specifier: canary ?? primarySpecifier,
+            earlySpecifier: canary ? primarySpecifier : null,
+            kvCacheSize: canary ? submittedCanaryKvCacheSize : submittedKvCacheSize,
+            earlyKvCacheSize: canary ? submittedKvCacheSize : null,
+            progress: isCanaryEnabled ? canaryTraffic : 100,
+            canaryProgressWithFeedback: isCanaryEnabled && advancementStrategy === "smart-auto",
+            canaryProgressFrom: isCanaryEnabled && advancementStrategy !== "manual"
+              ? (deployment.legacy.canaryProgressFrom ?? new Date()) : null,
+            canaryProgressUntil: isCanaryEnabled && advancementStrategy === "time-based"
+              ? new Date(Date.now() + timeBasedDurationHours * 3_600_000) : null,
+            preferredDriver: preferredDriver || null, replicas,
+            settings: submittedSettings,
+          },
         })
-      : await orpc.deployment.create({
+      : await orpc.deployments.create({
           enabled, name: deploymentName.trim(), publicSpecifier: publicSpecifier.trim(),
-          specifier: createdCanary ?? primarySpecifier,
-          earlySpecifier: createdCanary ? primarySpecifier : undefined,
-          replicas, canaryProgressWithFeedback: advancementStrategy === "smart-auto",
-          kvCacheSize: createdCanary ? createdCanaryKvCacheSize : createdKvCacheSize,
-          earlyKvCacheSize: createdCanary ? createdKvCacheSize : undefined,
-          preferredDriver: preferredDriver || null,
-          progress: isCanaryEnabled && selectedCanaryModel ? canaryTraffic : undefined,
-          canaryProgressFrom: isCanaryEnabled && selectedCanaryModel ? new Date() : undefined,
-          canaryProgressUntil: isCanaryEnabled && selectedCanaryModel && advancementStrategy === "time-based"
-            ? new Date(Date.now() + timeBasedDurationHours * 3_600_000) : undefined,
-          settings: submittedSettings,
+          type: "legacy",
+          legacy: {
+            specifier: createdCanary ?? primarySpecifier,
+            earlySpecifier: createdCanary ? primarySpecifier : undefined,
+            replicas, canaryProgressWithFeedback: advancementStrategy === "smart-auto",
+            kvCacheSize: createdCanary ? createdCanaryKvCacheSize : createdKvCacheSize,
+            earlyKvCacheSize: createdCanary ? createdKvCacheSize : undefined,
+            preferredDriver: preferredDriver || null,
+            progress: isCanaryEnabled && selectedCanaryModel ? canaryTraffic : undefined,
+            canaryProgressFrom: isCanaryEnabled && selectedCanaryModel ? new Date() : undefined,
+            canaryProgressUntil: isCanaryEnabled && selectedCanaryModel && advancementStrategy === "time-based"
+              ? new Date(Date.now() + timeBasedDurationHours * 3_600_000) : undefined,
+            settings: submittedSettings,
+          },
         });
 
     if (error) {
