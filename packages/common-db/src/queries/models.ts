@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { aiNodeT, deploymentLegacyT, deploymentT, modelInstallationStateT, modelInstallationT } from "../schema/models";
+import { aiNodeT, deploymentCanaryT, deploymentLegacyT, deploymentManagedT, deploymentT, modelInstallationStateT, modelInstallationT } from "../schema/models";
 
 /**
  * The node is live: available and not removed.
@@ -24,13 +24,31 @@ export const stateOfInstallation = sql`${modelInstallationStateT.id} = ${modelIn
  * The installation serves the legacy deployment row.
  * Needs `deployment_legacy` and `model_installation`. Use as the ON when joining one onto the other.
  */
-export const deploymentMatchesInstallation = sql`${deploymentLegacyT.id} = ${modelInstallationT.deploymentId}`;
+export const legacyMatchesInstallation = sql`${deploymentLegacyT.id} = ${modelInstallationT.legacyId}`;
+
+/**
+ * The installation serves the managed deployment row.
+ * Needs `deployment_managed` and `model_installation`. Use as the ON when joining one onto the other.
+ */
+export const managedMatchesInstallation = sql`${deploymentManagedT.id} = ${modelInstallationT.managedId}`;
 
 /**
  * The legacy row is the one the deployment points at.
  * Needs `deployment` and `deployment_legacy`. Use as the ON when joining one onto the other.
  */
 export const legacyOfDeployment = sql`${deploymentLegacyT.id} = ${deploymentT.legacyId}`;
+
+/**
+ * The managed row is the one the deployment points at.
+ * Needs `deployment` and `deployment_managed`. Use as the ON when joining one onto the other.
+ */
+export const managedOfDeployment = sql`${deploymentManagedT.id} = ${deploymentT.managedId}`;
+
+/**
+ * The canary row is the one the deployment points at.
+ * Needs `deployment` and `deployment_canary`. Use as the ON when joining one onto the other.
+ */
+export const canaryOfDeployment = sql`${deploymentCanaryT.id} = ${deploymentT.canaryId}`;
 
 /**
  * The installation is of the given canonical specifier.

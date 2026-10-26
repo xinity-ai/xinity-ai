@@ -30,6 +30,8 @@ export const deploymentT = pgTable("deployment", {
   publicSpecifier: text("public_specifier").notNull(),
   type: deploymentTypeEnum().notNull(),
   legacyId: uuid("legacy_id").references(() => deploymentLegacyT.id),
+  managedId: uuid("managed_id").references(() => deploymentManagedT.id),
+  canaryId: uuid("canary_id").references(() => deploymentCanaryT.id),
 
   deletedAt,
   createdAt,
@@ -39,9 +41,13 @@ export const deploymentT = pgTable("deployment", {
     .on(table.publicSpecifier, table.organizationId)
     .where(sql`${table.deletedAt} IS NULL`),
   uniqueIndex("deployment_legacy_id_idx").on(table.legacyId),
+  uniqueIndex("deployment_managed_id_idx").on(table.managedId),
+  uniqueIndex("deployment_canary_id_idx").on(table.canaryId),
   // Every type adds its column to num_nonnulls and its case, so exactly the row of the named type is set.
-  check("deployment_type_row_check", sql`num_nonnulls(${table.legacyId}) = 1 AND CASE ${table.type}
+  check("deployment_type_row_check", sql`num_nonnulls(${table.legacyId}, ${table.managedId}, ${table.canaryId}) = 1 AND CASE ${table.type}
     WHEN 'legacy' THEN ${table.legacyId} IS NOT NULL
+    WHEN 'managed' THEN ${table.managedId} IS NOT NULL
+    WHEN 'canary' THEN ${table.canaryId} IS NOT NULL
     ELSE false
   END`),
 ]);
@@ -73,6 +79,50 @@ export const deploymentLegacyT = pgTable("deployment_legacy", {
   updatedAt,
 });
 export type DeploymentLegacy = InferSelectModel<typeof deploymentLegacyT>;
+
+/** One model scheduled onto our own nodes. A canary's members are rows of this table without an entry of their own. */
+export const deploymentManagedT = pgTable("deployment_managed", {
+  id: uuid().primaryKey().defaultRandom(),
+  /** Canonical model identifier. */
+  specifier: text().notNull(),
+  /** Ignored while the row is a canary member, whose replicas come from the canary's budget. */
+  replicas: integer().notNull().default(1),
+  /** User-specified KV-cache in GB. Null means use the model's default minKvCache. */
+  kvCacheSize: real("kv_cache_size"),
+  /** User-specified preferred inference driver. Null means auto (system default). */
+  preferredDriver: inferenceDriverEnum("preferred_driver"),
+  settings: jsonb().notNull().$type<DeploymentSettings>().default({ version: 1 }),
+
+  createdAt,
+  updatedAt,
+});
+export type DeploymentManaged = InferSelectModel<typeof deploymentManagedT>;
+
+/** A rollout that moves traffic from one managed row to another. */
+export const deploymentCanaryT = pgTable("deployment_canary", {
+  id: uuid().primaryKey().defaultRandom(),
+  /** The member traffic moves away from. */
+  fromId: uuid("from_id").notNull().references(() => deploymentManagedT.id),
+  /** The member traffic moves to. */
+  toId: uuid("to_id").notNull().references(() => deploymentManagedT.id),
+  /** Replicas the two members share, split between them by progress. */
+  replicas: integer().notNull().default(1),
+  /** Share of traffic, in percent, that goes to the `to` member. */
+  progress: integer().notNull().default(0),
+  /** When present, marks the point at which progress should reach 100 */
+  canaryProgressUntil: timestamp("canary_progress_until", { withTimezone: true }),
+  /** When present, marks the start of canary progress modification. Usually equal to updatedAt */
+  canaryProgressFrom: timestamp("canary_progress_from", { withTimezone: true }),
+  canaryProgressWithFeedback: boolean("canary_progress_with_feedback").notNull().default(false),
+
+  createdAt,
+  updatedAt,
+}, table => [
+  uniqueIndex("deployment_canary_from_id_idx").on(table.fromId),
+  uniqueIndex("deployment_canary_to_id_idx").on(table.toId),
+  check("deployment_canary_members_check", sql`${table.fromId} <> ${table.toId}`),
+]);
+export type DeploymentCanary = InferSelectModel<typeof deploymentCanaryT>;
 
 /**
  * Represents a known ai node, incl. its reachable ip in the system, estimated capacity and links to models deployed on it
@@ -119,8 +169,10 @@ export type AiNode = InferSelectModel<typeof aiNodeT>;
 export const modelInstallationT = pgTable("model_installation", {
   id: uuid().primaryKey().defaultRandom(),
   nodeId: uuid("node_id").notNull().references(() => aiNodeT.id, { onDelete: "cascade" }),
-  /** The legacy deployment row this installation serves. An installation never serves more than one. */
-  deploymentId: uuid("deployment_id").notNull().references(() => deploymentLegacyT.id, { onDelete: "cascade" }),
+  /** The legacy row this installation serves. Exactly one of `legacyId` and `managedId` is set. */
+  legacyId: uuid("legacy_id").references(() => deploymentLegacyT.id, { onDelete: "cascade" }),
+  /** The managed row this installation serves. */
+  managedId: uuid("managed_id").references(() => deploymentManagedT.id, { onDelete: "cascade" }),
   /** Canonical model identifier. */
   specifier: text().notNull(),
   /** GPU memory in GB the installation occupies on its node, summed over all its cards */
@@ -145,9 +197,11 @@ export const modelInstallationT = pgTable("model_installation", {
   updatedAt,
 }, table => [
   index("model_installation_node_id_idx").on(table.nodeId),
-  index("model_installation_deployment_id_idx").on(table.deploymentId),
+  index("model_installation_legacy_id_idx").on(table.legacyId),
+  index("model_installation_managed_id_idx").on(table.managedId),
   index("model_installation_specifier_idx").on(table.specifier),
   index("model_installation_deleted_at_idx").on(table.deletedAt),
+  check("model_installation_owner_check", sql`num_nonnulls(${table.legacyId}, ${table.managedId}) = 1`),
 ]);
 export type ModelInstallation = InferSelectModel<typeof modelInstallationT>;
 
