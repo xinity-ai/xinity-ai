@@ -57,15 +57,19 @@ describe("buildPrometheusConfig", () => {
     expect(infoserver.metrics_path).toBe("/metrics");
   });
 
-  test("credentials attach to the SD request and the daemon scrape independently", () => {
+  test("the service credential covers every static scrape and the SD request, the daemon one only the daemon scrape", () => {
     const cfg = parseConfig(buildPrometheusConfig({
       ...base,
-      sdAuth: { username: "sd", password: "sdpass" },
+      infoserverTarget: "localhost:8090",
+      serviceAuth: { username: "svc", password: "svcpass" },
       daemonAuth: { username: "scrape", password: "scrapepass" },
     }));
     const daemon = cfg.scrape_configs.find((j) => j.job_name === "xinity-daemon")!;
+    const staticJobs = cfg.scrape_configs.filter((j) => j.static_configs);
 
-    expect(daemon.http_sd_configs![0]!.basic_auth).toEqual({ username: "sd", password: "sdpass" });
+    expect(staticJobs.map((j) => j.job_name)).toEqual(["xinity-gateway", "xinity-dashboard", "xinity-tether", "xinity-infoserver"]);
+    expect(staticJobs.every((j) => j.basic_auth?.username === "svc" && j.basic_auth.password === "svcpass")).toBe(true);
+    expect(daemon.http_sd_configs![0]!.basic_auth).toEqual({ username: "svc", password: "svcpass" });
     expect(daemon.basic_auth).toEqual({ username: "scrape", password: "scrapepass" });
   });
 
