@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { replicaLifecycles } from "./legacy-deployment";
+import { replicaLifecycles } from "./installations";
 
 const member = (lifecycle: "ready" | "installing" | null, id = "group-1") => ({ group: { id, size: 2 }, lifecycle });
 

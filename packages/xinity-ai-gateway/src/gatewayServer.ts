@@ -25,7 +25,7 @@ import { flushUsageEvents } from "./usageRecorder";
 import { flushCallLog } from "./callLogger";
 import { createCacheInvalidation } from "./llm-forward/cache-invalidation";
 import { invalidateDeployments } from "./llm-forward/model-data";
-import { invalidateModelSources } from "./llm-forward/legacy-deployment";
+import { invalidateModelSources } from "./llm-forward/installations";
 
 await exitOnHealthFlag({ ...config.server, tls: !!config.tls });
 

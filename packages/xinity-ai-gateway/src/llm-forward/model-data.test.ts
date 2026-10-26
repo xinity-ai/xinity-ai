@@ -50,7 +50,7 @@ mock.module("common-env/model-catalog", () => ({
 }));
 
 const { getModelInfo } = await import("./model-data");
-const { invalidateModelSources, _deps } = await import("./legacy-deployment");
+const { invalidateModelSources, _deps } = await import("./installations");
 const mockSelectHost = jest.fn<(strategy: unknown, input: { hosts: string[] }) => Promise<{ host: string; useFinalModel: boolean; release: () => void } | null>>();
 _deps.selectHost = mockSelectHost as any;
 const mockAdmit = jest.fn<(installationId: string, maxNumSeqs: number | null) => Promise<(() => void) | undefined>>(async () => () => {});
@@ -184,6 +184,18 @@ describe("getModelInfo", () => {
     expect(result!.type).toBe("chat");
     expect(result!.tags).toEqual(["tools"]);
     expect(typeof result!.release).toBe("function");
+  });
+
+  test("takes the installation of the picked side when both sides run on one node", async () => {
+    pushDeployment({ specifier: "llama3:latest", earlySpecifier: "llama2:latest", progress: 30 });
+    queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "vllm", installationId: "final-inst" })]);
+    queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama", installationId: "early-inst" })]);
+    mockSelectHost.mockResolvedValue({ host: "node-a:11434", useFinalModel: false, release: noop });
+
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
+
+    expect(result!.installationId).toBe("early-inst");
+    expect(result!.driver).toBe("ollama");
   });
 
   test("resolves early model when canary routes to it", async () => {
@@ -416,5 +428,55 @@ describe("getModelInfo", () => {
     await getModelInfo("org-1", "my-model");
 
     expect(executeCount).toBe(2);
+  });
+});
+
+describe("getModelInfo for a canary deployment", () => {
+  function pushCanary(progress: number): void {
+    queryQueue.push([{
+      id: "dep-id",
+      organizationId: "org-1",
+      name: "Canary",
+      description: null,
+      enabled: true,
+      publicSpecifier: "my-model",
+      type: "canary",
+      legacyId: null,
+      managedId: null,
+      canaryId: "canary-id",
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }]);
+    queryQueue.push([{ id: "canary-id", fromId: "from-id", toId: "to-id", replicas: 2, progress, canaryProgressFrom: null, canaryProgressUntil: null, canaryProgressWithFeedback: false }]);
+    queryQueue.push([{ id: "from-id", specifier: "llama2:latest" }]);
+    queryQueue.push([{ id: "to-id", specifier: "llama3:latest" }]);
+  }
+
+  beforeEach(() => {
+    mockSelectHost.mockImplementation(async (_strategy: unknown, input: { hosts: string[] }) =>
+      input.hosts.length > 0 ? { host: input.hosts[0]!, useFinalModel: true, release: noop } : null);
+    mockAdmit.mockImplementation(async () => noop);
+  });
+
+  test("a member with nothing ready gives the request to the other member", async () => {
+    pushCanary(100);
+    queryQueue.push([]);
+    queryQueue.push([installationResult({ host: "node-b", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
+
+    const result = infoOf(await getModelInfo("org-1", "my-model"));
+
+    expect(result!.model).toBe("llama2:latest");
+    expect(result!.host).toBe("node-b:11434");
+  });
+
+  test("a busy member keeps the request rather than handing it to the other member", async () => {
+    pushCanary(100);
+    queryQueue.push([installationResult({ host: "node-a", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
+    queryQueue.push([installationResult({ host: "node-b", nodePort: 11434, modelPort: 11434, driver: "ollama" })]);
+    mockAdmit.mockImplementation(async () => undefined);
+
+    expect((await getModelInfo("org-1", "my-model")).status).toBe("busy");
+    expect(queryQueue).toHaveLength(1);
   });
 });

@@ -1,42 +1,8 @@
-import { calcCanaryProgress, sql, inArray, deploymentLegacyT, aiNodeT, modelInstallationT, modelInstallationStateT, deploymentMatchesInstallation, installationMatchesLookup, installationTakesRequests, installationOnLiveNode, stateOfInstallation, type Deployment, type DeploymentLegacy, type lifecycleStateEnum } from "common-db";
+import { calcCanaryProgress, sql, inArray, deploymentLegacyT, type Deployment, type DeploymentLegacy } from "common-db";
 import { getDB } from "../db";
 import type { GatewayDeploymentType, ModelDescription } from "./deployment-types";
 import type { ModelLookup } from "./model-data";
-import { config } from "../config";
-import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "common-env/model-catalog";
-import { admit as _admit, selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta, type SelectHostResult } from "./load-balancer";
-import { rootLogger } from "../logger";
-
-/** Indirection for testability. tests can swap this without mock.module. */
-export const _deps = { selectHost: _selectHost, admit: _admit };
-
-const DEFAULT_MAX_CONTEXT_LENGTH = 131072;
-
-let _catalogClient: ReturnType<typeof createCatalogClient> | undefined;
-let _infoClient: ReturnType<typeof createInfoserverClient> | undefined;
-
-export function getCatalogClient() {
-  if (!_catalogClient) {
-    _catalogClient = createCatalogClient({
-      baseUrl: config.infoserver.url,
-      cacheTtlMs: config.infoserver.cacheTtlMs,
-      logger: rootLogger.child({ name: "catalog-client" }),
-    });
-  }
-  return _catalogClient;
-}
-
-/** @deprecated Reaches the pre-per-engine catalog. Removed before 1.0.0. */
-export function getInfoClient() {
-  if (!_infoClient) {
-    _infoClient = createInfoserverClient({
-      baseUrl: config.infoserver.url,
-      cacheTtlMs: config.infoserver.cacheTtlMs,
-      logger: rootLogger.child({ name: "infoserver-client" }),
-    });
-  }
-  return _infoClient;
-}
+import { deriveStatus, getModelSources, placedInstallations, replicaLifecycles, resolveMaxContextLengths, selectAdmittedHost, shortestContext } from "./installations";
 
 export type LegacyPayload = {
   id: string;
@@ -53,19 +19,6 @@ function canaryProgressOf(payload: LegacyPayload): number {
     canaryProgressFrom: payload.canaryProgressFrom !== null ? new Date(payload.canaryProgressFrom) : null,
     canaryProgressUntil: payload.canaryProgressUntil !== null ? new Date(payload.canaryProgressUntil) : null,
   });
-}
-
-const modelSourcesCache = new Map<string, { data: ModelSources; expiresAt: number }>();
-
-/**
- * Bumped on every invalidation so a query that was already in flight cannot write
- * its now-stale result into the cache it raced.
- */
-let sourcesGeneration = 0;
-
-export function invalidateModelSources(): void {
-  sourcesGeneration += 1;
-  modelSourcesCache.clear();
 }
 
 async function loadLegacy(entry: Deployment): Promise<LegacyPayload | undefined> {
@@ -85,273 +38,20 @@ async function loadLegacy(entry: Deployment): Promise<LegacyPayload | undefined>
   };
 }
 
-type HostLocation = {
-  installationId: string;
-  nodeId: string;
-  machineName: string | null;
-  driver: string;
-  authToken: string | null;
-  tls: boolean;
-  maxNumSeqs: number | null;
-};
-
-type ModelSources = {
-  hosts: string[];
-  byHost: Map<string, HostLocation>;
-};
-
-async function getModelSources(deploymentId: string, specifier: string): Promise<ModelSources> {
-  const cacheKey = `${deploymentId}:${specifier}`;
-  const now = Date.now();
-  const cached = modelSourcesCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    return cached.data;
-  }
-
-  const generationAtQuery = sourcesGeneration;
-
-  const modelLocations = await getDB().select({
-    installationId: modelInstallationT.id,
-    nodeId: aiNodeT.id,
-    machineName: aiNodeT.machineName,
-    host: aiNodeT.host,
-    nodePort: aiNodeT.port,
-    driver: modelInstallationT.driver,
-    maxNumSeqs: modelInstallationT.maxNumSeqs,
-    authToken: aiNodeT.authToken,
-    tls: aiNodeT.tls,
-  }).from(modelInstallationT)
-    .innerJoin(aiNodeT, installationOnLiveNode)
-    .innerJoin(modelInstallationStateT, sql`
-      ${stateOfInstallation}
-      AND ${modelInstallationStateT.lifecycleState} = 'ready'
-    `)
-    .where(sql`
-      ${modelInstallationT.deploymentId} = ${deploymentId}
-    AND
-      ${installationMatchesLookup(specifier)}
-    AND
-      ${modelInstallationT.deletedAt} IS NULL
-    AND
-      ${installationTakesRequests}
-    `);
-
-  const byHost = new Map<string, HostLocation>();
-  for (const loc of modelLocations) {
-    const key = `${loc.host}:${loc.nodePort}`;
-    byHost.set(key, { installationId: loc.installationId, nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls, maxNumSeqs: loc.maxNumSeqs });
-  }
-
-  const result: ModelSources = { hosts: [...byHost.keys()], byHost };
-  if (generationAtQuery === sourcesGeneration) {
-    modelSourcesCache.set(cacheKey, { data: result, expiresAt: now + config.cache.modelTtlSeconds() * 1000 });
-  }
-
-  return result;
-}
-
-function buildHostMeta(...sources: ModelSources[]): Map<string, HostMeta> {
-  const hostMeta = new Map<string, HostMeta>();
-  for (const source of sources) {
-    for (const [host, loc] of source.byHost) {
-      hostMeta.set(host, { nodeId: loc.nodeId, machineName: loc.machineName ?? host });
-    }
-  }
-  return hostMeta;
-}
-
-type CatalogMeta = {
-  /** Name the engine itself knows the model by. Undefined when the catalog has no entry. */
-  engineSpecifier?: string;
-  type?: string;
-  tags?: string[];
-  maxContextLength: number;
-  audioPositionsPerSecond?: number;
-  requestParams?: Record<string, string>;
-};
-
-async function resolveCatalogMeta(specifier: string, driver: "vllm" | "ollama"): Promise<CatalogMeta> {
-  const result = await getCatalogClient().lookup(specifier);
-  if (result.status === "unavailable") {
-    throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
-  }
-  if (result.status === "found") {
-    const { engineSpecifier, type, tags, sizing, requestParams } = result.model;
-    return { engineSpecifier, type, tags, maxContextLength: sizing.maxContextLength, audioPositionsPerSecond: sizing.audioPositionsPerSecond, requestParams };
-  }
-  return legacyCatalogMeta(specifier, driver);
-}
-
-/**
- * Deployments created before the per-engine format hold a specifier the current
- * catalog does not know. Removed before 1.0.0.
- */
-async function legacyCatalogMeta(specifier: string, driver: "vllm" | "ollama"): Promise<CatalogMeta> {
-  const model = await getInfoClient().fetchModel(specifier);
-  if (!model) {
-    return { maxContextLength: DEFAULT_MAX_CONTEXT_LENGTH };
-  }
-  return {
-    engineSpecifier: model.providers[driver],
-    type: model.type,
-    tags: resolveTagsForDriver(model, driver),
-    maxContextLength: model.maxContextLength ?? DEFAULT_MAX_CONTEXT_LENGTH,
-    requestParams: resolveRequestParamsForDriver(model, driver),
-  };
-}
-
 async function resolveLegacy(payload: LegacyPayload, publicSpecifier: string, prefixHashes?: string[]): Promise<ModelLookup> {
-  const accessInfo = {
-    deploymentId: payload.id,
-    progress: canaryProgressOf(payload),
-    primary: payload.specifier,
-    early: payload.earlySpecifier,
-  };
-  const emptySources: ModelSources = { hosts: [], byHost: new Map() };
+  const owner = { column: "legacyId", id: payload.id } as const;
+  const early = payload.earlySpecifier;
   const [finalSources, earlySources] = await Promise.all([
-    getModelSources(accessInfo.deploymentId, accessInfo.primary),
-    accessInfo.early
-      ? getModelSources(accessInfo.deploymentId, accessInfo.early)
-      : Promise.resolve(emptySources),
+    getModelSources(owner, payload.specifier),
+    early ? getModelSources(owner, early) : undefined,
   ]);
-
-  const hostMeta = buildHostMeta(finalSources, earlySources);
-  const full = new Set<string>();
-  let result: SelectHostResult | undefined;
-  let location: HostLocation | undefined;
-  for (;;) {
-    result = await _deps.selectHost(config.inference.loadBalanceStrategy() as LoadBalanceStrategy, {
-      hosts: finalSources.hosts.filter((host) => !full.has(host)),
-      earlyHosts: earlySources.hosts.filter((host) => !full.has(host)),
-      canaryProgress: accessInfo.progress,
-      hasEarlyModel: !!accessInfo.early,
-      publicModel: publicSpecifier,
-      prefixHashes,
-      hostMeta,
-    });
-    if (!result) {
-      return { status: full.size > 0 ? "busy" : "unavailable" };
-    }
-    location = finalSources.byHost.get(result.host) ?? earlySources.byHost.get(result.host);
-    if (!location) {
-      result.release();
-      return { status: "unavailable" };
-    }
-    const releaseAdmission = await _deps.admit(location.installationId, location.maxNumSeqs);
-    if (releaseAdmission) {
-      const releaseSelection = result.release;
-      result = { ...result, release: () => { releaseSelection(); releaseAdmission(); } };
-      break;
-    }
-    result.release();
-    full.add(result.host);
-  }
-
-  const resolvedSpecifier = result.useFinalModel
-    ? accessInfo.primary
-    : (accessInfo.early ?? accessInfo.primary);
-  const { driver, authToken, tls } = location;
-  const driverProvider = driver as "vllm" | "ollama";
-
-  const meta = await resolveCatalogMeta(resolvedSpecifier, driverProvider).catch((err: unknown) => {
-    result.release();
-    throw err;
+  return selectAdmittedHost({
+    final: { specifier: payload.specifier, sources: finalSources },
+    early: early && earlySources ? { specifier: early, sources: earlySources } : undefined,
+    progress: canaryProgressOf(payload),
+    publicSpecifier,
+    prefixHashes,
   });
-
-  return {
-    status: "found",
-    info: {
-      installationId: location.installationId,
-      nodeId: location.nodeId,
-      host: result.host,
-      specifier: resolvedSpecifier,
-      // Best-effort pass-through: when the catalog cannot resolve the specifier,
-      // forward it as the model name and let the backend reject a mismatch.
-      model: meta.engineSpecifier ?? resolvedSpecifier,
-      driver,
-      authToken,
-      tls,
-      type: meta.type,
-      tags: meta.tags,
-      maxContextLength: meta.maxContextLength,
-      audioPositionsPerSecond: meta.audioPositionsPerSecond,
-      requestParams: meta.requestParams,
-      release: result.release,
-    },
-  };
-}
-
-type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
-type InstallationLifecycle = LifecycleState | null;
-
-const LIFECYCLE_PRIORITY: Record<LifecycleState, number> = {
-  ready: 4,
-  installing: 3,
-  downloading: 2,
-  failed: 1,
-};
-
-function deriveStatus(lifecycles: InstallationLifecycle[]): LifecycleState | null {
-  if (lifecycles.length === 0) {
-    return null;
-  }
-  const concrete: LifecycleState[] = lifecycles.map(l => l ?? "downloading");
-  return concrete.reduce((best, current) => {
-    return LIFECYCLE_PRIORITY[current] > LIFECYCLE_PRIORITY[best] ? current : best;
-  });
-}
-
-type Placed = { group: { id: string; size: number } | null; lifecycle: InstallationLifecycle };
-
-export function replicaLifecycles(placed: Placed[]): InstallationLifecycle[] {
-  const singles = placed.filter((installation) => !installation.group).map(({ lifecycle }) => lifecycle);
-  const groups = Map.groupBy(placed.filter((installation) => installation.group), (installation) => installation.group!.id);
-  // A group takes requests only once every member is ready, so it lists as its least ready member.
-  const grouped = [...groups.values()].map((members) => members.length < members[0]!.group!.size
-    ? null
-    : members.map(({ lifecycle }) => lifecycle ?? "downloading").reduce((worst, current) => (LIFECYCLE_PRIORITY[current] < LIFECYCLE_PRIORITY[worst] ? current : worst)));
-  return [...singles, ...grouped];
-}
-
-/**
- * Specifiers left out of the result fall back to the caller's default, which is also
- * how an unreachable catalog is handled: a listing of deployments is still useful
- * without context lengths, so it degrades rather than failing.
- */
-async function resolveMaxContextLengths(specifiers: string[]): Promise<Map<string, number>> {
-  const resolved = new Map<string, number>();
-  const unresolved: string[] = [];
-
-  try {
-    const fromCatalog = await getCatalogClient().resolveBatch(specifiers);
-    for (const [specifier, model] of Object.entries(fromCatalog)) {
-      if (model) {
-        resolved.set(specifier, model.sizing.maxContextLength);
-      } else {
-        unresolved.push(specifier);
-      }
-    }
-  } catch (err) {
-    rootLogger.warn({ err }, "Catalog unavailable, listing models without context lengths");
-    return resolved;
-  }
-
-  if (unresolved.length === 0) {
-    return resolved;
-  }
-
-  // Pre-per-engine deployments. Removed before 1.0.0.
-  try {
-    const fromLegacy = await getInfoClient().fetchModelsBatch(unresolved);
-    for (const [specifier, model] of Object.entries(fromLegacy)) {
-      if (model?.maxContextLength !== undefined) {
-        resolved.set(specifier, model.maxContextLength);
-      }
-    }
-  } catch (err) {
-    rootLogger.warn({ err }, "Deprecated catalog unavailable, defaulting context length");
-  }
-  return resolved;
 }
 
 async function describeLegacy(entries: Deployment[]): Promise<Map<string, ModelDescription>> {
@@ -359,47 +59,26 @@ async function describeLegacy(entries: Deployment[]): Promise<Map<string, ModelD
   if (legacyIds.length === 0) {
     return new Map();
   }
-  const rows = await getDB()
-    .select()
-    .from(deploymentLegacyT)
-    .leftJoin(modelInstallationT, sql`
-      ${deploymentMatchesInstallation}
-    AND
-      ${modelInstallationT.deletedAt} IS NULL
-    `)
-    .leftJoin(aiNodeT, installationOnLiveNode)
-    .leftJoin(modelInstallationStateT, stateOfInstallation)
-    .where(inArray(deploymentLegacyT.id, legacyIds));
-
-  const rowsByLegacy = Map.groupBy(rows, (row) => row.deployment_legacy.id);
-  const legacies = [...rowsByLegacy.values()].map((rows) => rows[0]!.deployment_legacy);
+  const [legacies, placed] = await Promise.all([
+    getDB().select().from(deploymentLegacyT).where(inArray(deploymentLegacyT.id, legacyIds)),
+    placedInstallations("legacyId", legacyIds),
+  ]);
   const servingSpecifiers = (legacy: DeploymentLegacy) =>
     legacy.earlySpecifier && calcCanaryProgress(legacy) !== 100
       ? [legacy.specifier, legacy.earlySpecifier]
       : [legacy.specifier];
-  const uniqueSpecifiers = [...new Set(legacies.flatMap(servingSpecifiers))];
-  const metaMap = uniqueSpecifiers.length > 0
-    ? await resolveMaxContextLengths(uniqueSpecifiers)
-    : new Map<string, number>();
-  // A canary request can land on either model, so only the shorter context is safe to advertise.
-  const maxContextLength = (legacy: DeploymentLegacy) => {
-    const known = servingSpecifiers(legacy).flatMap((specifier) => metaMap.get(specifier) ?? []);
-    return known.length > 0 ? Math.min(...known) : DEFAULT_MAX_CONTEXT_LENGTH;
-  };
+  const contextLengths = await resolveMaxContextLengths([...new Set(legacies.flatMap(servingSpecifiers))]);
+  const legacyById = new Map(legacies.map((legacy) => [legacy.id, legacy]));
 
   return new Map(entries.flatMap((entry) => {
-    const legacyRows = entry.legacyId ? rowsByLegacy.get(entry.legacyId) : undefined;
-    if (!legacyRows) {
+    const legacy = entry.legacyId ? legacyById.get(entry.legacyId) : undefined;
+    if (!legacy) {
       return [];
     }
-    const legacy = legacyRows[0]!.deployment_legacy;
-    const lifecycles = replicaLifecycles(legacyRows
-      .filter((r) => r.model_installation && r.ai_node)
-      .map((r) => ({ group: r.model_installation!.group, lifecycle: r.model_installation_state?.lifecycleState ?? null })));
     const description: ModelDescription = {
-      status: deriveStatus(lifecycles),
+      status: deriveStatus(replicaLifecycles(placed.get(legacy.id) ?? [])),
       canary: calcCanaryProgress(legacy) !== 100,
-      maxModelLen: maxContextLength(legacy),
+      maxModelLen: shortestContext(servingSpecifiers(legacy), contextLengths),
     };
     return [[entry.id, description] as const];
   }));

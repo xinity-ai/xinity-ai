@@ -3,7 +3,7 @@ import { getDB } from "../db";
 import { config } from "../config";
 import { cache } from "../cache";
 import { rootLogger } from "../logger";
-import { GATEWAY_DEPLOYMENT_TYPES, type LoadedDeployment } from "./deployment-types";
+import { loadOfType, resolveLoaded, type LoadedDeployment } from "./deployment-types";
 
 const log = rootLogger.child({ name: "model-data" });
 
@@ -74,11 +74,10 @@ async function loadDeployment(orgId: string, publicSpecifier: string): Promise<L
     return undefined;
   }
 
-  const payload = await GATEWAY_DEPLOYMENT_TYPES[entry.type].load(entry);
-  if (!payload) {
+  const loaded: LoadedDeployment | undefined = await loadOfType(entry.type, entry);
+  if (!loaded) {
     return undefined;
   }
-  const loaded: LoadedDeployment = { type: entry.type, payload };
 
   void cache.set(cacheKey, JSON.stringify(loaded), config.cache.modelTtlSeconds())
     .catch((err: unknown) => log.warn({ err }, "Cache error in set deployment cache"));
@@ -91,5 +90,5 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
   if (!deployment) {
     return { status: "unknown" };
   }
-  return GATEWAY_DEPLOYMENT_TYPES[deployment.type].resolve(deployment.payload, publicSpecifier, prefixHashes);
+  return resolveLoaded(deployment, publicSpecifier, prefixHashes);
 }

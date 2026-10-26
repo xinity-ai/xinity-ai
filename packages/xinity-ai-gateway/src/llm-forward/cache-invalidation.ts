@@ -4,7 +4,7 @@ const log = rootLogger.child({ name: "cache-invalidation" });
 
 /** Tables the routing cache is derived from. */
 const SOURCE_CHANNELS = ["ai_node", "model_installation", "model_installation_state"] as const;
-const DEPLOYMENT_CHANNELS = ["deployment", "deployment_legacy"] as const;
+const DEPLOYMENT_CHANNELS = ["deployment", "deployment_legacy", "deployment_managed", "deployment_canary"] as const;
 
 type CacheInvalidationDeps = {
   subscribe: (

@@ -63,6 +63,8 @@ describe("cache-invalidation", () => {
       "model_installation_state",
       "deployment",
       "deployment_legacy",
+      "deployment_managed",
+      "deployment_canary",
     ]);
     await h.invalidation.stop();
   });
@@ -79,13 +81,15 @@ describe("cache-invalidation", () => {
     await h.invalidation.stop();
   });
 
-  test("a change to an entry or its legacy row drops the deployment cache and nothing else", async () => {
+  test("a change to an entry or its type row drops the deployment cache and nothing else", async () => {
     await h.invalidation.start();
 
     h.notify("deployment");
     h.notify("deployment_legacy");
+    h.notify("deployment_managed");
+    h.notify("deployment_canary");
 
-    expect(h.deploymentFlushes).toHaveLength(2);
+    expect(h.deploymentFlushes).toHaveLength(4);
     expect(h.sourceFlushes).toHaveLength(0);
     await h.invalidation.stop();
   });
@@ -106,6 +110,6 @@ describe("cache-invalidation", () => {
     await h.invalidation.stop();
     await h.invalidation.stop();
 
-    expect(h.unlistenCalls()).toBe(5);
+    expect(h.unlistenCalls()).toBe(7);
   });
 });
