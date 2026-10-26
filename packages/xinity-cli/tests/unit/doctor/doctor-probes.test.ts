@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { checkHealthEndpoint, checkSmtp, probeDaemonHealth, readDeprecations } from "../../../src/lib/doctor/doctor-probes.ts";
+import { checkHealthEndpoint, checkSmtp, probeDaemonHealth, readServiceDeprecations } from "../../../src/lib/doctor/doctor-probes.ts";
 import { FakeHost } from "../../helpers/fake-host.ts";
 
 const SINCE = "2026-10-05T10:00:00.000Z";
@@ -160,10 +160,18 @@ describe("checkSmtp", () => {
   });
 });
 
-describe("readDeprecations", () => {
-  test("tells a service with nothing deprecated apart from one that does not report", () => {
-    expect(readDeprecations({ ok: true, deprecations: [] })).toEqual([]);
-    expect(readDeprecations({ ok: true })).toBeNull();
-    expect(readDeprecations(undefined)).toBeNull();
+describe("readServiceDeprecations", () => {
+  const read = (baseUrl: string) => {
+    const { hostname, port } = new URL(baseUrl);
+    return readServiceDeprecations(new FakeHost(), "gateway", { HOST: hostname, PORT: port, METRICS_AUTH });
+  };
+
+  test("tells a service with nothing deprecated apart from one that does not report", async () => {
+    await withDaemon({ ok: true, deprecations: [] }, async (baseUrl) => {
+      expect(await read(baseUrl)).toEqual({ kind: "reported", reports: [] });
+    });
+    await withDaemon({ ok: true }, async (baseUrl) => {
+      expect(await read(baseUrl)).toEqual({ kind: "unchecked", reason: "it predates deprecation reports" });
+    });
   });
 });

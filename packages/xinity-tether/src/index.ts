@@ -1,8 +1,8 @@
 import "zod/compile";
 
 import { z } from "zod";
-import { DYNAMIC_CONFIG_CHANNEL, databaseDeprecationChecks, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
-import { nodeRegistrationSchema, installationStateReportSchema, interconnectReportSchema, heartbeatReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, canonicalInterconnectReport, canonicalHeartbeatReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, INTERCONNECT_PATH, HEARTBEAT_PATH, KEEPALIVE_INTERVAL_HEADER, createDependencyProbe, createHealthHandler, parseMetricsAuth, probeOwnHealth, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
+import { DYNAMIC_CONFIG_CHANNEL, createDatabaseProbe, databaseDeprecationChecks, logMigrationFailureFatal, readDynamicConfig } from "common-db";
+import { nodeRegistrationSchema, installationStateReportSchema, interconnectReportSchema, heartbeatReportSchema, protocolFingerprint, activationRefusal, createDbConfigFeed, canonicalRegistration, canonicalStateReport, canonicalInterconnectReport, canonicalHeartbeatReport, verifyNodeSignature, STREAM_PATH, STATUS_PATH, INTERCONNECT_PATH, HEARTBEAT_PATH, KEEPALIVE_INTERVAL_HEADER, createHealthHandler, exitOnHealthFlag, parseMetricsAuth, type TetherRefusal, type TetherRefusalReason, type VerifyFailure } from "common-env";
 import { tetherConfig } from "./config-schema";
 import { config, configStore } from "./config";
 import { rootLogger } from "./logger";
@@ -37,10 +37,7 @@ function rejectUnsigned(endpoint: DaemonEndpoint, reason: VerifyFailure): Respon
   return refuse(endpoint, REJECTION_BY_FAILURE[reason] ?? "unauthorized", unauthorizedDetail(reason), 401);
 }
 
-// The container healthcheck: the image ships no curl, so the binary asks the running instance itself.
-if (Bun.argv.includes("--health")) {
-  process.exit(await probeOwnHealth({ ...config.server, tls: !!config.tls }) ? 0 : 1);
-}
+await exitOnHealthFlag({ ...config.server, tls: !!config.tls });
 
 const refusal = activationRefusal(tetherConfig, rootLogger);
 if (refusal) {
@@ -107,14 +104,9 @@ try {
   rootLogger.error({ err }, "Daemons will not receive dynamic configuration changes");
 }
 
-const databaseProbe = createDependencyProbe({
-  name: "Database",
-  ping: () => getDB().execute(sql`SELECT 1`),
-  log,
-  onUnreachable: () => {
-    log.warn("Dropping all daemon connections until the database is reachable");
-    dropAllConnections("db_unreachable");
-  },
+const databaseProbe = createDatabaseProbe(getDB, log, () => {
+  log.warn("Dropping all daemon connections until the database is reachable");
+  dropAllConnections("db_unreachable");
 });
 
 let keepaliveTimer: Timer | undefined;

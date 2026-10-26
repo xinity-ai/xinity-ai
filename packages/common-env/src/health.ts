@@ -9,7 +9,7 @@ export type DependencyProbe = {
   check: HealthCheck;
   probeNow: () => Promise<void>;
   /** Restarts the probe loop, so a changed interval takes effect at once. */
-  start: (intervalMs: number) => void;
+  start: (intervalMs?: number) => void;
   stop: () => void;
 };
 
@@ -57,7 +57,7 @@ export function createDependencyProbe(opts: {
   return {
     check: () => (reachable ? null : "unreachable"),
     probeNow,
-    start(intervalMs) {
+    start(intervalMs = 10_000) {
       stop();
       timer = setInterval(() => void probeNow(), intervalMs);
     },
@@ -86,21 +86,39 @@ export type ListenTarget = { host?: string; port?: number; unixSocket?: string; 
 
 const WILDCARD_HOSTS = new Set(["0.0.0.0", "::", "[::]"]);
 
-/** Asks a running instance on this machine for its `/health`. True only on a 200. */
-export async function probeOwnHealth(target: ListenTarget): Promise<boolean> {
+/** The address to reach a service bound to `bind` from its own machine. */
+export function reachableLocalHost(bind: string | undefined): string {
+  return !bind || WILDCARD_HOSTS.has(bind) ? "127.0.0.1" : bind;
+}
+
+/** A request to the instance listening on `target`, from the same machine. */
+export function localRequest(target: ListenTarget, path: string): { url: string; init: { unix?: string; tls?: { rejectUnauthorized: false } } } {
   const scheme = target.tls ? "https" : "http";
-  const host = !target.host || WILDCARD_HOSTS.has(target.host) ? "127.0.0.1" : target.host;
-  const url = target.unixSocket ? `${scheme}://localhost/health` : `${scheme}://${host}:${target.port}/health`;
-  try {
-    const res = await fetch(url, {
+  return {
+    url: target.unixSocket ? `${scheme}://localhost${path}` : `${scheme}://${reachableLocalHost(target.host)}:${target.port}${path}`,
+    init: {
       unix: target.unixSocket,
       // The instance serves its own certificate, so there is nothing to verify it against.
       tls: target.tls ? { rejectUnauthorized: false } : undefined,
-      signal: AbortSignal.timeout(5_000),
-    });
+    },
+  };
+}
+
+/** Asks a running instance on this machine for its `/health`. True only on a 200. */
+export async function probeOwnHealth(target: ListenTarget): Promise<boolean> {
+  const { url, init } = localRequest(target, "/health");
+  try {
+    const res = await fetch(url, { ...init, signal: AbortSignal.timeout(5_000) });
     return res.status === 200;
   } catch {
     return false;
+  }
+}
+
+/** The container healthcheck: images ship no curl, so the binary run with `--health` asks the running instance itself. */
+export async function exitOnHealthFlag(target: ListenTarget): Promise<void> {
+  if (Bun.argv.includes("--health")) {
+    process.exit(await probeOwnHealth(target) ? 0 : 1);
   }
 }
 

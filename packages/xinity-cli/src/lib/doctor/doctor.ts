@@ -3,7 +3,7 @@ import { readManifest, type ComponentEntry } from "../up/manifest.ts";
 import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "../core/host.ts";
 import { isOllamaRunning } from "../infra/ollama-setup.ts";
 import { componentFields, categorizeFields, isRequired } from "../config/env-prompt.ts";
-import type { EnvField, GroupMemberHealth, InterconnectPort } from "common-env";
+import { reachableLocalHost, type EnvField, type GroupMemberHealth, type InterconnectPort } from "common-env";
 import { parseEnvString } from "../config/env-file.ts";
 import { unitName } from "../up/systemd.ts";
 import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "../core/component-meta.ts";
@@ -11,9 +11,11 @@ import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts"
 import {
   type CheckResult,
   checkPostgresAndMigrations, checkRedis, checkServiceHealth, checkHealthEndpoint, probeDaemonHealth, checkSmtp,
-  checkInfoserverUrl, NO_COUPLING, type DaemonCoupling, fetchHealthDetail, healthCheckHost, readDeprecations, serviceBaseUrl,
+  checkInfoserverUrl, NO_COUPLING, type DaemonCoupling, readServiceDeprecations, serviceBaseUrl,
   fileExistsCheck, serviceActiveCheck, isLocalUrl,
 } from "./doctor-probes.ts";
+
+const UNIX_SOCKET_SKIP: CheckResult = { label: "Health endpoint", status: "skip", message: "Listens on a unix socket" };
 
 export type DoctorSpinner = {
   message: (msg: string) => void;
@@ -302,7 +304,7 @@ async function checkGatewayConnectivity(
   await pushInfoserverCheck(checks, values, host);
   if (values.S3_ENDPOINT) checks.push(await checkServiceHealth(host, "S3 endpoint", values.S3_ENDPOINT + "/"));
   if (serviceActive) {
-    const baseUrl = `http://${healthCheckHost(values)}:${values.PORT || GATEWAY_DEFAULT_PORT}`;
+    const baseUrl = `http://${reachableLocalHost(values.HOST)}:${values.PORT || GATEWAY_DEFAULT_PORT}`;
     checks.push(await checkHealthEndpoint(host, "Health endpoint", baseUrl));
   }
   return checks;
@@ -346,7 +348,7 @@ function dashboardHealthProbe(values: Record<string, string>, scheme: "https" | 
     };
   }
 
-  return { baseUrl: `${scheme}://${healthCheckHost(values)}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}`, curlArgs };
+  return { baseUrl: `${scheme}://${reachableLocalHost(values.HOST)}:${values.HTTP_PORT || DASHBOARD_DEFAULT_PORT}`, curlArgs };
 }
 
 async function checkDaemonConnectivity(
@@ -361,7 +363,7 @@ async function checkDaemonConnectivity(
   }
   const baseUrl = serviceBaseUrl("daemon", values);
   if (!baseUrl) {
-    return { checks: [...checks, { label: "Health endpoint", status: "skip", message: "Listens on a unix socket" }], coupling: NO_COUPLING };
+    return { checks: [...checks, UNIX_SOCKET_SKIP], coupling: NO_COUPLING };
   }
   const health = await probeDaemonHealth(host, baseUrl, values.METRICS_AUTH);
   return { checks: [...checks, ...health.checks], coupling: health.coupling };
@@ -538,12 +540,8 @@ async function checkDaemonDrivers(
 }
 
 async function deprecationChecks(component: Component, values: Record<string, string>, host: Host): Promise<CheckResult[]> {
-  const baseUrl = serviceBaseUrl(component, values);
-  if (!baseUrl || !values.METRICS_AUTH) {
-    return [];
-  }
-  const detail = await fetchHealthDetail(host, baseUrl, values.METRICS_AUTH);
-  const reports = detail.kind === "answered" ? readDeprecations(detail.body) ?? [] : [];
+  const read = await readServiceDeprecations(host, component, values);
+  const reports = read.kind === "reported" ? read.reports : [];
   return reports.map((report) => ({
     label: "Deprecation",
     status: "warn",

@@ -16,8 +16,8 @@ import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES } from "./serve-config";
-import { activationRefusal, createDbConfigFeed, createDependencyProbe, createHealthHandler, createSecretUnsealer, parseMetricsAuth, probeOwnHealth, withoutConnectionTimeout, type RouteHandler } from "common-env";
-import { DYNAMIC_CONFIG_CHANNEL, databaseDeprecationChecks, logMigrationFailureFatal, readDynamicConfig, sql } from "common-db";
+import { activationRefusal, createDbConfigFeed, createDependencyProbe, createHealthHandler, createSecretUnsealer, exitOnHealthFlag, parseMetricsAuth, withoutConnectionTimeout, type RouteHandler } from "common-env";
+import { DYNAMIC_CONFIG_CHANNEL, createDatabaseProbe, databaseDeprecationChecks, logMigrationFailureFatal, readDynamicConfig } from "common-db";
 import { getSearchProvider } from "./llm-forward/tools/search-providers";
 import { setSearchProvider } from "./llm-forward/tools/response-tools";
 import { flushUsageEvents } from "./usageRecorder";
@@ -25,10 +25,7 @@ import { flushCallLog } from "./callLogger";
 import { createCacheInvalidation } from "./llm-forward/cache-invalidation";
 import { invalidateModelSources, invalidateDeployments } from "./llm-forward/model-data";
 
-// The container healthcheck: the image ships no curl, so the binary asks the running instance itself.
-if (Bun.argv.includes("--health")) {
-  process.exit(await probeOwnHealth({ ...config.server, tls: !!config.tls }) ? 0 : 1);
-}
+await exitOnHealthFlag({ ...config.server, tls: !!config.tls });
 
 process.on("unhandledRejection", (reason) => {
   rootLogger.error({ err: reason }, "Unhandled promise rejection");
@@ -80,18 +77,12 @@ try {
   rootLogger.error({ err }, "Dynamic configuration unavailable, keeping the values this process booted with");
 }
 
-const HEALTH_PROBE_INTERVAL_MS = 10_000;
-
-const databaseProbe = createDependencyProbe({
-  name: "Database",
-  ping: () => getDB().execute(sql`SELECT 1`),
-  log: rootLogger,
-});
+const databaseProbe = createDatabaseProbe(getDB, rootLogger);
 const redisProbe = config.cache.url
   ? createDependencyProbe({ name: "Redis", ping: () => cache.ping(), log: rootLogger })
   : undefined;
-databaseProbe.start(HEALTH_PROBE_INTERVAL_MS);
-redisProbe?.start(HEALTH_PROBE_INTERVAL_MS);
+databaseProbe.start();
+redisProbe?.start();
 
 const handleHealth = createHealthHandler({
   readiness: { database: databaseProbe.check },

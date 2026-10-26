@@ -1,6 +1,6 @@
 import "zod/compile";
 
-import { createHealthHandler, deprecations, parseMetricsAuth, probeOwnHealth } from "common-env";
+import { createHealthHandler, deprecations, exitOnHealthFlag, parseMetricsAuth } from "common-env";
 import { createLegacyModelJsonSchema, createModelJsonSchema } from "common-env/model-catalog";
 import { version } from "../../package.json";
 import { config } from "./config";
@@ -16,10 +16,7 @@ import { createMetricsHandler, httpMetrics, rateLimitedTotal, type LimiterLabel 
 
 const port = config.server.port;
 
-// The container healthcheck: the image ships no curl, so the binary asks the running instance itself.
-if (Bun.argv.includes("--health")) {
-  process.exit(await probeOwnHealth({ port, tls: false }) ? 0 : 1);
-}
+await exitOnHealthFlag({ port, tls: false });
 
 catalog.configure(config.catalog.maxIncludeDepth, config.catalog.infoDir, config.catalog.legacyDir);
 
