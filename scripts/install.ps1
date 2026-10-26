@@ -86,22 +86,32 @@ try {
 $ShaFile = Join-Path $TmpDir "SHASUMS256.txt"
 $ShaUrl = "https://github.com/$Repo/releases/download/$Tag/SHASUMS256.txt"
 
+$VerifyDocs = "https://github.com/$Repo/blob/main/docs/security/release-verification.md"
+
 try {
     Invoke-WebRequest -Uri $ShaUrl -OutFile $ShaFile
-    $Expected = (Get-Content $ShaFile | Where-Object { $_ -match $AssetName } | ForEach-Object { ($_ -split '\s+')[0] })
-    if ($Expected) {
-        $Actual = (Get-FileHash -Path $TarPath -Algorithm SHA256).Hash.ToLower()
-        if ($Expected -eq $Actual) {
-            Write-Pass "SHA256 verified"
-        } else {
-            Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
-            Write-Fail "SHA256 mismatch: expected $Expected, got $Actual"
-        }
-    } else {
-        Write-Warn "Asset not found in SHASUMS256.txt, skipping verification"
-    }
 } catch {
-    Write-Warn "Could not fetch checksums, skipping verification"
+    Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+    Write-Fail "Could not fetch SHASUMS256.txt for $Tag. See $VerifyDocs"
+}
+
+$Expected = Get-Content $ShaFile | ForEach-Object {
+    $Hash, $Name = $_ -split '\s+', 2
+    if ($Name -eq $AssetName) {
+        $Hash
+    }
+} | Select-Object -First 1
+if (-not $Expected) {
+    Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+    Write-Fail "$AssetName is not listed in SHASUMS256.txt. See $VerifyDocs"
+}
+
+$Actual = (Get-FileHash -Path $TarPath -Algorithm SHA256).Hash.ToLower()
+if ($Expected -eq $Actual) {
+    Write-Pass "SHA256 verified"
+} else {
+    Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+    Write-Fail "SHA256 mismatch: expected $Expected, got $Actual"
 }
 
 # ── Extract and install ─────────────────────────────────────────────────────
