@@ -12,8 +12,9 @@ import {
   kvCacheMismatch,
   unsupportedVocabulary,
 } from "common-env/model-catalog";
-import { createCatalog, type FileParseOutcome } from "./catalog";
+import { createCatalog, type Catalog, type FileParseOutcome } from "./catalog";
 import { rootLogger } from "./logger";
+import { includeFetchFailures, refreshDuration, refreshesTotal, type CatalogLabel } from "./metrics";
 import { z } from "zod";
 
 const log = rootLogger.child({ name: "catalog" });
@@ -85,12 +86,14 @@ export const modelCatalog = createCatalog<Model>({
   parseFile: parseLocalModels,
   parseRemoteFile: parseRelayedModels,
   invalidDocumentIsFatal: true,
+  onIncludeFailure: () => includeFetchFailures.inc({ catalog: "models" }),
 });
 
 export const legacyCatalog = createCatalog<LegacyModel>({
   name: "deprecated v1",
   parseFile: parseWith<LegacyModel>(LegacyModelFileSchema),
   invalidDocumentIsFatal: false,
+  onIncludeFailure: () => includeFetchFailures.inc({ catalog: "legacy" }),
 });
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
@@ -111,8 +114,19 @@ export function configure(
   }
 }
 
+async function measuredRefresh(label: CatalogLabel, catalog: Catalog<unknown>): Promise<void> {
+  const startedAt = performance.now();
+  try {
+    await catalog.refresh();
+  } finally {
+    refreshDuration.observe({ catalog: label }, (performance.now() - startedAt) / 1000);
+    const outcome = catalog.getHealth().lastRefreshError === null ? "success" : "failure";
+    refreshesTotal.inc({ catalog: label, outcome });
+  }
+}
+
 export async function refresh(): Promise<void> {
-  await Promise.all([modelCatalog.refresh(), legacyCatalog.refresh()]);
+  await Promise.all([measuredRefresh("models", modelCatalog), measuredRefresh("legacy", legacyCatalog)]);
 }
 
 export function startAutoRefresh(intervalMs: number): void {

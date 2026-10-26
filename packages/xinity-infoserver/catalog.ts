@@ -48,6 +48,7 @@ export type CatalogOptions<M> = {
    * that starts today from starting after an upgrade.
    */
   invalidDocumentIsFatal: boolean;
+  onIncludeFailure?: () => void;
 }
 
 type CatalogConfig = {
@@ -154,12 +155,14 @@ export function createCatalog<M extends CatalogModel>(options: CatalogOptions<M>
       if (!response.ok) {
         log.warn({ url, status: response.status }, "Include fetch failed");
         state.unreachableSources.push(`${url} (HTTP ${response.status})`);
+        options.onIncludeFailure?.();
         return;
       }
       outcome = (options.parseRemoteFile ?? options.parseFile)(await response.text());
     } catch (err) {
       log.warn({ url, err }, "Include fetch error");
       state.unreachableSources.push(url);
+      options.onIncludeFailure?.();
       return;
     }
 
