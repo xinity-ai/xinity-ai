@@ -61,7 +61,8 @@ describe("cache-invalidation", () => {
       "ai_node",
       "model_installation",
       "model_installation_state",
-      "model_deployment",
+      "deployment",
+      "deployment_legacy",
     ]);
     await h.invalidation.stop();
   });
@@ -78,12 +79,13 @@ describe("cache-invalidation", () => {
     await h.invalidation.stop();
   });
 
-  test("a deployment change drops the deployment cache and nothing else", async () => {
+  test("a change to an entry or its legacy row drops the deployment cache and nothing else", async () => {
     await h.invalidation.start();
 
-    h.notify("model_deployment");
+    h.notify("deployment");
+    h.notify("deployment_legacy");
 
-    expect(h.deploymentFlushes).toHaveLength(1);
+    expect(h.deploymentFlushes).toHaveLength(2);
     expect(h.sourceFlushes).toHaveLength(0);
     await h.invalidation.stop();
   });
@@ -92,7 +94,7 @@ describe("cache-invalidation", () => {
     await h.invalidation.start();
 
     h.resubscribe("model_installation");
-    h.resubscribe("model_deployment");
+    h.resubscribe("deployment");
 
     expect(h.sourceFlushes).toHaveLength(1);
     expect(h.deploymentFlushes).toHaveLength(1);
@@ -104,6 +106,6 @@ describe("cache-invalidation", () => {
     await h.invalidation.stop();
     await h.invalidation.stop();
 
-    expect(h.unlistenCalls()).toBe(4);
+    expect(h.unlistenCalls()).toBe(5);
   });
 });
