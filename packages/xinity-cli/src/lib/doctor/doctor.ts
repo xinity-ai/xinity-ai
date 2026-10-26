@@ -6,7 +6,7 @@ import { componentFields, categorizeFields, isRequired } from "../config/env-pro
 import { reachableLocalHost, type EnvField, type GroupMemberHealth, type InterconnectPort } from "common-env";
 import { parseEnvString } from "../config/env-file.ts";
 import { unitName } from "../up/systemd.ts";
-import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "../core/component-meta.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "../core/component-meta.ts";
 import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts";
 import {
   type CheckResult,
@@ -304,8 +304,10 @@ async function checkGatewayConnectivity(
   await pushInfoserverCheck(checks, values, host);
   if (values.S3_ENDPOINT) checks.push(await checkServiceHealth(host, "S3 endpoint", values.S3_ENDPOINT + "/"));
   if (serviceActive) {
-    const baseUrl = `http://${reachableLocalHost(values.HOST)}:${values.PORT || GATEWAY_DEFAULT_PORT}`;
-    checks.push(await checkHealthEndpoint(host, "Health endpoint", baseUrl));
+    const baseUrl = serviceBaseUrl("gateway", values);
+    checks.push(baseUrl
+      ? await checkHealthEndpoint(host, "Health endpoint", baseUrl, baseUrl.startsWith("https:") ? ["-k"] : [])
+      : UNIX_SOCKET_SKIP);
   }
   return checks;
 }
@@ -399,7 +401,7 @@ async function checkInfoserverConnectivity(
       await checkHealthEndpoint(host, "Local health", `http://localhost:${localPort}`),
     );
     checks.push(
-      await checkServiceHealth(host, "Local model catalog", `http://localhost:${localPort}/models/v1.json`),
+      await checkServiceHealth(host, "Local model catalog", `http://localhost:${localPort}/models/v2.json`),
     );
   }
 
