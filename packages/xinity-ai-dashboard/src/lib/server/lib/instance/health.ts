@@ -1,21 +1,15 @@
-import { databaseDeprecationChecks, isNull, modelDeploymentT, sql } from "common-db";
-import { createDependencyProbe, createHealthHandler, parseMetricsAuth } from "common-env";
+import { createDatabaseProbe, databaseDeprecationChecks, isNull, modelDeploymentT } from "common-db";
+import { createHealthHandler, parseMetricsAuth } from "common-env";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { isMigrationOk } from "./migration-check";
 
-const PROBE_INTERVAL_MS = 10_000;
-
-const databaseProbe = createDependencyProbe({
-  name: "Database",
-  ping: () => getDB().execute(sql`SELECT 1`),
-  log: rootLogger.child({ name: "health" }),
-});
+const databaseProbe = createDatabaseProbe(getDB, rootLogger.child({ name: "health" }));
 
 export function startHealthProbe(): () => void {
-  databaseProbe.start(PROBE_INTERVAL_MS);
+  databaseProbe.start();
   return databaseProbe.stop;
 }
 

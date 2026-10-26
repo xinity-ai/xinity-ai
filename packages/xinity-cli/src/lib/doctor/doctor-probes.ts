@@ -1,7 +1,7 @@
 import postgres from "postgres";
 import { expectedMigrationCount } from "common-db";
 import { z } from "zod";
-import { groupMemberHealthSchema, interconnectPortSchema, parseMetricsAuth, tetherConnectionSchema, type DeprecationReport, type GroupMemberHealth, type InterconnectPort, type TetherConnection } from "common-env";
+import { groupMemberHealthSchema, interconnectPortSchema, parseMetricsAuth, reachableLocalHost, tetherConnectionSchema, type DeprecationReport, type GroupMemberHealth, type InterconnectPort, type TetherConnection } from "common-env";
 import { type Component, DAEMON_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "../core/component-meta.ts";
 import { getUnitStatusOn, type Host } from "../core/host.ts";
 import { defaultPortForProtocol } from "../remote/remote-host.ts";
@@ -144,11 +144,6 @@ export type DaemonCoupling = { interconnect: InterconnectPort[]; groupMembers: G
 
 export const NO_COUPLING: DaemonCoupling = { interconnect: [], groupMembers: [] };
 
-export function healthCheckHost(values: Record<string, string>): string {
-  const bindHost = values.HOST || "0.0.0.0";
-  return bindHost === "0.0.0.0" ? "localhost" : bindHost;
-}
-
 const LISTEN_PORTS: Record<Component, { key: string; fallback: string }> = {
   gateway: { key: "PORT", fallback: GATEWAY_DEFAULT_PORT },
   dashboard: { key: "HTTP_PORT", fallback: DASHBOARD_DEFAULT_PORT },
@@ -164,7 +159,7 @@ export function serviceBaseUrl(component: Component, values: Record<string, stri
   }
   const scheme = values.XINITY_TLS_CERT || values.XINITY_TLS_CERT_FILE ? "https" : "http";
   const { key, fallback } = LISTEN_PORTS[component];
-  return `${scheme}://${healthCheckHost(values)}:${values[key] || fallback}`;
+  return `${scheme}://${reachableLocalHost(values.HOST)}:${values[key] || fallback}`;
 }
 
 export type HealthDetail =
@@ -195,9 +190,24 @@ export async function fetchHealthDetail(host: Host, baseUrl: string, metricsAuth
 
 const deprecationReportSchema = z.object({ id: z.string(), removedIn: z.string(), message: z.string() });
 
-/** Null when the service predates deprecation reports or withheld its details. */
-export function readDeprecations(body: Record<string, unknown> | undefined): DeprecationReport[] | null {
-  return deprecationReportSchema.array().safeParse(body?.deprecations).data ?? null;
+export type DeprecationRead =
+  | { kind: "reported"; reports: DeprecationReport[] }
+  | { kind: "unchecked"; reason: string };
+
+export async function readServiceDeprecations(host: Host, component: Component, values: Record<string, string>): Promise<DeprecationRead> {
+  const baseUrl = serviceBaseUrl(component, values);
+  if (!baseUrl) {
+    return { kind: "unchecked", reason: "it listens on a unix socket" };
+  }
+  if (!values.METRICS_AUTH) {
+    return { kind: "unchecked", reason: "it has no METRICS_AUTH to read its details with" };
+  }
+  const detail = await fetchHealthDetail(host, baseUrl, values.METRICS_AUTH);
+  if (detail.kind === "unreachable") {
+    return { kind: "unchecked", reason: detail.check.detail ?? detail.check.message };
+  }
+  const reports = deprecationReportSchema.array().safeParse(detail.body?.deprecations).data;
+  return reports ? { kind: "reported", reports } : { kind: "unchecked", reason: "it predates deprecation reports" };
 }
 
 // Without a credential, or from a daemon that predates a field, there is no check or coupling for it.

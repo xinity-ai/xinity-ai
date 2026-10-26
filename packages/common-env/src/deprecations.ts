@@ -35,7 +35,7 @@ export type DeprecationId = keyof typeof deprecations;
 export type Removal = { removedIn: string; deprecatedSince?: string; summary: string };
 
 /** What already went away. A deprecation moves here in the release that removes it. */
-export const removals = {
+export const removals: Record<string, Removal> = {
   "nix.dashboard-public-llm-api-url": {
     removedIn: "0.19.1",
     summary: "The NixOS option services.xinity-ai-dashboard.publicLlmApiUrl is gone. gatewayUrl replaces it, without the /v1 suffix",
@@ -70,7 +70,7 @@ export const removals = {
     deprecatedSince: "2026-05-07",
     summary: "The NixOS option services.xinity-ai-dashboard.betterAuthUrl is gone. origin replaces it",
   },
-} satisfies Record<string, Removal>;
+};
 
 /** An operator message saying what still depends on it and how to move off, or null when nothing does. */
 export type DeprecationCheck = () => Promise<string | null>;

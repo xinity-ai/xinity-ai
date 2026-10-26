@@ -10,15 +10,12 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { activationRefusal, probeOwnHealth, type TlsConfig } from "common-env";
+import { activationRefusal, exitOnHealthFlag, localRequest, type TlsConfig } from "common-env";
 import { dashboardConfig } from "./lib/server/config-schema";
 import { config } from "./lib/server/config";
 import { rootLogger } from "./lib/server/logging";
 
-// The container healthcheck: the image ships no curl, so the binary asks the running instance itself.
-if (Bun.argv.includes("--health")) {
-  process.exit(await probeOwnHealth({ ...config.server, tls: !!config.tls }) ? 0 : 1);
-}
+await exitOnHealthFlag({ ...config.server, tls: !!config.tls });
 
 const refusal = activationRefusal(dashboardConfig, rootLogger);
 if (refusal) {
@@ -69,24 +66,10 @@ const { serveOptions, tlsOptions } = await import("../build/index.js");
 /** A real route, since this app logs 404s at error level and a warm-up must not look like a fault. */
 const WARMUP_PATH = "/login/";
 
-const WILDCARD_HOSTS = new Set(["0.0.0.0", "::", "[::]"]);
-
-function warmupTarget() {
-  const { unix, hostname, port } = serveOptions();
-  const scheme = "tls" in tlsOptions() ? "https" : "http";
-  // We are the one serving the certificate, so there is nothing to verify it against.
-  const options = scheme === "https" ? { tls: { rejectUnauthorized: false } } : {};
-
-  if (unix) {
-    return { url: `${scheme}://localhost${WARMUP_PATH}`, options: { ...options, unix } };
-  }
-  const host = !hostname || WILDCARD_HOSTS.has(hostname) ? "127.0.0.1" : hostname;
-  return { url: `${scheme}://${host}:${port}${WARMUP_PATH}`, options };
-}
-
-const { url, options } = warmupTarget();
+const { unix, hostname, port } = serveOptions();
+const { url, init } = localRequest({ host: hostname, port, unixSocket: unix, tls: "tls" in tlsOptions() }, WARMUP_PATH);
 try {
-  await fetch(url, options);
+  await fetch(url, init);
 } catch (err) {
   console.error(`[startup] Warm-up request to ${url} failed. Background services will start with the first request instead.`, err);
 }

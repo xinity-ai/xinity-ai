@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { analyzeConfig, deprecations, removals, type EnvField, type Removal } from "common-env";
+import { analyzeConfig, deprecations, removals, type EnvField } from "common-env";
 import { COMPONENTS, COMPONENT_CONFIGS, type Component } from "../packages/xinity-cli/src/lib/core/component-meta.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -101,7 +101,7 @@ function tsKeyList(keys: string[]): string[] {
 
 function deprecationTable(): string[] {
   const pending = Object.entries(deprecations).sort(([, a], [, b]) => a.deprecatedSince.localeCompare(b.deprecatedSince));
-  const removed = Object.entries(removals as Record<string, Removal>).sort(([, a], [, b]) => Bun.semver.order(b.removedIn, a.removedIn));
+  const removed = Object.entries(removals).sort(([, a], [, b]) => Bun.semver.order(b.removedIn, a.removedIn));
   return [
     "| Removed in | Deprecated since | ID | What changes |",
     "|---|---|---|---|",
