@@ -78,6 +78,12 @@
           description = "host:port of the tether /metrics endpoint, which reports daemon SSE connectivity and rejected daemon requests. Resolves to the local tether port in the all-in-one deployment.";
         };
 
+        infoserverTarget = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "host:port of the infoserver /metrics endpoint, which reports catalog size, refresh failures and rate-limited requests. Null when no infoserver runs alongside, such as with the hosted catalog. Resolves to the local infoserver port in the all-in-one deployment when it runs the bundled infoserver.";
+        };
+
         basicAuthUsername = lib.mkOption {
           type = lib.types.nullOr lib.types.str;
           default = null;
@@ -180,6 +186,7 @@
               (job "xinity-tether" [ cfg.tetherTarget ])
               daemonJob
             ]
+            ++ lib.optional (cfg.infoserverTarget != null) (job "xinity-infoserver" [ cfg.infoserverTarget ])
             ++ cfg.extraScrapeConfigs;
         };
 
