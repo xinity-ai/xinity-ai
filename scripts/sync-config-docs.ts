@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { analyzeConfig, type EnvField } from "common-env";
+import { analyzeConfig, deprecations, removals, type EnvField, type Removal } from "common-env";
 import { COMPONENTS, COMPONENT_CONFIGS, type Component } from "../packages/xinity-cli/src/lib/core/component-meta.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -10,6 +10,8 @@ const NIX_START_MARKER = "# [sync:dynamic-keys] - generated from the config decl
 const NIX_END_MARKER = "# [/sync:dynamic-keys]";
 const TS_START_MARKER = "// [sync:dynamic-keys] - generated from the config declaration, do not edit";
 const TS_END_MARKER = "// [/sync:dynamic-keys]";
+const DEPRECATIONS_START_MARKER = "<!-- [sync:deprecations] - generated from the deprecation registry, do not edit -->";
+const DEPRECATIONS_END_MARKER = "<!-- [/sync:deprecations] -->";
 
 const PACKAGE_DIRS: Record<Component, string> = {
   gateway: "packages/xinity-ai-gateway",
@@ -97,6 +99,17 @@ function tsKeyList(keys: string[]): string[] {
   ];
 }
 
+function deprecationTable(): string[] {
+  const pending = Object.entries(deprecations).sort(([, a], [, b]) => a.deprecatedSince.localeCompare(b.deprecatedSince));
+  const removed = Object.entries(removals as Record<string, Removal>).sort(([, a], [, b]) => Bun.semver.order(b.removedIn, a.removedIn));
+  return [
+    "| Removed in | Deprecated since | ID | What changes |",
+    "|---|---|---|---|",
+    ...pending.map(([id, d]) => `|  | ${d.deprecatedSince} | \`${id}\` | ${cell(d.summary)}. |`),
+    ...removed.map(([id, r]) => `| ${r.removedIn} | ${r.deprecatedSince ?? ""} | \`${id}\` | ${cell(r.summary)}. |`),
+  ];
+}
+
 function sync(relPath: string, start: string, end: string, render: (indent: string) => string): boolean {
   const path = join(ROOT, relPath);
   const text = readFileSync(path, "utf-8");
@@ -143,6 +156,11 @@ for (const component of COMPONENTS) {
       ) && synced;
   }
 }
+
+synced =
+  sync("docs/deprecations.md", DEPRECATIONS_START_MARKER, DEPRECATIONS_END_MARKER, () =>
+    [DEPRECATIONS_START_MARKER, "", ...deprecationTable(), "", DEPRECATIONS_END_MARKER].join("\n"),
+  ) && synced;
 
 if (!synced) {
   process.exit(1);

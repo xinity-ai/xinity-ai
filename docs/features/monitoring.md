@@ -22,11 +22,11 @@ Use `/health` to route traffic and order startup, not as a liveness probe. A dat
 
 ### Details
 
-A request carrying a `METRICS_AUTH` credential (HTTP Basic Auth, the same one `/metrics` takes) gets the full report: the result of every check, plus service details such as the daemon's tether connection and interconnect state. A service without `METRICS_AUTH` never serves the details.
+A request carrying a `METRICS_AUTH` credential (HTTP Basic Auth, the same one `/metrics` takes) gets the full report: the result of every check, service details such as the daemon's tether connection and interconnect state, and the [deprecations](../deprecations.md) the install still depends on. A service without `METRICS_AUTH` never serves the details.
 
 ```bash
 curl -u user:pass http://localhost:4121/health
-# {"ok":true,"checks":{"database":"ok","redis":"ok"}}
+# {"ok":true,"checks":{"database":"ok","redis":"ok"},"deprecations":[]}
 ```
 
 ### Container healthchecks

@@ -12,6 +12,7 @@ import {
   printPostInstallSummary,
   type UpPlan,
 } from "../lib/up/up-plan.ts";
+import { deprecationGate } from "../lib/up/deprecation-gate.ts";
 import { warn, heading } from "../lib/core/output.ts";
 import { connectHost, TARGET_HOST_OPTION } from "../lib/remote/remote-host.ts";
 import { type Host, commandExistsOn } from "../lib/core/host.ts";
@@ -112,6 +113,10 @@ async function showDashboardHints(host: Host): Promise<void> {
 
 async function reviewAndApply(plan: UpPlan, dryRun: boolean, host: Host): Promise<"applied" | "stopped" | "failed"> {
   renderUpPlan(plan);
+
+  if (!(await deprecationGate(plan.components.map((action) => ({ host, action })), { dryRun }))) {
+    return "stopped";
+  }
 
   if (dryRun) {
     log.info(yellow("Dry run, stopping before apply."));

@@ -13,7 +13,7 @@ describe("createHealthHandler", () => {
 
   test("answers 503 when a readiness check fails", async () => {
     const handler = createHealthHandler({ readiness: { database: () => "unreachable" }, credentials });
-    const res = handler(request());
+    const res = await handler(request());
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ ok: false });
   });
@@ -24,20 +24,20 @@ describe("createHealthHandler", () => {
       degraded: { redis: () => "unreachable" },
       credentials,
     });
-    const res = handler(request(basic("ops", "secret")));
+    const res = await handler(request(basic("ops", "secret")));
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ ok: true, checks: { database: "ok", redis: "unreachable" } });
+    expect(await res.json()).toEqual({ ok: true, checks: { database: "ok", redis: "unreachable" }, deprecations: [] });
   });
 
   test("hides the detail view without a matching credential", async () => {
     const handler = createHealthHandler({ readiness: {}, details: () => ({ tether: "connected" }), credentials });
-    expect(await handler(request()).json()).toEqual({ ok: true });
-    expect(await handler(request(basic("ops", "wrong"))).json()).toEqual({ ok: true });
+    expect(await (await handler(request())).json()).toEqual({ ok: true });
+    expect(await (await handler(request(basic("ops", "wrong")))).json()).toEqual({ ok: true });
   });
 
   test("never serves the detail view when no credential is configured", async () => {
     const handler = createHealthHandler({ readiness: {}, details: () => ({ tether: "connected" }), credentials: [] });
-    expect(await handler(request(basic("ops", "secret"))).json()).toEqual({ ok: true });
+    expect(await (await handler(request(basic("ops", "secret")))).json()).toEqual({ ok: true });
   });
 
   test("service details cannot override ok or checks", async () => {
@@ -46,9 +46,10 @@ describe("createHealthHandler", () => {
       details: () => ({ ok: true, checks: {}, tether: "connected" }),
       credentials,
     });
-    expect(await handler(request(basic("ops", "secret"))).json()).toEqual({
+    expect(await (await handler(request(basic("ops", "secret")))).json()).toEqual({
       ok: false,
       checks: { database: "unreachable" },
+      deprecations: [],
       tether: "connected",
     });
   });

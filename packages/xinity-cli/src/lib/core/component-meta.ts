@@ -38,6 +38,7 @@ export const GATEWAY_DEFAULT_PORT = String(declaredDefault(gatewayConfig, "PORT"
 export const INFOSERVER_DEFAULT_PORT = String(declaredDefault(infoserverConfig, "PORT"));
 export const TETHER_DEFAULT_PORT = String(declaredDefault(tetherConfig, "PORT"));
 export const DASHBOARD_DEFAULT_PORT = String(declaredDefault(dashboardConfig, "HTTP_PORT"));
+export const DAEMON_DEFAULT_PORT = String(declaredDefault(daemonConfig, "PORT"));
 
 /** Where the daemon probes for ollama when OLLAMA_URL is left unset. */
 export const DEFAULT_OLLAMA_URL = String(declaredDefault(daemonConfig, "OLLAMA_URL"));

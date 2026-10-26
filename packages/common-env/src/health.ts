@@ -1,3 +1,4 @@
+import { reportDeprecations, type DeprecationChecks } from "./deprecations";
 import { authHeaderMatches, type MetricsCredential } from "./metrics-auth";
 import type { PinoLike } from "./pino-like";
 
@@ -70,6 +71,7 @@ export type HealthOptions = {
   /** Reported in the detail view only. The service keeps serving without these. */
   degraded?: Record<string, HealthCheck>;
   details?: () => Record<string, unknown>;
+  deprecations?: DeprecationChecks;
   /** METRICS_AUTH. With none configured the detail view is never served. */
   credentials: MetricsCredential[];
 };
@@ -102,8 +104,8 @@ export async function probeOwnHealth(target: ListenTarget): Promise<boolean> {
   }
 }
 
-export function createHealthHandler(opts: HealthOptions): (req: Request) => Response {
-  return (req) => {
+export function createHealthHandler(opts: HealthOptions): (req: Request) => Promise<Response> {
+  return async (req) => {
     const readiness = evaluate(opts.readiness);
     const ok = Object.values(readiness).every((result) => result === "ok");
     const init = { status: ok ? 200 : 503, headers: NO_STORE };
@@ -114,6 +116,7 @@ export function createHealthHandler(opts: HealthOptions): (req: Request) => Resp
       return Response.json({ ok }, init);
     }
     const checks = { ...readiness, ...evaluate(opts.degraded ?? {}) };
-    return Response.json({ ...opts.details?.(), ok, checks }, init);
+    const deprecations = await reportDeprecations(opts.deprecations ?? {});
+    return Response.json({ ...opts.details?.(), ok, checks, deprecations }, init);
   };
 }

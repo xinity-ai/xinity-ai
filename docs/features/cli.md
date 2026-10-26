@@ -10,6 +10,8 @@ For the full command reference with flags and examples, see the [CLI package REA
 
 Deploy individual components (`gateway`, `dashboard`, `daemon`, `infoserver`, `db`) or a whole machine with `up all`, as systemd units. Every `up` run is plan-based: configuration and versions are collected first without touching the host, the assembled actions are shown with a config diff, and nothing changes until a single confirmation, which can alternatively produce an equivalent bash script. Infrastructure utilities (`infra-ollama`, `infra-redis`, `infra-postgres`, `infra-seaweedfs`, `infra-prometheus`, `infra-searxng`) detect, install, and configure dependencies.
 
+Before updating a running service to a new release, `up` reads the [deprecations](../deprecations.md) it still depends on, lists the ones that release removes, and only continues on a confirmation. `xinity stack up` does the same across every host.
+
 `xinity rm` removes installed components, with an optional `--purge` flag to also delete state data.
 
 ### Multi-host deployments (`xinity stack`)
@@ -22,7 +24,7 @@ Stacks assume the infrastructure underneath (PostgreSQL, and Redis if used) alre
 
 ### Health checking (`xinity doctor`)
 
-Inspects every installed component: binary presence, systemd service status, configuration completeness, database connectivity and migration state, Redis, infoserver reachability, driver availability (Ollama/vLLM), and GPU detection. Outputs in text, JSON, or YAML. Exits with code 1 on any failure.
+Inspects every installed component: binary presence, systemd service status, configuration completeness, database connectivity and migration state, Redis, infoserver reachability, driver availability (Ollama/vLLM), GPU detection, and the [deprecations](../deprecations.md) each service still depends on. Outputs in text, JSON, or YAML. Exits with code 1 on any failure.
 
 ### API interaction (`xinity act`)
 

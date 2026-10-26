@@ -1,6 +1,6 @@
 import "zod/compile";
 
-import { createHealthHandler, parseMetricsAuth, probeOwnHealth } from "common-env";
+import { createHealthHandler, deprecations, parseMetricsAuth, probeOwnHealth } from "common-env";
 import { createLegacyModelJsonSchema, createModelJsonSchema } from "common-env/model-catalog";
 import { version } from "../../package.json";
 import { config } from "./config";
@@ -36,7 +36,7 @@ const CACHE_CONTROL = `public, max-age=${Math.floor(config.catalog.refreshInterv
 
 /** No Sunset header: RFC 8594 wants a date, and the removal is pinned to a version. */
 const DEPRECATION_HEADERS: Record<string, string> = {
-  Deprecation: "true",
+  Deprecation: `@${Date.parse(deprecations["infoserver.legacy-model-dir"].deprecatedSince) / 1000}`,
   Link: '<https://github.com/xinity-ai/xinity-ai/blob/main/packages/xinity-infoserver/README.md#model-format-versions>; rel="deprecation"',
 };
 
@@ -114,6 +114,11 @@ const handleHealth = createHealthHandler({
     },
   },
   details: catalog.getCatalogHealth,
+  deprecations: {
+    "infoserver.legacy-model-dir": async () => config.catalog.legacyDir
+      ? `MODEL_LEGACY_DIR is set and serves ${catalog.getCatalogHealth().legacy.modelCount} v1 entries. Move them to MODEL_INFO_DIR in the current format, then unset it.`
+      : null,
+  },
   credentials: parseMetricsAuth(config.metrics.auth),
 });
 

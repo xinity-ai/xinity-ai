@@ -80,6 +80,14 @@ describe("xinity-infoserver", () => {
     expect(body.legacy.modelCount).toBeGreaterThan(0);
   });
 
+  it("reports a configured legacy directory as a deprecation", async () => {
+    const body = await (await fetch(infoServerUrl("/health"), { headers: metricsAuthHeaders })).json() as any;
+
+    expect(body.deprecations).toEqual([
+      expect.objectContaining({ id: "infoserver.legacy-model-dir", removedIn: "1.0.0" }),
+    ]);
+  });
+
   it("serves current-format entries and never v1 ones", async () => {
     const res = await fetch(infoServerUrl("/models/v2.json"), { headers: asClient() });
     const body = await res.json() as any;
@@ -101,7 +109,7 @@ describe("xinity-infoserver", () => {
     const res = await fetch(infoServerUrl("/api/v1/models"), { headers: asClient() });
 
     expect(res.ok).toBe(true);
-    expect(res.headers.get("deprecation")).toBe("true");
+    expect(res.headers.get("deprecation")).toBe("@1785801600");
     expect(res.headers.get("link")).toContain('rel="deprecation"');
   });
 
@@ -127,6 +135,7 @@ describe("xinity-infoserver", () => {
         const health = await (await fetch(url("/health"), { headers: metricsAuthHeaders })).json() as any;
         expect(health.legacy.modelCount).toBe(0);
         expect(health.ok).toBe(true);
+        expect(health.deprecations).toEqual([]);
       });
     });
 
