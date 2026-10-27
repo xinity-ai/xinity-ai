@@ -147,7 +147,7 @@ describe("xinity-ai-daemon", () => {
 
     const [installation] = await db.insert(modelInstallationT).values({
       nodeId,
-      deploymentId: await createDeployment("ministral-3-m"),
+      legacyId: await createDeployment("ministral-3-m"),
       specifier: "ministral-3-m",
       estCapacity: 1,
       port: nodePort,
@@ -246,7 +246,7 @@ describe("xinity-ai-daemon", () => {
 
     const [installation] = await db.insert(modelInstallationT).values({
       nodeId,
-      deploymentId: await createDeployment(addSpecifier),
+      legacyId: await createDeployment(addSpecifier),
       specifier: addSpecifier,
       estCapacity: 1,
       port: nodePort,

@@ -1,4 +1,4 @@
-import { createDatabaseProbe, databaseDeprecationChecks, isNull, modelDeploymentT } from "common-db";
+import { createDatabaseProbe, databaseDeprecationChecks, deploymentLegacyT, deploymentT, isNull, legacyOfDeployment } from "common-db";
 import { createHealthHandler, parseMetricsAuth } from "common-env";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
@@ -15,9 +15,10 @@ export function startHealthProbe(): () => void {
 
 async function deploymentsOnLegacyCatalog(): Promise<string | null> {
   const deployments = await getDB()
-    .select({ name: modelDeploymentT.publicSpecifier, specifier: modelDeploymentT.specifier, earlySpecifier: modelDeploymentT.earlySpecifier })
-    .from(modelDeploymentT)
-    .where(isNull(modelDeploymentT.deletedAt));
+    .select({ name: deploymentT.publicSpecifier, specifier: deploymentLegacyT.specifier, earlySpecifier: deploymentLegacyT.earlySpecifier })
+    .from(deploymentT)
+    .innerJoin(deploymentLegacyT, legacyOfDeployment)
+    .where(isNull(deploymentT.deletedAt));
   const affected = await Promise.all(deployments.map(async (d) =>
     (await resolvesOnlyAsLegacy(d.specifier)) || (await resolvesOnlyAsLegacy(d.earlySpecifier)) ? d.name : null));
   const names = affected.filter((name) => name !== null);

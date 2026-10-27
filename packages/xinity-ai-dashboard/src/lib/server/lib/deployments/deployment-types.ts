@@ -10,7 +10,7 @@ export type Transaction = Parameters<Parameters<ReturnType<typeof getDB>["transa
 
 export type UpdateReview =
   | { rejected: string }
-  | { mustFit?: { requirements: ModelRequirementTable; replacing?: string } };
+  | { mustFit?: { requirements: ModelRequirementTable; replacing?: string[] } };
 
 export type DashboardDeploymentType = {
   read: (entries: Deployment[]) => Promise<DeploymentOutput[]>;
@@ -23,8 +23,17 @@ export type DashboardDeploymentType = {
   update: (tx: Transaction, entry: Deployment, input: DeploymentUpdate) => Promise<void>;
 };
 
+function notServedYet(type: DeploymentType): DashboardDeploymentType {
+  const refuse = (): never => {
+    throw new Error(`The dashboard does not serve ${type} deployments yet`);
+  };
+  return { read: refuse, withStatus: refuse, requirements: refuse, phases: refuse, reviewUpdate: refuse, update: refuse };
+}
+
 export const DASHBOARD_DEPLOYMENT_TYPES: Record<DeploymentType, DashboardDeploymentType> = {
   legacy: legacyDeployment,
+  managed: notServedYet("managed"),
+  canary: notServedYet("canary"),
 };
 
 export async function byType<R>(entries: Deployment[], run: (type: DashboardDeploymentType, entries: Deployment[]) => Promise<R>): Promise<R[]> {

@@ -36,7 +36,8 @@ function makeNode(overrides: Partial<AiNode> & { id: string }): AiNode {
 
 function makeInstallation(overrides: Partial<ModelInstallation> & { id: string; nodeId: string; specifier: string }): ModelInstallation {
   return {
-    deploymentId: "dep-1",
+    legacyId: "dep-1",
+    managedId: null,
     estCapacity: 8,
     kvCacheCapacity: 2,
     hostCapacity: 0,
@@ -92,13 +93,13 @@ describe("orchestration: node goes unavailable", () => {
 
     // No excess to trim (nothing active)
     const requiredModels: ModelRequirementTable = {
-      "dep-1:llama2:7b": { deploymentId: "dep-1", specifier: "llama2:7b", replicas: 1, kvCacheSize: 2, preferredDriver: null, settings: { version: 1 } },
+      "dep-1:llama2:7b": { legacyId: "dep-1", specifier: "llama2:7b", replicas: 1, kvCacheSize: 2, preferredDriver: null, settings: { version: 1 } },
     };
     const excess = collectExcessInstallations(requiredModels, state);
     expect(excess).toHaveLength(0);
 
     // Planner would place the replacement on node-a
-    const replacement = findServerForModel({ placement: { deploymentId: "dep-1", specifier: "llama2:7b" }, driver: "ollama", need: need(8), strategy: FF }, state, []);
+    const replacement = findServerForModel({ placement: { legacyId: "dep-1", specifier: "llama2:7b" }, driver: "ollama", need: need(8), strategy: FF }, state, []);
     expect(replacement).toBe("node-a");
   });
 
@@ -106,35 +107,35 @@ describe("orchestration: node goes unavailable", () => {
     const ollamaOnly = makeNode({ id: "node-c", host: "10.0.0.3" });
     const state = buildClusterState([], [ollamaOnly]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "some-model" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "some-model" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBeNull();
   });
 
   test("findServerForModel skips nodes without enough capacity", () => {
     const tinyNode = makeNode({ id: "node-d", host: "10.0.0.4", estCapacity: 4 });
     const state = buildClusterState([], [tinyNode]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "big-model" }, driver: "ollama", need: need(16), strategy: FF }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "big-model" }, driver: "ollama", need: need(16), strategy: FF }, state, [])).toBeNull();
   });
 
   test("findServerForModel skips nodes with incompatible driver version", () => {
     const oldNode = makeNode({ id: "node-e", host: "10.0.0.5", driverVersions: { vllm: "0.18.0" } });
     const state = buildClusterState([], [oldNode]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "new-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { minVersion: "0.19.1" } }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "new-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { minVersion: "0.19.1" } }, state, [])).toBeNull();
   });
 
   test("findServerForModel accepts nodes with sufficient driver version", () => {
     const newNode = makeNode({ id: "node-f", host: "10.0.0.6", driverVersions: { vllm: "0.20.0" } });
     const state = buildClusterState([], [newNode]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "new-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { minVersion: "0.19.1" } }, state, [])).toBe("node-f");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "new-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { minVersion: "0.19.1" } }, state, [])).toBe("node-f");
   });
 
   test("findServerForModel allows nodes whose driver version is recorded as empty (fail-open)", () => {
     const unknownNode = makeNode({ id: "node-g", host: "10.0.0.7", driverVersions: { vllm: "" } });
     const state = buildClusterState([], [unknownNode]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "new-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { minVersion: "0.19.1" } }, state, [])).toBe("node-g");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "new-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { minVersion: "0.19.1" } }, state, [])).toBe("node-g");
   });
 
   test("findServerForModel routes past a node on a blocked release to one that is not", () => {
@@ -142,50 +143,50 @@ describe("orchestration: node goes unavailable", () => {
     const onBadRelease = makeNode({ id: "node-blocked", host: "10.0.0.20", driverVersions: { vllm: "0.27.1" } });
     const onGoodRelease = makeNode({ id: "node-ok", host: "10.0.0.21", driverVersions: { vllm: "0.27.2" } });
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "m" }, driver: "vllm", need: need(8), strategy: FF, constraints: { blockedVersions } }, buildClusterState([], [onBadRelease]), [])).toBeNull();
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "m" }, driver: "vllm", need: need(8), strategy: FF, constraints: { blockedVersions } }, buildClusterState([], [onBadRelease, onGoodRelease]), [])).toBe("node-ok");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "m" }, driver: "vllm", need: need(8), strategy: FF, constraints: { blockedVersions } }, buildClusterState([], [onBadRelease]), [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "m" }, driver: "vllm", need: need(8), strategy: FF, constraints: { blockedVersions } }, buildClusterState([], [onBadRelease, onGoodRelease]), [])).toBe("node-ok");
   });
 
   test("findServerForModel skips nodes with wrong GPU platform", () => {
     const amdNode = makeNode({ id: "node-h", host: "10.0.0.8", driverVersions: { vllm: "0.20.0" }, gpus: [{ vendor: "amd", name: "MI300X", vramMb: 196608 }] });
     const state = buildClusterState([], [amdNode]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "mxfp4-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredPlatforms: ["nvidia"] } }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "mxfp4-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredPlatforms: ["nvidia"] } }, state, [])).toBeNull();
   });
 
   test("findServerForModel accepts nodes with matching GPU platform", () => {
     const nvidiaNode = makeNode({ id: "node-i", host: "10.0.0.9", driverVersions: { vllm: "0.20.0" }, gpus: [{ vendor: "nvidia", name: "A100", vramMb: 81920 }] });
     const state = buildClusterState([], [nvidiaNode]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "mxfp4-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredPlatforms: ["nvidia"] } }, state, [])).toBe("node-i");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "mxfp4-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredPlatforms: ["nvidia"] } }, state, [])).toBe("node-i");
   });
 
   test("findServerForModel rejects nodes with no GPUs when platform is required", () => {
     const cpuNode = makeNode({ id: "node-j", host: "10.0.0.10", driverVersions: { vllm: "0.20.0" }, gpus: [] });
     const state = buildClusterState([], [cpuNode]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "mxfp4-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredPlatforms: ["nvidia"] } }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "mxfp4-model" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredPlatforms: ["nvidia"] } }, state, [])).toBeNull();
   });
 
   test("findServerForModel skips nodes missing a required feature", () => {
     const node = makeNode({ id: "node-k", host: "10.0.0.11", driverVersions: { vllm: "0.20.0" }, driverFeatures: {} });
     const state = buildClusterState([], [node]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "whisper" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredFeatures: ["audio"] } }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "whisper" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredFeatures: ["audio"] } }, state, [])).toBeNull();
   });
 
   test("findServerForModel accepts nodes with the required feature", () => {
     const node = makeNode({ id: "node-l", host: "10.0.0.12", driverVersions: { vllm: "0.20.0" }, driverFeatures: { vllm: ["audio"] } });
     const state = buildClusterState([], [node]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "whisper" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredFeatures: ["audio"] } }, state, [])).toBe("node-l");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "whisper" }, driver: "vllm", need: need(8), strategy: FF, constraints: { requiredFeatures: ["audio"] } }, state, [])).toBe("node-l");
   });
 
   test("findServerForModel without requiredFeatures does not filter by features", () => {
     const node = makeNode({ id: "node-m", host: "10.0.0.13", driverVersions: { vllm: "0.20.0" } });
     const state = buildClusterState([], [node]);
 
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "chat-model" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBe("node-m");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "chat-model" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBe("node-m");
   });
 });
 
@@ -199,24 +200,24 @@ describe("orchestration: vllm runs on the first card", () => {
 
   test("refuses a vllm installation the first card cannot hold, though the node's sum could", () => {
     const state = buildClusterState([vllmOnFirstCard], [twoCards]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "b-vllm" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "b-vllm" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBeNull();
   });
 
   test("still places ollama against the node's whole capacity", () => {
     const state = buildClusterState([vllmOnFirstCard], [twoCards]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "b-ollama" }, driver: "ollama", need: need(8), strategy: FF }, state, [])).toBe("node-2x24");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "b-ollama" }, driver: "ollama", need: need(8), strategy: FF }, state, [])).toBe("node-2x24");
   });
 
   test("does not count ollama against the card vllm runs on", () => {
     const ollama = makeInstallation({ id: "inst-o", nodeId: "node-2x24", specifier: "o", driver: "ollama", estCapacity: 20 });
     const state = buildClusterState([ollama], [twoCards]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "b-vllm" }, driver: "vllm", need: need(20), strategy: FF }, state, [])).toBe("node-2x24");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "b-vllm" }, driver: "vllm", need: need(20), strategy: FF }, state, [])).toBe("node-2x24");
   });
 
   test("treats a unified-memory node as one card of its whole capacity", () => {
     const gb10 = makeNode({ id: "node-gb10", estCapacity: 109, gpus: [card(0)], driverVersions: { vllm: "0.30.0" } });
     const state = buildClusterState([], [gb10]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "big-vllm" }, driver: "vllm", need: need(60), strategy: FF }, state, [])).toBe("node-gb10");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "big-vllm" }, driver: "vllm", need: need(60), strategy: FF }, state, [])).toBe("node-gb10");
   });
 });
 
@@ -232,7 +233,7 @@ describe("orchestration: vllm pinned to cards", () => {
   test("pins to the card that still has room", () => {
     const state = buildClusterState([vllm("a", 20, ["GPU-A"])], [node]);
     expect(layoutForVllm(resourcesOf(state, "node-ab"), { weight: 8 }, 0, "space", FF)?.cards[0]?.id).toBe("GPU-B");
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "b" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBe("node-ab");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "b" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBe("node-ab");
   });
 
   test("counts an unpinned installation against the first card, where the daemon runs it", () => {
@@ -248,7 +249,7 @@ describe("orchestration: vllm pinned to cards", () => {
 
   test("refuses the node once no single card can hold the installation", () => {
     const state = buildClusterState([vllm("a", 20, ["GPU-A"]), vllm("b", 20, ["GPU-B"])], [node]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "c" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "c" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBeNull();
   });
 
   test("leaves the installation unpinned on a node whose cards report no id", () => {
@@ -333,7 +334,7 @@ describe("orchestration: installation indexing", () => {
   test("findServerForModel skips a node that already hosts the specifier", () => {
     const inst = makeInstallation({ id: "i1", nodeId: "node-1", specifier: "llama-3.3-70b" });
     const state = buildClusterState([inst], [node]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "llama-3.3-70b" }, driver: "ollama", need: need(8), strategy: FF }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "llama-3.3-70b" }, driver: "ollama", need: need(8), strategy: FF }, state, [])).toBeNull();
   });
 });
 
@@ -409,8 +410,8 @@ describe("orchestration: placing across cards", () => {
   test("places a model no single card holds on a node whose identical cards can split it", () => {
     const state = buildClusterState([], [twoCards]);
     const big = { model: { ...qwen, weight: 60 }, kvCacheGb: 16, goal: "space" as const };
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "big" }, driver: "vllm", need: big, strategy: FF }, state, [])).toBe("node-2");
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "big" }, driver: "vllm", need: { ...big, model: { weight: 60 } }, strategy: FF }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "big" }, driver: "vllm", need: big, strategy: FF }, state, [])).toBe("node-2");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "big" }, driver: "vllm", need: { ...big, model: { weight: 60 } }, strategy: FF }, state, [])).toBeNull();
   });
 });
 
@@ -422,27 +423,27 @@ describe("orchestration: node rule per engine", () => {
   });
 
   test("keeps a second deployment's installation of one ollama tag off the node", () => {
-    const inst = makeInstallation({ id: "i1", nodeId: "node-ab", deploymentId: "dep-1", specifier: "llama", driver: "ollama" });
+    const inst = makeInstallation({ id: "i1", nodeId: "node-ab", legacyId: "dep-1", specifier: "llama", driver: "ollama" });
     const state = buildClusterState([inst], [node]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-2", specifier: "llama" }, driver: "ollama", need: need(8), strategy: FF }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-2", specifier: "llama" }, driver: "ollama", need: need(8), strategy: FF }, state, [])).toBeNull();
   });
 
   test("lets a second deployment's vllm installation of one model share the node", () => {
-    const inst = makeInstallation({ id: "i1", nodeId: "node-ab", deploymentId: "dep-1", specifier: "qwen", driver: "vllm", gpuIds: ["GPU-A"] });
+    const inst = makeInstallation({ id: "i1", nodeId: "node-ab", legacyId: "dep-1", specifier: "qwen", driver: "vllm", gpuIds: ["GPU-A"] });
     const state = buildClusterState([inst], [node]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-2", specifier: "qwen" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBe("node-ab");
+    expect(findServerForModel({ placement: { legacyId: "dep-2", specifier: "qwen" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBe("node-ab");
   });
 
   test("still spreads the vllm replicas of one deployment across nodes", () => {
-    const inst = makeInstallation({ id: "i1", nodeId: "node-ab", deploymentId: "dep-1", specifier: "qwen", driver: "vllm", gpuIds: ["GPU-A"] });
+    const inst = makeInstallation({ id: "i1", nodeId: "node-ab", legacyId: "dep-1", specifier: "qwen", driver: "vllm", gpuIds: ["GPU-A"] });
     const state = buildClusterState([inst], [node]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "qwen" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "qwen" }, driver: "vllm", need: need(8), strategy: FF }, state, [])).toBeNull();
   });
 });
 
 describe("orchestration: settings drift", () => {
   function requirement(overrides: Partial<ModelRequirement> = {}): ModelRequirement {
-    return { deploymentId: "dep-1", specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1 }, ...overrides };
+    return { legacyId: "dep-1", specifier: "whisper", replicas: 1, kvCacheSize: null, preferredDriver: null, settings: { version: 1 }, ...overrides };
   }
 
   test("installation with drifted settings is collected and released from state", () => {
@@ -458,7 +459,7 @@ describe("orchestration: settings drift", () => {
     expect(drifted).toEqual(["i1"]);
     expect(state.installationsByRequirement.get("dep-1:whisper")).toHaveLength(0);
     expect(state.serverCapacity.get("node-1")!.used).toBe(0);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "whisper" }, driver: "ollama", need: need(8), strategy: FF }, state, [])).toBe("node-1");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "whisper" }, driver: "ollama", need: need(8), strategy: FF }, state, [])).toBe("node-1");
   });
 
   test("matching settings produce no drift", () => {
@@ -552,6 +553,7 @@ describe("orchestration: requirements per deployment", () => {
     expect(Object.keys(table)).toEqual(["dep-a:same"]);
     expect(table["dep-a:same"]!.replicas).toBe(4);
   });
+
 });
 
 describe("orchestration: deployment strategies", () => {
@@ -592,24 +594,24 @@ describe("orchestration: deployment strategies", () => {
 
   test("findServerForModel balanced picks node with most free capacity", () => {
     const state = buildClusterState(preinstalls, [nodeA, nodeB, nodeC]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "new-model" }, driver: "ollama", need: need(4), strategy: "balanced" }, state, [])).toBe("node-c");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "new-model" }, driver: "ollama", need: need(4), strategy: "balanced" }, state, [])).toBe("node-c");
   });
 
   test("findServerForModel bin-pack picks tightest fit that still satisfies", () => {
     const state = buildClusterState(preinstalls, [nodeA, nodeB, nodeC]);
     // B has 8 free, the tightest that fits a 4GB model.
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "new-model" }, driver: "ollama", need: need(4), strategy: "bin-pack" }, state, [])).toBe("node-b");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "new-model" }, driver: "ollama", need: need(4), strategy: "bin-pack" }, state, [])).toBe("node-b");
   });
 
   test("findServerForModel bin-pack skips nodes too tight to fit", () => {
     const state = buildClusterState(preinstalls, [nodeA, nodeB, nodeC]);
     // 10GB doesn't fit on B (8 free), so falls through to A (20 free), not C (24 free).
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "big-model" }, driver: "ollama", need: need(10), strategy: "bin-pack" }, state, [])).toBe("node-a");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "big-model" }, driver: "ollama", need: need(10), strategy: "bin-pack" }, state, [])).toBe("node-a");
   });
 
   test("findServerForModel proportional picks lowest percent used", () => {
     const state = buildClusterState(preinstalls, [nodeA, nodeB, nodeC]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "new-model" }, driver: "ollama", need: need(4), strategy: "proportional" }, state, [])).toBe("node-a");
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "new-model" }, driver: "ollama", need: need(4), strategy: "proportional" }, state, [])).toBe("node-a");
   });
 
   test("balanced spreads replicas across nodes across consecutive placements", () => {
@@ -619,15 +621,15 @@ describe("orchestration: deployment strategies", () => {
     const empty = buildClusterState([], [nodeA, nodeB, nodeC]);
     const pending: Parameters<typeof findServerForModel>[2] = [];
 
-    const first = findServerForModel({ placement: { deploymentId: "dep-1", specifier: "m" }, driver: "ollama", need: need(4), strategy: "balanced" }, empty, pending)!;
+    const first = findServerForModel({ placement: { legacyId: "dep-1", specifier: "m" }, driver: "ollama", need: need(4), strategy: "balanced" }, empty, pending)!;
     empty.serverCapacity.get(first)!.used += 4;
-    pending.push({ nodeId: first, deploymentId: "dep-1", specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
+    pending.push({ nodeId: first, legacyId: "dep-1", specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
 
-    const second = findServerForModel({ placement: { deploymentId: "dep-1", specifier: "m" }, driver: "ollama", need: need(4), strategy: "balanced" }, empty, pending)!;
+    const second = findServerForModel({ placement: { legacyId: "dep-1", specifier: "m" }, driver: "ollama", need: need(4), strategy: "balanced" }, empty, pending)!;
     empty.serverCapacity.get(second)!.used += 4;
-    pending.push({ nodeId: second, deploymentId: "dep-1", specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
+    pending.push({ nodeId: second, legacyId: "dep-1", specifier: "m", estCapacity: 4, kvCacheCapacity: 0, driver: "ollama", port: 11434 });
 
-    const third = findServerForModel({ placement: { deploymentId: "dep-1", specifier: "m" }, driver: "ollama", need: need(4), strategy: "balanced" }, empty, pending)!;
+    const third = findServerForModel({ placement: { legacyId: "dep-1", specifier: "m" }, driver: "ollama", need: need(4), strategy: "balanced" }, empty, pending)!;
 
     expect(new Set([first, second, third])).toEqual(new Set(["node-a", "node-b", "node-c"]));
   });
@@ -657,7 +659,7 @@ describe("orchestration: charging footprints", () => {
   });
 
   test("refuses a discrete node whose reported host memory cannot take the host part, and leaves an unreported one unlimited", () => {
-    const placement = { deploymentId: "dep-1", specifier: "qwen" };
+    const placement = { legacyId: "dep-1", specifier: "qwen" };
     expect(findServerForModel({ placement, driver: "vllm", need: request("space"), strategy: FF }, buildClusterState([], [discrete(4)]), [])).toBeNull();
     expect(findServerForModel({ placement, driver: "vllm", need: request("space"), strategy: FF }, buildClusterState([], [discrete(null)]), [])).toBe("node-l40s");
   });
@@ -665,13 +667,13 @@ describe("orchestration: charging footprints", () => {
   test("counts host memory already charged on the node", () => {
     const placed = makeInstallation({ id: "i1", nodeId: "node-l40s", specifier: "other", driver: "vllm", estCapacity: 10, hostCapacity: 60, gpuIds: ["L-1"] });
     const state = buildClusterState([placed], [discrete(64)]);
-    expect(findServerForModel({ placement: { deploymentId: "dep-1", specifier: "qwen" }, driver: "vllm", need: request("space"), strategy: FF }, state, [])).toBeNull();
+    expect(findServerForModel({ placement: { legacyId: "dep-1", specifier: "qwen" }, driver: "vllm", need: request("space"), strategy: FF }, state, [])).toBeNull();
   });
 
   test("charges a unified-memory node's one pool for both parts", () => {
     const gb10 = makeNode({ id: "node-gb10", estCapacity: 109, gpus: [{ vendor: "nvidia", name: "GB10", vramMb: 0 }], driverVersions: { vllm: "0.31.0" }, hostMemoryGb: 115 });
     const model = (weight: number) => ({ ...entry(), weight, footprint: { ...entry().footprint, sizing: { ...entry().footprint.sizing, weightGb: weight } } });
-    const placement = { deploymentId: "dep-1", specifier: "big" };
+    const placement = { legacyId: "dep-1", specifier: "big" };
     expect(findServerForModel({ placement, driver: "vllm", need: request("space", model(100)), strategy: FF }, buildClusterState([], [gb10]), [])).toBeNull();
     const state = buildClusterState([], [gb10]);
     const slot = vllmScheduler.placeOnNode(resourcesOf(state, "node-gb10"), request("space", model(95)))!;
@@ -706,7 +708,7 @@ describe("orchestration: charging footprints", () => {
 
 describe("orchestration: serving across coupled nodes", () => {
   const GIB = 1.073741824;
-  const placement = { deploymentId: "dep-1", specifier: "big" };
+  const placement = { legacyId: "dep-1", specifier: "big" };
   const path = (mac: string, ipv4: string) => ({
     interface: `if-${mac}`, mac, carrier: true, mtu: 9000, speedMbps: 200000, linkLayer: "Ethernet",
     ipv4: [ipv4], roceV2Ipv4: [ipv4.split("/")[0]!], addressLosses: 0,
@@ -821,7 +823,7 @@ describe("orchestration: serving across coupled nodes", () => {
     group: { id: "group-1", rank, size, parallelism: "tensor" as const, rendezvousPort: 29500, generation: 1, addresses: [{ subnet: "192.168.100.0/24", address: `192.168.100.${254 - rank}` }] },
   });
   const requirement = (replicas: number): ModelRequirementTable => ({
-    "dep-1:big": { deploymentId: "dep-1", specifier: "big", replicas, preferredDriver: "vllm", settings: { version: 1 } } as ModelRequirement,
+    "dep-1:big": { legacyId: "dep-1", specifier: "big", replicas, preferredDriver: "vllm", settings: { version: 1 } } as ModelRequirement,
   });
 
   test("counts a group as one replica and trims it whole", () => {

@@ -10,7 +10,7 @@ import { config } from "$lib/server/config";
 import { buildClusterState, chargeCapacity, chargeOf, freeGbOn, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";
 import { ENGINE_SCHEDULERS } from "./engines";
 import type { MemberSlot, NodeSlot, PlacementRequest } from "./engines/engine";
-import { firstFreePort, type Placement } from "./placement";
+import { firstFreePort, ownerOf, type Placement } from "./placement";
 import { byType, enabledDeployments } from "./deployment-types";
 import type { ModelRequirementTable } from "./requirements";
 import type { Capacity, DeploymentStrategy } from "./strategy";
@@ -345,7 +345,7 @@ async function planNewInstallations(
     const need = { model: modelInfo, kvCacheGb: effectiveKvCache, goal: resolveOptimizeFor(requirement.settings) };
 
     const constraints = { minVersion, blockedVersions, requiredPlatforms, requiredFeatures };
-    const query = { placement: { deploymentId: requirement.deploymentId, specifier }, driver, need, strategy, constraints };
+    const query = { placement: { legacyId: requirement.legacyId, managedId: requirement.managedId, specifier }, driver, need, strategy, constraints };
     for (let i = 0; i < needed; i++) {
       const replica = findPlacement(query, state, toInstall);
       const groups = replica?.coupling ? memberGroups(replica.coupling, replica.members, state, toInstall) : undefined;
@@ -372,7 +372,8 @@ async function planNewInstallations(
       replicas.push(replica.members.map((member, rank) => {
         const installation: NewInstallation = {
           nodeId: member.nodeId,
-          deploymentId: requirement.deploymentId,
+          legacyId: requirement.legacyId,
+          managedId: requirement.managedId,
           specifier: requirement.specifier,
           estCapacity: member.estCapacity,
           kvCacheCapacity: effectiveKvCache,
@@ -487,15 +488,15 @@ async function installationsAndLiveNodes(): Promise<[ModelInstallation[], AiNode
   ]);
 }
 
-export async function currentClusterState(replacedDeploymentId?: string): Promise<{ state: ClusterState; servers: AiNode[] }> {
+export async function currentClusterState(replacedOwnerIds: string[] = []): Promise<{ state: ClusterState; servers: AiNode[] }> {
   const [existing, servers] = await installationsAndLiveNodes();
   const liveIds = new Set(servers.map((server) => server.id));
-  const others = existing.filter((install) => liveIds.has(install.nodeId) && install.deploymentId !== replacedDeploymentId);
+  const others = existing.filter((install) => liveIds.has(install.nodeId) && !replacedOwnerIds.includes(ownerOf(install)));
   return { state: buildClusterState(await chargeUnchargedInstallations(others, servers, lookupSchedulable), servers), servers };
 }
 
-export async function previewPlacement(requirements: ModelRequirementTable, replacedDeploymentId?: string): Promise<PlacementPreview> {
-  const { state, servers } = await currentClusterState(replacedDeploymentId);
+export async function previewPlacement(requirements: ModelRequirementTable, replacedOwnerIds: string[] = []): Promise<PlacementPreview> {
+  const { state, servers } = await currentClusterState(replacedOwnerIds);
   const { replicas, shortfalls } = await planNewInstallations(requirements, state, maxVramGb(), config.compute.deploymentStrategy());
   const machineName = (nodeId: string) => {
     const server = servers.find((candidate) => candidate.id === nodeId);

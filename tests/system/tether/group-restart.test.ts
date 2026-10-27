@@ -79,7 +79,7 @@ describe("tether: restarting a group served across nodes", () => {
     groupId = randomUUID();
     const rows = await db.insert(modelInstallationT).values(nodeIds.map((nodeId, rank) => ({
       nodeId,
-      deploymentId,
+      legacyId: deploymentId,
       specifier: "group-model",
       estCapacity: 30,
       port: 9000 + rank,

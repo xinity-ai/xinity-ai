@@ -1,5 +1,5 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
-import { inArray, sql, deploymentT, deploymentLegacyT, modelInstallationT, modelInstallationStateT, deploymentMatchesInstallation, legacyOfDeployment, stateOfInstallation, type Deployment } from "common-db";
+import { inArray, sql, deploymentT, deploymentCanaryT, modelInstallationT, modelInstallationStateT, canaryOfDeployment, installationOfDeployment, stateOfInstallation, type Deployment } from "common-db";
 import z from "zod";
 import { DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ProgressDto, ReplicasDto, type DeploymentUpdate } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
@@ -7,7 +7,7 @@ import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallRea
 import { requirementsForDeployments, type DeploymentPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
 import { byType, DASHBOARD_DEPLOYMENT_TYPES } from "$lib/server/lib/deployments/deployment-types";
 import { createLegacy, validateCanaryModelTypes } from "$lib/server/lib/deployments/legacy-deployment";
-import { DEPLOYMENT_TYPES, deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
+import { deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import { rootLogger } from "$lib/server/logging";
 import { findOrgName } from "$lib/server/lib/org-queries";
@@ -19,6 +19,7 @@ const log = rootLogger.child({ name: "deployment.orpc" });
 const tags = ["Deployment"];
 const SuccessDto = z.object({ success: z.literal(true) });
 const successObject = { success: true } as const;
+const PATCHED_TYPES = ["legacy"] as const;
 
 async function assertModelsInCatalog(
   specifiers: string[],
@@ -131,8 +132,8 @@ function draftPlan(draft: z.infer<typeof LegacyDraftDto>, id = DRAFT_DEPLOYMENT_
 }
 
 // A deployment being changed is planned without its own installations, which the change replaces.
-async function checkDeploymentCapacity(requirements: ModelRequirementTable, replacedDeploymentId?: string): Promise<CapacityCheckResult> {
-  const { replicas, shortfalls } = await previewPlacement(requirements, replacedDeploymentId);
+async function checkDeploymentCapacity(requirements: ModelRequirementTable, replacedOwnerIds: string[] = []): Promise<CapacityCheckResult> {
+  const { replicas, shortfalls } = await previewPlacement(requirements, replacedOwnerIds);
   const blocking = shortfalls.find((shortfall) => shortfall.reason !== "catalog_unavailable");
   const shortfall = blocking ?? shortfalls[0];
   return {
@@ -212,7 +213,7 @@ const updateDeployment = rootOs
     const rlog = log.child({ traceId: context.traceId });
     const current = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!current) throw errors.NOT_FOUND();
-    const foreign = DEPLOYMENT_TYPES.find((other) => other !== current.type && input[other] !== undefined);
+    const foreign = PATCHED_TYPES.find((other) => other !== current.type && input[other] !== undefined);
     if (foreign) {
       throw errors.BAD_REQUEST({ message: `This deployment is of type ${current.type}, so it has no ${foreign} part to change` });
     }
@@ -339,9 +340,9 @@ export const retryDeployment = rootOs
 
     const failed = await getDB()
       .select({ id: modelInstallationT.id, group: modelInstallationT.group })
-      .from(modelInstallationT)
-      .innerJoin(deploymentLegacyT, deploymentMatchesInstallation)
-      .innerJoin(deploymentT, legacyOfDeployment)
+      .from(deploymentT)
+      .leftJoin(deploymentCanaryT, canaryOfDeployment)
+      .innerJoin(modelInstallationT, installationOfDeployment)
       .innerJoin(modelInstallationStateT, sql`
         ${stateOfInstallation}
         AND ${modelInstallationStateT.lifecycleState} = ${"failed"}
@@ -474,7 +475,7 @@ const checkCapacity = rootOs
   .handler(async ({ context, input }): Promise<CapacityCheckResult> =>  {
     const replaced = input.deploymentId ? await findActiveDeploymentInOrg(input.deploymentId, context.activeOrganizationId) : undefined;
     const replacedId = replaced?.legacyId ?? undefined;
-    return checkDeploymentCapacity(requirementsForDeployments([draftPlan(input.legacy, replacedId)]), replacedId);
+    return checkDeploymentCapacity(requirementsForDeployments([draftPlan(input.legacy, replacedId)]), replacedId ? [replacedId] : []);
   });
 
 export const deploymentsRouter = rootOs.prefix("/deployments").router({

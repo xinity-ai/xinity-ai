@@ -51,6 +51,16 @@ export const managedOfDeployment = sql`${deploymentManagedT.id} = ${deploymentT.
 export const canaryOfDeployment = sql`${deploymentCanaryT.id} = ${deploymentT.canaryId}`;
 
 /**
+ * The installation serves the deployment, through its legacy or managed row or either member of its canary.
+ * Needs `deployment`, `deployment_canary` joined with `canaryOfDeployment` (a left join, as most deployments
+ * have none) and `model_installation`. Use as the ON when joining `model_installation` onto the deployment.
+ */
+export const installationOfDeployment = sql`(
+  ${modelInstallationT.legacyId} = ${deploymentT.legacyId}
+  OR ${modelInstallationT.managedId} IN (${deploymentT.managedId}, ${deploymentCanaryT.fromId}, ${deploymentCanaryT.toId})
+)`;
+
+/**
  * The installation is of the given canonical specifier.
  * Needs `model_installation`. Use in a WHERE.
  */

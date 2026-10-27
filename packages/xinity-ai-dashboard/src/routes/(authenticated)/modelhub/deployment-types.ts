@@ -1,5 +1,4 @@
 import type { Component, ComponentProps } from "svelte";
-import type { DeploymentType } from "common-env/deployment-types";
 import type { DeploymentDefinition } from "./+page.server";
 import DeploymentModal from "./DeploymentModal.svelte";
 import LegacyDeploymentDetails from "./LegacyDeploymentDetails.svelte";
@@ -13,7 +12,7 @@ type DeploymentTypeView = {
   editModal: Component<ComponentProps<typeof DeploymentModal>>;
 };
 
-export const DEPLOYMENT_TYPE_VIEWS: Record<DeploymentType, DeploymentTypeView> = {
+export const DEPLOYMENT_TYPE_VIEWS: Record<DeploymentDefinition["type"], DeploymentTypeView> = {
   legacy: {
     label: ({ legacy }) => {
       if (!legacy.earlySpecifier) {

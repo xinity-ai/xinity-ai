@@ -1,7 +1,7 @@
 import {
   aiNodeT,
   deploymentLegacyT,
-  deploymentMatchesInstallation,
+  legacyMatchesInstallation,
   deploymentT,
   inArray,
   installationOnLiveNode,
@@ -105,7 +105,7 @@ export const legacyDeployment: DashboardDeploymentType = {
       .from(deploymentT)
       .innerJoin(deploymentLegacyT, legacyOfDeployment)
       .leftJoin(modelInstallationT, sql`
-        ${deploymentMatchesInstallation}
+        ${legacyMatchesInstallation}
       AND
         ${modelInstallationT.deletedAt} IS NULL
       `)
@@ -145,7 +145,7 @@ export const legacyDeployment: DashboardDeploymentType = {
       .innerJoin(deploymentLegacyT, legacyOfDeployment)
       .leftJoin(organizationT, sql`${organizationT.id} = ${deploymentT.organizationId}`)
       .leftJoin(modelInstallationT, sql`
-        ${deploymentMatchesInstallation}
+        ${legacyMatchesInstallation}
       AND
         ${modelInstallationT.deletedAt} IS NULL
       `)
@@ -183,7 +183,7 @@ export const legacyDeployment: DashboardDeploymentType = {
       return {};
     }
     const merged = { ...legacy, ...patch };
-    return { mustFit: { requirements: requirementsForDeployments([merged]), replacing: scalingUp ? legacy.id : undefined } };
+    return { mustFit: { requirements: requirementsForDeployments([merged]), replacing: scalingUp ? [legacy.id] : undefined } };
   },
 
   async update(tx, entry, input) {

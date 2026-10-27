@@ -247,7 +247,7 @@ export async function createModelInstallation(input: {
 }): Promise<{ id: string }> {
   const [installation] = await getDB().insert(modelInstallationT).values({
     nodeId: input.nodeId,
-    deploymentId: input.deploymentId,
+    legacyId: input.deploymentId,
     specifier: input.specifier,
     estCapacity: input.estCapacity ?? 1,
     port: input.port,

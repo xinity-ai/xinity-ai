@@ -1,9 +1,9 @@
 import { calcCanaryProgress, type DeploymentLegacy } from "common-db";
 import type { DeploymentSettings } from "common-env";
 import type { Provider } from "common-env/model-catalog";
-import { requirementKey } from "./placement";
+import { ownedByLegacy, requirementKey, type InstallationOwnership } from "./placement";
 
-export type ModelRequirement = { deploymentId: string; specifier: string; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null; settings: DeploymentSettings };
+export type ModelRequirement = InstallationOwnership & { specifier: string; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null; settings: DeploymentSettings };
 export type ModelRequirementTable = Record<string, ModelRequirement>;
 
 export type DeploymentPlan = Pick<
@@ -15,9 +15,9 @@ export type DeploymentPlan = Pick<
 export function requirementsForDeployments(deployments: DeploymentPlan[]): ModelRequirementTable {
   const requirements = deployments.flatMap((deployment): ModelRequirement[] => {
     const progress = calcCanaryProgress(deployment);
-    const { id: deploymentId, specifier, earlySpecifier, replicas, preferredDriver, settings } = deployment;
+    const { id, specifier, earlySpecifier, replicas, preferredDriver, settings } = deployment;
     const side = (sideSpecifier: string, sideReplicas: number, kvCacheSize: number | null): ModelRequirement =>
-      ({ deploymentId, specifier: sideSpecifier, replicas: sideReplicas, kvCacheSize, preferredDriver, settings });
+      ({ ...ownedByLegacy(id), specifier: sideSpecifier, replicas: sideReplicas, kvCacheSize, preferredDriver, settings });
     if (progress === 100 || !earlySpecifier || earlySpecifier === specifier) {
       return [side(specifier, replicas, deployment.kvCacheSize)];
     }
