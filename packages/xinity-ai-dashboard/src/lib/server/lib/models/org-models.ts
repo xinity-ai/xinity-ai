@@ -12,6 +12,7 @@ export type OrgModel = {
   tools: boolean;
   vision: boolean;
   ready: boolean;
+  contextWindow: number | null;
 };
 
 export async function loadOrgModels(locals: App.Locals): Promise<OrgModel[]> {
@@ -28,6 +29,7 @@ export async function loadOrgModels(locals: App.Locals): Promise<OrgModel[]> {
         tools: entry?.tags.includes("tools") ?? false,
         vision: entry?.tags.includes("vision") ?? false,
         ready: deployment.status?.phase === "ready",
+        contextWindow: entry?.sizing.maxContextLength ?? null,
       };
     })
     .sort((a, b) => Number(b.ready) - Number(a.ready) || a.name.localeCompare(b.name));
