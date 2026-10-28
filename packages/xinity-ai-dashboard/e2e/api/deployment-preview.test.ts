@@ -85,6 +85,16 @@ describe("deployment placement preview", () => {
     expect(body.replicas.some((replica) => replica.machines.some((candidate) => candidate.machineName === machineName))).toBe(true);
   });
 
+  test("plans a canary draft as one replica per member when progress splits two evenly", async () => {
+    const res = await ownerFetch("/api/deployments/check-capacity", {
+      method: "POST",
+      body: JSON.stringify({ type: "canary", canary: { replicas: 2, progress: 50, from: { specifier: MODEL, kvCacheSize: 4 }, to: { specifier: MODEL, kvCacheSize: 6 } } }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Preview;
+    expect(body.replicas.map((replica) => replica.specifier)).toEqual([MODEL, MODEL]);
+  });
+
   test("refuses a machine whose reported host memory cannot take the host part", async () => {
     await db.update(aiNodeT).set({ hostMemoryGb: 1 }).where(sql`${aiNodeT.id} = ${nodeId}`);
     try {

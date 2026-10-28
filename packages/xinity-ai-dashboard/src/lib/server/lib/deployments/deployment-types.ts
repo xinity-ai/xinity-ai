@@ -3,6 +3,7 @@ import { DEPLOYMENT_TYPES, type DeploymentType } from "common-env";
 import type { DeploymentOutput, DeploymentUpdate } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import type { DeploymentPhaseRow } from "$lib/server/notifications/scheduler";
+import { canaryDeployment } from "./canary-deployment";
 import { legacyDeployment } from "./legacy-deployment";
 import { managedDeployment } from "./managed-deployment";
 import type { ModelRequirementTable } from "./requirements";
@@ -24,17 +25,10 @@ export type DashboardDeploymentType = {
   update: (tx: Transaction, entry: Deployment, input: DeploymentUpdate) => Promise<void>;
 };
 
-function notServedYet(type: DeploymentType): DashboardDeploymentType {
-  const refuse = (): never => {
-    throw new Error(`The dashboard does not serve ${type} deployments yet`);
-  };
-  return { read: refuse, withStatus: refuse, requirements: refuse, phases: refuse, reviewUpdate: refuse, update: refuse };
-}
-
 export const DASHBOARD_DEPLOYMENT_TYPES: Record<DeploymentType, DashboardDeploymentType> = {
   legacy: legacyDeployment,
   managed: managedDeployment,
-  canary: notServedYet("canary"),
+  canary: canaryDeployment,
 };
 
 export async function byType<R>(entries: Deployment[], run: (type: DashboardDeploymentType, entries: Deployment[]) => Promise<R>): Promise<R[]> {

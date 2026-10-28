@@ -87,9 +87,22 @@ export const ManagedDeploymentDto = z.object({
   settings: DeploymentSettingsDto.optional(),
 });
 
+const CanaryMemberDto = ManagedDeploymentDto.omit({ replicas: true });
+
+export const CanaryDeploymentDto = z.object({
+  replicas: z.number().describe("Replicas the two members share, split between them by progress"),
+  progress: z.number().describe("Share of traffic, in percent, that goes to `to`"),
+  canaryProgressUntil: z.date().nullish().describe("When progress reaches 100"),
+  canaryProgressFrom: z.date().nullish().describe("When progress started moving towards 100"),
+  canaryProgressWithFeedback: z.boolean().default(false),
+  from: CanaryMemberDto.describe("The model traffic moves away from"),
+  to: CanaryMemberDto.describe("The model traffic moves to"),
+});
+
 export const DeploymentDto = z.discriminatedUnion("type", [
   DeploymentBaseDto.extend({ type: z.literal("legacy"), legacy: LegacyDeploymentDto }),
   DeploymentBaseDto.extend({ type: z.literal("managed"), managed: ManagedDeploymentDto }),
+  DeploymentBaseDto.extend({ type: z.literal("canary"), canary: CanaryDeploymentDto }),
 ]);
 export type DeploymentOutput = z.infer<typeof DeploymentDto>;
 
@@ -115,6 +128,9 @@ export const ManagedDeploymentInputDto = ManagedDeploymentDto.extend({
 });
 export type ManagedDeploymentInput = z.infer<typeof ManagedDeploymentInputDto>;
 
+export const CanaryMemberInputDto = ManagedDeploymentInputDto.omit({ replicas: true });
+export type CanaryMemberInput = z.infer<typeof CanaryMemberInputDto>;
+
 export const DeploymentInputDto = z.discriminatedUnion("type", [
   DeploymentBaseInputDto.extend({ type: z.literal("legacy"), legacy: LegacyDeploymentInputDto }),
   DeploymentBaseInputDto.extend({ type: z.literal("managed"), managed: ManagedDeploymentInputDto }),
@@ -131,10 +147,21 @@ export const LegacyDeploymentPatchDto = LegacyDeploymentInputDto
 
 export const ManagedDeploymentPatchDto = ManagedDeploymentInputDto.extend({ replicas: ReplicasDto }).partial();
 
+const CanaryMemberPatchDto = CanaryMemberInputDto.partial();
+
+export const CanaryDeploymentPatchDto = CanaryDeploymentDto.extend({
+  replicas: ReplicasDto,
+  progress: ProgressDto,
+  canaryProgressWithFeedback: z.boolean(),
+  from: CanaryMemberPatchDto,
+  to: CanaryMemberPatchDto,
+}).partial();
+
 /** Changes to the deployment's type-specific part go under the key of its type. */
 export const DeploymentUpdateDto = DeploymentBaseInputDto.partial().extend({
   id: z.uuid(),
   legacy: LegacyDeploymentPatchDto.optional(),
   managed: ManagedDeploymentPatchDto.optional(),
+  canary: CanaryDeploymentPatchDto.optional(),
 });
 export type DeploymentUpdate = z.infer<typeof DeploymentUpdateDto>;

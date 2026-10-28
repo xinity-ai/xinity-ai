@@ -1,7 +1,8 @@
 import { deploymentLegacyT, deploymentT, inArray, legacyOfDeployment, sql, type Deployment, type DeploymentLegacy } from "common-db";
 import type { DeploymentOutput, LegacyDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
-import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
+import { resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
+import { validateCanaryModelTypes } from "./canary-deployment";
 import { markMissingFromCatalog, phasesOf, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType, Transaction } from "./deployment-types";
 import { requirementsForDeployments } from "./requirements";
@@ -20,23 +21,6 @@ export async function createLegacy(tx: Transaction, input: LegacyDeploymentInput
     throw new Error("Insert into deploymentLegacyT returned no row");
   }
   return legacy.id;
-}
-
-async function resolveType(specifier: string): Promise<string | undefined> {
-  const resolution = await resolveSchedulable(specifier, null);
-  return resolution.status === "found" ? resolution.model.type : undefined;
-}
-
-export async function validateCanaryModelTypes(canarySpecifier: string, replacedSpecifier: string | null): Promise<string | null> {
-  if (!replacedSpecifier) return null;
-  const [canaryType, replacedType] = await Promise.all([
-    resolveType(canarySpecifier),
-    resolveType(replacedSpecifier),
-  ]);
-  if (canaryType && replacedType && canaryType !== replacedType) {
-    return `Cannot mix model types in a canary deployment: the canary is "${canaryType}" but the model it replaces is "${replacedType}"`;
-  }
-  return null;
 }
 
 async function markDeploymentsOnDeprecatedCatalog(deployments: DeploymentOutput[]): Promise<void> {

@@ -87,3 +87,11 @@ export async function markMissingFromCatalog(deployments: DeploymentOutput[], sp
     }
   }));
 }
+
+/** Ids of the rows whose installations serve the deployment. */
+export async function installationOwnersOf(entry: Deployment): Promise<string[]> {
+  const [canary] = entry.canaryId
+    ? await getDB().select().from(deploymentCanaryT).where(sql`${deploymentCanaryT.id} = ${entry.canaryId}`).limit(1)
+    : [];
+  return [entry.legacyId, entry.managedId, canary?.fromId, canary?.toId].filter((id) => typeof id === "string");
+}

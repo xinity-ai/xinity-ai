@@ -1,5 +1,5 @@
 import { deploymentManagedT, deploymentT, inArray, managedOfDeployment, sql, type Deployment, type DeploymentManaged } from "common-db";
-import type { DeploymentOutput, ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
+import type { CanaryMemberInput, DeploymentOutput, ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { markMissingFromCatalog, phasesOf, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType, Transaction } from "./deployment-types";
@@ -26,7 +26,19 @@ export async function createManaged(tx: Transaction, input: ManagedDeploymentInp
   return managed.id;
 }
 
+export function hasChanges(patch: object | undefined): patch is object {
+  return patch !== undefined && Object.values(patch).some((value) => value !== undefined);
+}
+
 const RESTRICTED_WHILE_ENABLED = ["specifier", "kvCacheSize", "preferredDriver"] as const;
+
+/** The fields of a managed row that the patch changes and that only a disabled deployment may change. */
+export function restrictedChanges(patch: Partial<CanaryMemberInput>, current: DeploymentManaged): string[] {
+  return RESTRICTED_WHILE_ENABLED.filter((field) => patch[field] !== undefined && patch[field] !== current[field]);
+}
+
+export const rejectWhileEnabled = (changed: string[]) =>
+  ({ rejected: `Cannot change ${changed.join(", ")} while the deployment is enabled. Disable it first.` });
 
 export const managedDeployment: DashboardDeploymentType = {
   read,
@@ -56,11 +68,9 @@ export const managedDeployment: DashboardDeploymentType = {
     const patch = input.managed ?? {};
 
     const staysEnabled = entry.enabled && input.enabled !== false;
-    if (staysEnabled) {
-      const changed = RESTRICTED_WHILE_ENABLED.filter((field) => patch[field] !== undefined && patch[field] !== managed[field]);
-      if (changed.length > 0) {
-        return { rejected: `Cannot change ${changed.join(", ")} while the deployment is enabled. Disable it first.` };
-      }
+    const changed = staysEnabled ? restrictedChanges(patch, managed) : [];
+    if (changed.length > 0) {
+      return rejectWhileEnabled(changed);
     }
 
     const reenabling = input.enabled && !entry.enabled;
@@ -72,10 +82,9 @@ export const managedDeployment: DashboardDeploymentType = {
   },
 
   async update(tx, entry, input) {
-    const patch = input.managed;
-    if (!entry.managedId || !patch || Object.values(patch).every((value) => value === undefined)) {
+    if (!entry.managedId || !hasChanges(input.managed)) {
       return;
     }
-    await tx.update(deploymentManagedT).set(patch).where(sql`${deploymentManagedT.id} = ${entry.managedId}`);
+    await tx.update(deploymentManagedT).set(input.managed).where(sql`${deploymentManagedT.id} = ${entry.managedId}`);
   },
 };

@@ -1,4 +1,4 @@
-import { createDatabaseProbe, databaseDeprecationChecks, deploymentLegacyT, deploymentManagedT, deploymentT, isNull, legacyOfDeployment, managedOfDeployment } from "common-db";
+import { canaryOfDeployment, createDatabaseProbe, databaseDeprecationChecks, deploymentCanaryT, deploymentLegacyT, deploymentManagedT, deploymentT, isNull, legacyOfDeployment, sql } from "common-db";
 import { createHealthHandler, parseMetricsAuth } from "common-env";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
@@ -18,11 +18,12 @@ async function deploymentsOnLegacyCatalog(): Promise<string | null> {
     .select({ name: deploymentT.publicSpecifier, legacy: deploymentLegacyT.specifier, legacyEarly: deploymentLegacyT.earlySpecifier, managed: deploymentManagedT.specifier })
     .from(deploymentT)
     .leftJoin(deploymentLegacyT, legacyOfDeployment)
-    .leftJoin(deploymentManagedT, managedOfDeployment)
+    .leftJoin(deploymentCanaryT, canaryOfDeployment)
+    .leftJoin(deploymentManagedT, sql`${deploymentManagedT.id} IN (${deploymentT.managedId}, ${deploymentCanaryT.fromId}, ${deploymentCanaryT.toId})`)
     .where(isNull(deploymentT.deletedAt));
   const affected = await Promise.all(deployments.map(async (d) =>
     (await resolvesOnlyAsLegacy(d.legacy)) || (await resolvesOnlyAsLegacy(d.legacyEarly)) || (await resolvesOnlyAsLegacy(d.managed)) ? d.name : null));
-  const names = affected.filter((name) => name !== null);
+  const names = [...new Set(affected.filter((name) => name !== null))];
   return names.length > 0
     ? `${names.length} deployments resolve their model only through the v1 catalog (${names.join(", ")}). Move each to a model in the current catalog.`
     : null;

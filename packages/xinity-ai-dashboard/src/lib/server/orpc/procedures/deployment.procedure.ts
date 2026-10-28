@@ -1,14 +1,16 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { inArray, sql, deploymentT, deploymentCanaryT, modelInstallationT, modelInstallationStateT, canaryOfDeployment, installationOfDeployment, stateOfInstallation, type Deployment } from "common-db";
 import z from "zod";
-import { DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ManagedDeploymentInputDto, ProgressDto, ReplicasDto, type DeploymentUpdate, type ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
+import { CanaryMemberInputDto, DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ManagedDeploymentInputDto, ProgressDto, ReplicasDto, type CanaryMemberInput, type DeploymentUpdate, type ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
-import { requirementsForDeployments, requirementsForManaged, type DeploymentPlan, type ManagedPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
+import { requirementsForCanaries, requirementsForDeployments, requirementsForManaged, type CanaryMemberPlan, type DeploymentPlan, type ManagedPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
 import { byType, DASHBOARD_DEPLOYMENT_TYPES, type Transaction } from "$lib/server/lib/deployments/deployment-types";
-import { createLegacy, validateCanaryModelTypes } from "$lib/server/lib/deployments/legacy-deployment";
+import { createLegacy } from "$lib/server/lib/deployments/legacy-deployment";
+import { validateCanaryModelTypes } from "$lib/server/lib/deployments/canary-deployment";
+import { installationOwnersOf } from "$lib/server/lib/deployments/deployment-reads";
 import { createManaged } from "$lib/server/lib/deployments/managed-deployment";
-import { deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
+import { DEPLOYMENT_TYPES, deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import { rootLogger } from "$lib/server/logging";
 import { findOrgName } from "$lib/server/lib/org-queries";
@@ -21,7 +23,6 @@ const log = rootLogger.child({ name: "deployment.orpc" });
 const tags = ["Deployment"];
 const SuccessDto = z.object({ success: z.literal(true) });
 const successObject = { success: true } as const;
-const PATCHED_TYPES = ["legacy", "managed"] as const;
 
 async function assertModelsInCatalog(
   specifiers: string[],
@@ -57,6 +58,16 @@ const CapacityCheckInput = z.discriminatedUnion("type", [
     type: z.literal("managed"),
     deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
     managed: ManagedDeploymentInputDto,
+  }),
+  z.object({
+    type: z.literal("canary"),
+    deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
+    canary: z.object({
+      replicas: ReplicasDto.default(1),
+      progress: ProgressDto.default(0),
+      from: CanaryMemberInputDto,
+      to: CanaryMemberInputDto,
+    }),
   }),
 ]);
 
@@ -138,20 +149,30 @@ function draftPlan(draft: z.infer<typeof LegacyDraftDto>, id = DRAFT_DEPLOYMENT_
   };
 }
 
-function managedDraftPlan(draft: ManagedDeploymentInput, id = DRAFT_DEPLOYMENT_ID): ManagedPlan {
+function memberDraftPlan(draft: CanaryMemberInput, id = DRAFT_DEPLOYMENT_ID): CanaryMemberPlan {
   return {
     id,
     specifier: draft.specifier,
-    replicas: draft.replicas,
     kvCacheSize: draft.kvCacheSize ?? null,
     preferredDriver: draft.preferredDriver ?? null,
     settings: draft.settings ?? { version: 1 },
   };
 }
 
+function managedDraftPlan(draft: ManagedDeploymentInput, id = DRAFT_DEPLOYMENT_ID): ManagedPlan {
+  return { ...memberDraftPlan(draft, id), replicas: draft.replicas };
+}
+
 const DRAFT_REQUIREMENTS: VariantHandlers<z.infer<typeof CapacityCheckInput>, ModelRequirementTable, [string | undefined]> = {
   legacy: ({ legacy }, id) => requirementsForDeployments([draftPlan(legacy, id)]),
   managed: ({ managed }, id) => requirementsForManaged([managedDraftPlan(managed, id)]),
+  canary: ({ canary: { from, to, ...rollout } }) => requirementsForCanaries([{
+    ...rollout,
+    canaryProgressFrom: null,
+    canaryProgressUntil: null,
+    from: memberDraftPlan(from, "draft-from"),
+    to: memberDraftPlan(to, "draft-to"),
+  }]),
 };
 
 // A deployment being changed is planned without its own installations, which the change replaces.
@@ -236,7 +257,7 @@ const updateDeployment = rootOs
     const rlog = log.child({ traceId: context.traceId });
     const current = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!current) throw errors.NOT_FOUND();
-    const foreign = PATCHED_TYPES.find((other) => other !== current.type && input[other] !== undefined);
+    const foreign = DEPLOYMENT_TYPES.find((other) => other !== current.type && input[other] !== undefined);
     if (foreign) {
       throw errors.BAD_REQUEST({ message: `This deployment is of type ${current.type}, so it has no ${foreign} part to change` });
     }
@@ -519,7 +540,7 @@ const checkCapacity = rootOs
   .output(CapacityCheckOutput)
   .handler(async ({ context, input }): Promise<CapacityCheckResult> =>  {
     const replaced = input.deploymentId ? await findActiveDeploymentInOrg(input.deploymentId, context.activeOrganizationId) : undefined;
-    const replacedOwnerIds = [replaced?.legacyId, replaced?.managedId].filter((id) => typeof id === "string");
+    const replacedOwnerIds = replaced ? await installationOwnersOf(replaced) : [];
     return checkDeploymentCapacity(handleVariant(DRAFT_REQUIREMENTS, input, replacedOwnerIds[0]), replacedOwnerIds);
   });
 

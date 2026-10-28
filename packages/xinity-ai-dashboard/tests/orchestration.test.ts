@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectIncompleteGroups, collectReassignableOrphans, collectReplicasThatDoNotFit, capacityNeed, findPlacement, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
 import { buildClusterState, freeGbOn, rankServers, resourcesOf } from "../src/lib/server/lib/deployments/cluster-state";
 import { layoutForVllm, vllmScheduler } from "../src/lib/server/lib/deployments/engines/vllm";
-import { requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
+import { requirementsForCanaries, requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
 import type { DeploymentStrategy } from "../src/lib/server/lib/deployments/strategy";
 import type { AiNode, DeploymentLegacy, ModelInstallation } from "common-db";
 import type { SchedulableModel } from "../src/lib/server/lib/models/model-catalog";
@@ -552,6 +552,17 @@ describe("orchestration: requirements per deployment", () => {
 
     expect(Object.keys(table)).toEqual(["dep-a:same"]);
     expect(table["dep-a:same"]!.replicas).toBe(4);
+  });
+
+  test("splits a canary's replicas between its members, each owning its installations", () => {
+    const member = (id: string) => ({ id, specifier: "same", kvCacheSize: null, preferredDriver: null, settings: { version: 1 as const } });
+    const rollout = { replicas: 4, canaryProgressFrom: null, canaryProgressUntil: null, from: member("from"), to: member("to") };
+
+    const midway = requirementsForCanaries([{ ...rollout, progress: 25 }]);
+    expect(midway["from:same"]).toMatchObject({ managedId: "from", legacyId: null, replicas: 3 });
+    expect(midway["to:same"]).toMatchObject({ managedId: "to", legacyId: null, replicas: 1 });
+
+    expect(Object.keys(requirementsForCanaries([{ ...rollout, progress: 100 }]))).toEqual(["to:same"]);
   });
 
 });

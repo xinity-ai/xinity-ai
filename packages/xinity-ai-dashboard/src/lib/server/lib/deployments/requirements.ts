@@ -1,4 +1,4 @@
-import { calcCanaryProgress, type DeploymentLegacy, type DeploymentManaged } from "common-db";
+import { calcCanaryProgress, calcRolloutProgress, type DeploymentCanary, type DeploymentLegacy, type DeploymentManaged } from "common-db";
 import type { DeploymentSettings } from "common-env";
 import type { Provider } from "common-env/model-catalog";
 import { ownedByLegacy, ownedByManaged, requirementKey, type InstallationOwnership } from "./placement";
@@ -12,6 +12,10 @@ export type DeploymentPlan = Pick<
 >;
 
 export type ManagedPlan = Pick<DeploymentManaged, "id" | "specifier" | "replicas" | "kvCacheSize" | "preferredDriver" | "settings">;
+
+export type CanaryMemberPlan = Omit<ManagedPlan, "replicas">;
+
+export type CanaryPlan = Pick<DeploymentCanary, "replicas" | "progress" | "canaryProgressFrom" | "canaryProgressUntil"> & { from: CanaryMemberPlan; to: CanaryMemberPlan };
 
 const tableOf = (requirements: ModelRequirement[]): ModelRequirementTable =>
   Object.fromEntries(requirements.map((requirement) => [requirementKey(requirement), requirement]));
@@ -33,7 +37,21 @@ export function requirementsForDeployments(deployments: DeploymentPlan[]): Model
   }));
 }
 
+function managedRequirement({ id, specifier, kvCacheSize, preferredDriver, settings }: CanaryMemberPlan, replicas: number): ModelRequirement {
+  return { ...ownedByManaged(id), specifier, replicas, kvCacheSize, preferredDriver, settings };
+}
+
 export function requirementsForManaged(rows: ManagedPlan[]): ModelRequirementTable {
-  return tableOf(rows.map(({ id, specifier, replicas, kvCacheSize, preferredDriver, settings }) =>
-    ({ ...ownedByManaged(id), specifier, replicas, kvCacheSize, preferredDriver, settings })));
+  return tableOf(rows.map((row) => managedRequirement(row, row.replicas)));
+}
+
+// The members share the canary's replicas by progress, each rounded up so a member taking any traffic keeps a replica.
+export function requirementsForCanaries(canaries: CanaryPlan[]): ModelRequirementTable {
+  return tableOf(canaries.flatMap((canary) => {
+    const progress = calcRolloutProgress(canary);
+    return [
+      managedRequirement(canary.from, Math.ceil(canary.replicas * ((100 - progress) / 100))),
+      managedRequirement(canary.to, Math.ceil(canary.replicas * (progress / 100))),
+    ].filter(({ replicas }) => replicas > 0);
+  }));
 }
