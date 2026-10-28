@@ -111,24 +111,27 @@ describe("Deployment input validation", () => {
   });
 });
 
-describe("Managed deployment", () => {
-  type Managed = { id: string; name: string; type: "managed"; managed: { specifier: string; replicas: number; kvCacheSize?: number | null } };
+type Managed = { id: string; name: string; type: "managed"; managed: { specifier: string; replicas: number; kvCacheSize?: number | null } };
 
-  async function withManaged(managed: Record<string, unknown>, run: (deployment: Managed) => Promise<void>) {
-    const publicSpecifier = `managed-e2e-${randomUUID()}`;
-    const created = await ownerFetch("/api/deployments/", {
-      method: "POST",
-      body: JSON.stringify({ name: publicSpecifier, publicSpecifier, enabled: false, type: "managed", managed: { specifier: MODEL, ...managed } }),
-    });
-    expect(created.status).toBe(200);
-    const deployment = (await created.json()) as Managed;
-    try {
-      await run(deployment);
-    } finally {
-      await ownerFetch(`/api/deployments/${deployment.id}`, { method: "DELETE" });
-    }
+type Member = { specifier: string; kvCacheSize?: number | null };
+type Canary = { id: string; type: "canary"; canary: { replicas: number; progress: number; advance: { type: string; startProgress?: number }; from: Member; to: Member } };
+
+async function withManaged(managed: Record<string, unknown>, run: (deployment: Managed) => Promise<void>) {
+  const publicSpecifier = `managed-e2e-${randomUUID()}`;
+  const created = await ownerFetch("/api/deployments/", {
+    method: "POST",
+    body: JSON.stringify({ name: publicSpecifier, publicSpecifier, enabled: false, type: "managed", managed: { specifier: MODEL, ...managed } }),
+  });
+  expect(created.status).toBe(200);
+  const deployment = (await created.json()) as Managed;
+  try {
+    await run(deployment);
+  } finally {
+    await ownerFetch(`/api/deployments/${deployment.id}`, { method: "DELETE" });
   }
+}
 
+describe("Managed deployment", () => {
   test("a partial update leaves the fields it does not name untouched", () =>
     withManaged({ replicas: 3, kvCacheSize: 4 }, async ({ id, type }) => {
       expect(type).toBe("managed");
@@ -158,4 +161,96 @@ describe("Managed deployment", () => {
     });
     expect(res.status).toBe(400);
   });
+});
+
+describe("Rollout", () => {
+  const rollout = (id: string, body: Record<string, unknown>) =>
+    ownerFetch(`/api/deployments/${id}/rollout`, { method: "POST", body: JSON.stringify(body) });
+  const startCanary = (id: string, canary: Record<string, unknown> = {}) =>
+    rollout(id, { type: "canary", canary: { to: { specifier: MODEL, kvCacheSize: 6 }, progress: 30, ...canary } });
+  const endCanary = (id: string, keep: "from" | "to") => rollout(id, { type: "managed", managed: { keep } });
+
+  test("starting a canary keeps the deployment and gives its replicas to the rollout", () =>
+    withManaged({ replicas: 3, kvCacheSize: 4 }, async ({ id }) => {
+      const res = await startCanary(id);
+      expect(res.status).toBe(200);
+      const started = (await res.json()) as Canary;
+      expect(started.id).toBe(id);
+      expect(started.type).toBe("canary");
+      expect(started.canary.replicas).toBe(3);
+      expect(started.canary.progress).toBe(30);
+      expect(started.canary.advance.type).toBe("manual");
+      expect(started.canary.from.kvCacheSize).toBe(4);
+      expect(started.canary.to.kvCacheSize).toBe(6);
+    }));
+
+  test("a time-based advance moves on from the progress the rollout starts at", () =>
+    withManaged({}, async ({ id }) => {
+      const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const res = await startCanary(id, { advance: { type: "time", until } });
+      expect(res.status).toBe(200);
+      const { canary } = (await res.json()) as Canary;
+      expect(canary.advance.type).toBe("time");
+      expect(canary.advance.startProgress).toBe(30);
+    }));
+
+  test("a partial update of a canary leaves the fields it does not name untouched", () =>
+    withManaged({ replicas: 3, kvCacheSize: 4 }, async ({ id }) => {
+      expect((await startCanary(id)).status).toBe(200);
+      const res = await ownerFetch(`/api/deployments/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: "renamed", canary: { to: { kvCacheSize: 8 } } }),
+      });
+      expect(res.status).toBe(200);
+      const updated = (await res.json()) as Canary;
+      expect(updated.canary.replicas).toBe(3);
+      expect(updated.canary.progress).toBe(30);
+      expect(updated.canary.from.kvCacheSize).toBe(4);
+      expect(updated.canary.to.kvCacheSize).toBe(8);
+    }));
+
+  test("keeping `to` leaves a managed deployment of the new model with all replicas", () =>
+    withManaged({ replicas: 2, kvCacheSize: 4 }, async ({ id }) => {
+      expect((await startCanary(id)).status).toBe(200);
+      const res = await endCanary(id, "to");
+      expect(res.status).toBe(200);
+      const promoted = (await res.json()) as Managed;
+      expect(promoted.id).toBe(id);
+      expect(promoted.type).toBe("managed");
+      expect(promoted.managed.replicas).toBe(2);
+      expect(promoted.managed.kvCacheSize).toBe(6);
+    }));
+
+  test("keeping `from` returns to the model traffic was moving away from", () =>
+    withManaged({ kvCacheSize: 4 }, async ({ id }) => {
+      expect((await startCanary(id)).status).toBe(200);
+      const res = await endCanary(id, "from");
+      expect(res.status).toBe(200);
+      const rolledBack = (await res.json()) as Managed;
+      expect(rolledBack.type).toBe("managed");
+      expect(rolledBack.managed.kvCacheSize).toBe(4);
+    }));
+
+  test("refuses to end a rollout on a managed deployment", () =>
+    withManaged({}, async ({ id }) => {
+      expect((await endCanary(id, "to")).status).toBe(400);
+    }));
+
+  test("refuses to start a canary on a canary", () =>
+    withManaged({}, async ({ id }) => {
+      expect((await startCanary(id)).status).toBe(200);
+      expect((await startCanary(id)).status).toBe(400);
+    }));
+
+  test("refuses a patch for another type than the deployment's", () =>
+    withManaged({}, async ({ id }) => {
+      expect((await startCanary(id)).status).toBe(200);
+      const res = await ownerFetch(`/api/deployments/${id}`, { method: "PATCH", body: JSON.stringify({ managed: { replicas: 2 } }) });
+      expect(res.status).toBe(400);
+    }));
+
+  test("starting a canary refuses progress above 100", () =>
+    withManaged({}, async ({ id }) => {
+      expect((await startCanary(id, { progress: 150 })).status).toBe(400);
+    }));
 });

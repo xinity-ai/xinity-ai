@@ -1,7 +1,7 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { inArray, sql, deploymentT, deploymentCanaryT, modelInstallationT, modelInstallationStateT, canaryOfDeployment, installationOfDeployment, stateOfInstallation, type Deployment } from "common-db";
 import z from "zod";
-import { CanaryMemberInputDto, DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ManagedDeploymentInputDto, ProgressDto, ReplicasDto, type CanaryMemberInput, type DeploymentUpdate, type ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
+import { CanaryMemberInputDto, DeploymentDto, RolloutDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ManagedDeploymentInputDto, ProgressDto, ReplicasDto, type CanaryMemberInput, type DeploymentUpdate, type ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
 import { requirementsForCanaries, requirementsForDeployments, requirementsForManaged, type CanaryMemberPlan, type DeploymentPlan, type ManagedPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
@@ -9,6 +9,7 @@ import { byType, DASHBOARD_DEPLOYMENT_TYPES, type Transaction } from "$lib/serve
 import { createLegacy } from "$lib/server/lib/deployments/legacy-deployment";
 import { validateCanaryModelTypes } from "$lib/server/lib/deployments/canary-deployment";
 import { installationOwnersOf } from "$lib/server/lib/deployments/deployment-reads";
+import { reviewRollout } from "$lib/server/lib/deployments/rollouts";
 import { createManaged } from "$lib/server/lib/deployments/managed-deployment";
 import { DEPLOYMENT_TYPES, deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
@@ -542,6 +543,41 @@ const checkCapacity = rootOs
     return checkDeploymentCapacity(handleVariant(DRAFT_REQUIREMENTS, input, replacedOwnerIds[0]), replacedOwnerIds);
   });
 
+const rolloutDeployment = rootOs
+  .use(withOrganization)
+  .use(requirePermission({ modelDeployment: ["update"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "modelDeployment.rollout", resource: "modelDeployment", resourceId: { fromInput: "id" }, captureInput: ["type", "canary", "managed"] } })
+  .route({
+    path: "/{id}/rollout", method: "POST", tags, summary: "Start or End a Rollout",
+    description: "Turns a managed deployment into a canary that moves its traffic to another model, or ends a canary on one of its two models. The deployment keeps its id and public name.",
+  })
+  .input(RolloutDto)
+  .output(DeploymentDto)
+  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {} })
+  .handler(async ({ context, input, errors }) => {
+    const entry = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
+    if (!entry) throw errors.NOT_FOUND();
+    const review = await reviewRollout(entry, input);
+    if ("rejected" in review) {
+      throw errors.BAD_REQUEST({ message: review.rejected });
+    }
+    await assertModelsInCatalog(review.models, errors);
+    if (entry.enabled) {
+      const result = await checkDeploymentCapacity(review.mustFit.requirements, review.mustFit.replacing);
+      if (!result.deployable) {
+        throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
+      }
+    }
+
+    await getDB().transaction(review.apply);
+    syncDeployedModels();
+    const [rolled] = await getDB().select().from(deploymentT).where(sql`${deploymentT.id} = ${entry.id}`).limit(1);
+    const deployment = rolled && await readDeployment(rolled);
+    if (!deployment) throw errors.NOT_FOUND();
+    return deployment;
+  });
+
 export const deploymentsRouter = rootOs.prefix("/deployments").router({
   create: createDeployment,
   get: getDeployment,
@@ -552,4 +588,5 @@ export const deploymentsRouter = rootOs.prefix("/deployments").router({
   enable: toggleEnabled,
   retry: retryDeployment,
   checkCapacity,
+  rollout: rolloutDeployment,
 });

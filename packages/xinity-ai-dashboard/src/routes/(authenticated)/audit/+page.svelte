@@ -79,6 +79,7 @@
     "modelDeployment.create",
     "modelDeployment.delete",
     "modelDeployment.retry",
+    "modelDeployment.rollout",
     "modelDeployment.toggle_enabled",
     "modelDeployment.update",
     "onboarding.cli",

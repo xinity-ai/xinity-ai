@@ -157,6 +157,29 @@ export const RolloutAdvanceInputDto = z.discriminatedUnion("type", [
 ]);
 export type RolloutAdvanceInput = z.infer<typeof RolloutAdvanceInputDto>;
 
+export const CANARY_MEMBERS = ["from", "to"] as const;
+
+/** What a deployment becomes, keyed by its new type. */
+export const RolloutDto = z.discriminatedUnion("type", [
+  z.object({
+    id: z.uuid(),
+    type: z.literal("canary"),
+    canary: z.object({
+      to: CanaryMemberInputDto.describe("The model traffic moves to. Driver and settings default to those of the current model"),
+      progress: ProgressDto.default(0).describe("Share of traffic, in percent, that goes to the new model at first"),
+      advance: RolloutAdvanceInputDto.default({ type: "manual" }),
+    }),
+  }),
+  z.object({
+    id: z.uuid(),
+    type: z.literal("managed"),
+    managed: z.object({
+      keep: z.enum(CANARY_MEMBERS).describe("The model that keeps serving with all of the canary's replicas: `to` promotes, `from` rolls back"),
+    }),
+  }),
+]);
+export type RolloutTarget = z.infer<typeof RolloutDto>;
+
 export const CanaryDeploymentPatchDto = CanaryDeploymentDto.extend({
   replicas: ReplicasDto,
   progress: ProgressDto.describe("Under a time-based advance, the rollout moves on to 100 from here"),

@@ -11,7 +11,7 @@ import { handleVariant, type VariantHandlers } from "$lib/util";
 
 type CanaryRow = { entry: Deployment; canary: DeploymentCanary; from: DeploymentManaged; to: DeploymentManaged };
 
-async function withCanaryRows(entries: Deployment[]): Promise<CanaryRow[]> {
+export async function withCanaryRows(entries: Deployment[]): Promise<CanaryRow[]> {
   const rows = await getDB().select().from(deploymentT)
     .innerJoin(deploymentCanaryT, canaryOfDeployment)
     .where(inArray(deploymentT.id, entries.map(({ id }) => id)));
@@ -56,6 +56,8 @@ const STORED_ADVANCE: VariantHandlers<RolloutAdvanceInput, RolloutAdvance, [numb
   time: ({ until }, progress) => ({ type: "time", version: 1, startProgress: progress, from: new Date().toISOString(), until: until.toISOString() }),
 };
 
+export const storedAdvance = (advance: RolloutAdvanceInput, progress: number) => handleVariant(STORED_ADVANCE, advance, progress);
+
 // Setting progress by hand under a time-based advance restarts it from there, towards the same end.
 const REANCHORED_ADVANCE: VariantHandlers<RolloutAdvance, RolloutAdvance, [number]> = {
   manual: (advance) => advance,
@@ -64,7 +66,7 @@ const REANCHORED_ADVANCE: VariantHandlers<RolloutAdvance, RolloutAdvance, [numbe
 
 function advanceChange(current: DeploymentCanary, progress: number | undefined, advance: RolloutAdvanceInput | undefined): RolloutAdvance | undefined {
   if (advance) {
-    return handleVariant(STORED_ADVANCE, advance, progress ?? current.progress);
+    return storedAdvance(advance, progress ?? current.progress);
   }
   return progress === undefined ? undefined : handleVariant(REANCHORED_ADVANCE, current.advance, progress);
 }

@@ -10,9 +10,12 @@ import type { ModelRequirementTable } from "./requirements";
 
 export type Transaction = Parameters<Parameters<ReturnType<typeof getDB>["transaction"]>[0]>[0];
 
+/** What has to fit on the cluster, planned without the installations of the rows it replaces. */
+export type CapacityNeed = { requirements: ModelRequirementTable; replacing?: string[] };
+
 export type UpdateReview =
   | { rejected: string }
-  | { mustFit?: { requirements: ModelRequirementTable; replacing?: string[] } };
+  | { mustFit?: CapacityNeed };
 
 export type DashboardDeploymentType = {
   read: (entries: Deployment[]) => Promise<DeploymentOutput[]>;
