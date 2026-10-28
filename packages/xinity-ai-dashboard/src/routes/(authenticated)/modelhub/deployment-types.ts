@@ -1,40 +1,49 @@
 import type { Component, ComponentProps } from "svelte";
 import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
-import type { DeploymentDefinition } from "./+page.server";
+import type { DeploymentOf } from "./+page.server";
+import CanaryModelPanel from "./CanaryModelPanel.svelte";
 import DeploymentModal from "./DeploymentModal.svelte";
-import LegacyDeploymentDetails from "./LegacyDeploymentDetails.svelte";
+import LegacyModelPanel from "./LegacyModelPanel.svelte";
+import ManagedModelPanel from "./ManagedModelPanel.svelte";
 
-type DeploymentTypeView = {
-  label: (deployment: DeploymentDefinition) => string;
-  replicas: (deployment: DeploymentDefinition) => number;
-  /** The catalog model the deployment serves, which decides how it can be tested. */
-  modelSpecifier: (deployment: DeploymentDefinition) => string;
-  details: Component<{ deployment: DeploymentDefinition }>;
-  editModal: Component<ComponentProps<typeof DeploymentModal>>;
+type DeploymentTypeView<D extends DeploymentOutput> = {
+  /** Marks the deployment in the overview, or null for the ordinary case. */
+  badge: (deployment: D) => string | null;
+  /** The model it serves, and during a rollout the one it moves away from. */
+  models: (deployment: D) => { from?: string; to: string };
+  /** Share of traffic, in percent, going to `to` during a rollout. */
+  traffic: (deployment: D) => number | null;
+  replicas: (deployment: D) => number;
+  panel: Component<{ deployment: D }>;
+  editModal?: Component<Omit<ComponentProps<typeof DeploymentModal>, "deployment"> & { deployment: D }>;
 };
 
-export const DEPLOYMENT_TYPE_VIEWS: Record<DeploymentDefinition["type"], DeploymentTypeView> = {
+const DEPLOYMENT_TYPE_VIEWS: { [T in DeploymentOutput["type"]]: DeploymentTypeView<DeploymentOf<T>> } = {
   legacy: {
-    label: ({ legacy }) => {
-      if (!legacy.earlySpecifier) {
-        return "Static";
-      }
-      if (legacy.canaryProgressWithFeedback) {
-        return "Canary (smart-auto)";
-      }
-      if (legacy.canaryProgressUntil) {
-        return "Canary (time-based)";
-      }
-      if (legacy.canaryProgressFrom) {
-        return "Canary (manual)";
-      }
-      return "Canary";
-    },
+    badge: () => "Legacy",
+    models: ({ legacy }) => ({ from: legacy.earlySpecifier ?? undefined, to: legacy.specifier }),
+    traffic: ({ legacy }) => (legacy.earlySpecifier ? legacy.progress : null),
     replicas: ({ legacy }) => legacy.replicas,
-    modelSpecifier: ({ legacy }) => legacy.specifier,
-    details: LegacyDeploymentDetails,
+    panel: LegacyModelPanel,
     editModal: DeploymentModal,
+  },
+  managed: {
+    badge: () => null,
+    models: ({ managed }) => ({ to: managed.specifier }),
+    traffic: () => null,
+    replicas: ({ managed }) => managed.replicas,
+    panel: ManagedModelPanel,
+  },
+  canary: {
+    badge: () => "Rolling out",
+    models: ({ canary }) => ({ from: canary.from.specifier, to: canary.to.specifier }),
+    traffic: ({ canary }) => canary.progress,
+    replicas: ({ canary }) => canary.replicas,
+    panel: CanaryModelPanel,
   },
 };
 
-export const hasView = (deployment: DeploymentOutput): deployment is DeploymentDefinition => deployment.type in DEPLOYMENT_TYPE_VIEWS;
+export function viewOf(deployment: DeploymentOutput): DeploymentTypeView<DeploymentOutput> {
+  // TypeScript cannot relate the view for `deployment.type` to `deployment`, though the mapped type guarantees it.
+  return DEPLOYMENT_TYPE_VIEWS[deployment.type] as unknown as DeploymentTypeView<DeploymentOutput>;
+}

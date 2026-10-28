@@ -158,7 +158,7 @@ function dispatchDeploymentPhaseNotification(
       deploymentName: info.name,
       publicSpecifier: info.model,
       orgName: info.orgName,
-      dashboardUrl: MODELHUB_URL,
+      dashboardUrl: `${MODELHUB_URL}${deploymentId}`,
       ...extraData,
     },
   }).catch((err: unknown) => log.error({ err }, `Failed to send deployment ${label} notification`));

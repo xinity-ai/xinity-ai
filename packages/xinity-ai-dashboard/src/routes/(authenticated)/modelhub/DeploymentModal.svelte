@@ -9,7 +9,7 @@
   import { browserLogger } from "$lib/browserLogging";
   import CustomCodeConsent from "./CustomCodeConsent.svelte";
   import LicenseNotice from "./LicenseNotice.svelte";
-  import type { DeploymentDefinition } from "./+page.server";
+  import type { DeploymentOf } from "./+page.server";
   import { settingsEqual, type DeploymentSettings } from "common-env/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
   import type { CapacityPreview } from "./DeploymentCapacitySummary.svelte";
@@ -29,7 +29,7 @@
     onSaved = async () => {},
   }: {
     open: boolean;
-    deployment?: DeploymentDefinition;
+    deployment?: DeploymentOf<"legacy">;
     close: () => void;
     nodeCapabilities?: NodeCapability[];
     modelCompatibility?: ModelCompatibility;
@@ -99,7 +99,7 @@
     });
   }
 
-  function deriveAdvancementStrategy(d: DeploymentDefinition["legacy"]) {
+  function deriveAdvancementStrategy(d: DeploymentOf<"legacy">["legacy"]) {
     if (!d.earlySpecifier) return "manual" as const;
     if (d.canaryProgressWithFeedback) return "smart-auto" as const;
     if (d.canaryProgressUntil) return "time-based" as const;

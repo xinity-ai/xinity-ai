@@ -5,12 +5,12 @@
     isOptimizationGoal,
     resolveOptimizeFor,
     type DeploymentSettings,
-    type OptimizationGoal,
   } from "common-env/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import * as Select from "$lib/components/ui/select";
+  import { OPTIMIZATION_GOAL_DISPLAY } from "./optimization-goals";
 
   let {
     settings = $bindable<DeploymentSettings>({ version: 1 }),
@@ -25,16 +25,6 @@
   const isTranscription = $derived(selectedPrimaryModel?.type === "transcription");
   const isVllm = $derived(selectedPrimaryModel?.engine === "vllm");
   const optimizeFor = $derived(resolveOptimizeFor(settings));
-  const optimizationGoals: Record<OptimizationGoal, { label: string; description: string }> = {
-    space: {
-      label: "Space",
-      description: "Runs the model on as few GPUs as it fits on, leaving the rest free for other models.",
-    },
-    speed: {
-      label: "Speed",
-      description: "Splits the model across more GPUs of one node, so each request generates faster, where the model supports being split.",
-    },
-  };
   const validationResult = $derived(DeploymentSettingsDto.safeParse(settings));
 </script>
 
@@ -50,14 +40,14 @@
         }
       }}
     >
-      <Select.Trigger id="optimize-for{idSuffix}" class="w-full">{optimizationGoals[optimizeFor].label}</Select.Trigger>
+      <Select.Trigger id="optimize-for{idSuffix}" class="w-full">{OPTIMIZATION_GOAL_DISPLAY[optimizeFor].label}</Select.Trigger>
       <Select.Content portalProps={{ disabled: true }}>
         {#each OPTIMIZATION_GOALS as goal (goal)}
-          <Select.Item value={goal} label={optimizationGoals[goal].label} />
+          <Select.Item value={goal} label={OPTIMIZATION_GOAL_DISPLAY[goal].label} />
         {/each}
       </Select.Content>
     </Select.Root>
-    <p class="text-sm text-muted-foreground">{optimizationGoals[optimizeFor].description}</p>
+    <p class="text-sm text-muted-foreground">{OPTIMIZATION_GOAL_DISPLAY[optimizeFor].description}</p>
   </div>
 {/if}
 
