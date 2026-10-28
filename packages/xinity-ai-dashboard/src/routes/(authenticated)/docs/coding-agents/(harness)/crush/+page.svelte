@@ -21,13 +21,20 @@
     return `'${value.replaceAll("'", `'\\''`)}'`;
   }
 
-  // Without an output limit a long reasoning phase can use up the request before the answer starts.
+  // Crush requests the full output limit every time but only compacts once the free context
+  // drops below 20k tokens (20% for windows up to 200k). A larger limit overflows the window
+  // before compaction starts, so it gets half that reserve, leaving room for a big tool result.
+  function maxOutputTokens(contextWindow: number) {
+    const compactionReserve = contextWindow > 200_000 ? 20_000 : contextWindow * 0.2;
+    return Math.floor(compactionReserve / 2);
+  }
+
   function modelAdd(model: OrgModel) {
     return [
       `model add xinity/${model.publicSpecifier}`,
       `  --name ${quote(model.name)}`,
       `  --context-window ${model.contextWindow}`,
-      `  --default-max-tokens ${Math.floor(model.contextWindow / 4)}`,
+      `  --default-max-tokens ${maxOutputTokens(model.contextWindow)}`,
       ...(model.vision ? ["  --supports-images true"] : []),
     ].join(" \\\n");
   }
