@@ -1,12 +1,13 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { inArray, sql, deploymentT, deploymentCanaryT, modelInstallationT, modelInstallationStateT, canaryOfDeployment, installationOfDeployment, stateOfInstallation, type Deployment } from "common-db";
 import z from "zod";
-import { DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ProgressDto, ReplicasDto, type DeploymentUpdate } from "$lib/orpc/dtos/model.dto";
+import { DeploymentDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ManagedDeploymentInputDto, ProgressDto, ReplicasDto, type DeploymentUpdate, type ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
-import { requirementsForDeployments, type DeploymentPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
-import { byType, DASHBOARD_DEPLOYMENT_TYPES } from "$lib/server/lib/deployments/deployment-types";
+import { requirementsForDeployments, requirementsForManaged, type DeploymentPlan, type ManagedPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
+import { byType, DASHBOARD_DEPLOYMENT_TYPES, type Transaction } from "$lib/server/lib/deployments/deployment-types";
 import { createLegacy, validateCanaryModelTypes } from "$lib/server/lib/deployments/legacy-deployment";
+import { createManaged } from "$lib/server/lib/deployments/managed-deployment";
 import { deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import { rootLogger } from "$lib/server/logging";
@@ -14,12 +15,13 @@ import { findOrgName } from "$lib/server/lib/org-queries";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
 import { config } from "$lib/server/config";
+import { handleVariant, type VariantHandlers } from "$lib/util";
 const log = rootLogger.child({ name: "deployment.orpc" });
 
 const tags = ["Deployment"];
 const SuccessDto = z.object({ success: z.literal(true) });
 const successObject = { success: true } as const;
-const PATCHED_TYPES = ["legacy"] as const;
+const PATCHED_TYPES = ["legacy", "managed"] as const;
 
 async function assertModelsInCatalog(
   specifiers: string[],
@@ -50,6 +52,11 @@ const CapacityCheckInput = z.discriminatedUnion("type", [
     type: z.literal("legacy"),
     deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
     legacy: LegacyDraftDto,
+  }),
+  z.object({
+    type: z.literal("managed"),
+    deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
+    managed: ManagedDeploymentInputDto,
   }),
 ]);
 
@@ -130,6 +137,22 @@ function draftPlan(draft: z.infer<typeof LegacyDraftDto>, id = DRAFT_DEPLOYMENT_
     canaryProgressUntil: null,
   };
 }
+
+function managedDraftPlan(draft: ManagedDeploymentInput, id = DRAFT_DEPLOYMENT_ID): ManagedPlan {
+  return {
+    id,
+    specifier: draft.specifier,
+    replicas: draft.replicas,
+    kvCacheSize: draft.kvCacheSize ?? null,
+    preferredDriver: draft.preferredDriver ?? null,
+    settings: draft.settings ?? { version: 1 },
+  };
+}
+
+const DRAFT_REQUIREMENTS: VariantHandlers<z.infer<typeof CapacityCheckInput>, ModelRequirementTable, [string | undefined]> = {
+  legacy: ({ legacy }, id) => requirementsForDeployments([draftPlan(legacy, id)]),
+  managed: ({ managed }, id) => requirementsForManaged([managedDraftPlan(managed, id)]),
+};
 
 // A deployment being changed is planned without its own installations, which the change replaces.
 async function checkDeploymentCapacity(requirements: ModelRequirementTable, replacedOwnerIds: string[] = []): Promise<CapacityCheckResult> {
@@ -388,11 +411,37 @@ const findDeployment = rootOs
     }
     return deployment;
   });
+
+type DeploymentCreation = {
+  specifiers: string[];
+  requirements: ModelRequirementTable;
+  mismatch: () => Promise<string | null>;
+  insert: (tx: Transaction) => Promise<{ legacyId: string } | { managedId: string }>;
+};
+
+const CREATIONS: VariantHandlers<z.infer<typeof DeploymentInputDto>, DeploymentCreation> = {
+  legacy: ({ legacy }) => {
+    const earlySpecifier = legacy.earlySpecifier ?? null;
+    return {
+      specifiers: [legacy.specifier, ...(earlySpecifier ? [earlySpecifier] : [])],
+      requirements: requirementsForDeployments([draftPlan(legacy)]),
+      mismatch: () => validateCanaryModelTypes(legacy.specifier, earlySpecifier),
+      insert: async (tx) => ({ legacyId: await createLegacy(tx, { ...legacy, earlySpecifier }) }),
+    };
+  },
+  managed: ({ managed }) => ({
+    specifiers: [managed.specifier],
+    requirements: requirementsForManaged([managedDraftPlan(managed)]),
+    mismatch: async () => null,
+    insert: async (tx) => ({ managedId: await createManaged(tx, managed) }),
+  }),
+};
+
 export const createDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["create"] }))
   .use(auditMiddleware)
-  .meta({ audit: { action: "modelDeployment.create", resource: "modelDeployment", resourceId: { fromOutput: "id" }, captureInput: ["name", "type", "legacy"] } })
+  .meta({ audit: { action: "modelDeployment.create", resource: "modelDeployment", resourceId: { fromOutput: "id" }, captureInput: ["name", "type", "legacy", "managed"] } })
   .route({
     summary: "Create Deployment",
     path: "/", method: "POST", tags, description: `Endpoint to create new deployments`
@@ -401,23 +450,19 @@ export const createDeployment = rootOs
   .output(DeploymentDto)
   .errors({ CONFLICT: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {} })
   .handler(async ({ context, input, errors }) => {
-    if (!input.legacy.specifier) {
+    const creation = handleVariant(CREATIONS, input);
+    if (!creation.specifiers[0]) {
       throw errors.BAD_REQUEST({ message: "specifier is required when creating a deployment" });
     }
-    const primarySpecifier = input.legacy.specifier;
-    const earlySpecifier = input.legacy.earlySpecifier ?? null;
 
-    await assertModelsInCatalog(
-      [primarySpecifier, ...(earlySpecifier ? [earlySpecifier] : [])],
-      errors,
-    );
+    await assertModelsInCatalog(creation.specifiers, errors);
 
     const rlog = log.child({ traceId: context.traceId });
-    const mismatch = await validateCanaryModelTypes(primarySpecifier, earlySpecifier);
+    const mismatch = await creation.mismatch();
     if (mismatch) throw errors.BAD_REQUEST({ message: mismatch });
 
     if (input.enabled) {
-      const result = await checkDeploymentCapacity(requirementsForDeployments([draftPlan(input.legacy)]));
+      const result = await checkDeploymentCapacity(creation.requirements);
       if (!result.deployable) {
         throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
       }
@@ -425,7 +470,7 @@ export const createDeployment = rootOs
 
     try {
       const entry = await getDB().transaction(async (tx) => {
-        const legacyId = await createLegacy(tx, { ...input.legacy, earlySpecifier });
+        const row = await creation.insert(tx);
         const [entry] = await tx
           .insert(deploymentT)
           .values({
@@ -434,7 +479,7 @@ export const createDeployment = rootOs
             enabled: input.enabled,
             publicSpecifier: input.publicSpecifier,
             type: input.type,
-            legacyId,
+            ...row,
             organizationId: context.activeOrganizationId,
           })
           .returning();
@@ -474,8 +519,8 @@ const checkCapacity = rootOs
   .output(CapacityCheckOutput)
   .handler(async ({ context, input }): Promise<CapacityCheckResult> =>  {
     const replaced = input.deploymentId ? await findActiveDeploymentInOrg(input.deploymentId, context.activeOrganizationId) : undefined;
-    const replacedId = replaced?.legacyId ?? undefined;
-    return checkDeploymentCapacity(requirementsForDeployments([draftPlan(input.legacy, replacedId)]), replacedId ? [replacedId] : []);
+    const replacedOwnerIds = [replaced?.legacyId, replaced?.managedId].filter((id) => typeof id === "string");
+    return checkDeploymentCapacity(handleVariant(DRAFT_REQUIREMENTS, input, replacedOwnerIds[0]), replacedOwnerIds);
   });
 
 export const deploymentsRouter = rootOs.prefix("/deployments").router({

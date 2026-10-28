@@ -1,4 +1,5 @@
 import type { Component, ComponentProps } from "svelte";
+import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
 import type { DeploymentDefinition } from "./+page.server";
 import DeploymentModal from "./DeploymentModal.svelte";
 import LegacyDeploymentDetails from "./LegacyDeploymentDetails.svelte";
@@ -35,3 +36,5 @@ export const DEPLOYMENT_TYPE_VIEWS: Record<DeploymentDefinition["type"], Deploym
     editModal: DeploymentModal,
   },
 };
+
+export const hasView = (deployment: DeploymentOutput): deployment is DeploymentDefinition => deployment.type in DEPLOYMENT_TYPE_VIEWS;

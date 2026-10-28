@@ -1,4 +1,4 @@
-import { createDatabaseProbe, databaseDeprecationChecks, deploymentLegacyT, deploymentT, isNull, legacyOfDeployment } from "common-db";
+import { createDatabaseProbe, databaseDeprecationChecks, deploymentLegacyT, deploymentManagedT, deploymentT, isNull, legacyOfDeployment, managedOfDeployment } from "common-db";
 import { createHealthHandler, parseMetricsAuth } from "common-env";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
@@ -15,12 +15,13 @@ export function startHealthProbe(): () => void {
 
 async function deploymentsOnLegacyCatalog(): Promise<string | null> {
   const deployments = await getDB()
-    .select({ name: deploymentT.publicSpecifier, specifier: deploymentLegacyT.specifier, earlySpecifier: deploymentLegacyT.earlySpecifier })
+    .select({ name: deploymentT.publicSpecifier, legacy: deploymentLegacyT.specifier, legacyEarly: deploymentLegacyT.earlySpecifier, managed: deploymentManagedT.specifier })
     .from(deploymentT)
-    .innerJoin(deploymentLegacyT, legacyOfDeployment)
+    .leftJoin(deploymentLegacyT, legacyOfDeployment)
+    .leftJoin(deploymentManagedT, managedOfDeployment)
     .where(isNull(deploymentT.deletedAt));
   const affected = await Promise.all(deployments.map(async (d) =>
-    (await resolvesOnlyAsLegacy(d.specifier)) || (await resolvesOnlyAsLegacy(d.earlySpecifier)) ? d.name : null));
+    (await resolvesOnlyAsLegacy(d.legacy)) || (await resolvesOnlyAsLegacy(d.legacyEarly)) || (await resolvesOnlyAsLegacy(d.managed)) ? d.name : null));
   const names = affected.filter((name) => name !== null);
   return names.length > 0
     ? `${names.length} deployments resolve their model only through the v1 catalog (${names.join(", ")}). Move each to a model in the current catalog.`

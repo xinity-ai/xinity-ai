@@ -1,34 +1,17 @@
-import {
-  aiNodeT,
-  deploymentLegacyT,
-  legacyMatchesInstallation,
-  deploymentT,
-  inArray,
-  installationOnLiveNode,
-  legacyOfDeployment,
-  modelInstallationStateT,
-  modelInstallationT,
-  organizationT,
-  sql,
-  stateOfInstallation,
-  type Deployment,
-  type DeploymentLegacy,
-} from "common-db";
+import { deploymentLegacyT, deploymentT, inArray, legacyOfDeployment, sql, type Deployment, type DeploymentLegacy } from "common-db";
 import type { DeploymentOutput, LegacyDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
-import { foldDeploymentStatusRows } from "./deployment-status";
+import { markMissingFromCatalog, phasesOf, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType, Transaction } from "./deployment-types";
 import { requirementsForDeployments } from "./requirements";
 
 const outputOf = (entry: Deployment, legacy: DeploymentLegacy): DeploymentOutput => ({ ...entry, type: "legacy", legacy });
 
-const idsOf = (entries: Deployment[]) => entries.map(({ id }) => id);
-
 function withLegacyRows(entries: Deployment[]) {
   return getDB().select().from(deploymentT)
     .innerJoin(deploymentLegacyT, legacyOfDeployment)
-    .where(inArray(deploymentT.id, idsOf(entries)));
+    .where(inArray(deploymentT.id, entries.map(({ id }) => id)));
 }
 
 export async function createLegacy(tx: Transaction, input: LegacyDeploymentInput): Promise<string> {
@@ -56,31 +39,11 @@ export async function validateCanaryModelTypes(canarySpecifier: string, replaced
   return null;
 }
 
-async function lookupIsMissingFromCatalog(specifier: string | null): Promise<boolean> {
-  if (!specifier) return false;
-  try {
-    const resolution = await resolveSchedulable(specifier, null);
-    return resolution.status === "not_found";
-  } catch {
-    return false;
-  }
-}
-
-async function markDeploymentsMissingFromCatalog(deployments: DeploymentOutput[]): Promise<void> {
-  const candidates = deployments.filter(d => !d.status && d.enabled);
-  await Promise.all(candidates.map(async (entry) => {
-    const [primaryMissing, earlyMissing] = await Promise.all([
-      lookupIsMissingFromCatalog(entry.legacy.specifier),
-      lookupIsMissingFromCatalog(entry.legacy.earlySpecifier ?? null),
-    ]);
-    if (primaryMissing || earlyMissing) {
-      entry.status = { phase: "not_in_catalog", progress: null, error: null };
-    }
-  }));
-}
-
 async function markDeploymentsOnDeprecatedCatalog(deployments: DeploymentOutput[]): Promise<void> {
   await Promise.all(deployments.map(async (entry) => {
+    if (entry.type !== "legacy") {
+      return;
+    }
     const [primary, early] = await Promise.all([
       resolvesOnlyAsLegacy(entry.legacy.specifier),
       resolvesOnlyAsLegacy(entry.legacy.earlySpecifier ?? null),
@@ -93,31 +56,20 @@ async function markDeploymentsOnDeprecatedCatalog(deployments: DeploymentOutput[
 
 const RESTRICTED_WHILE_ENABLED = ["kvCacheSize", "earlyKvCacheSize", "preferredDriver", "specifier", "earlySpecifier"] as const;
 
+async function read(entries: Deployment[]): Promise<DeploymentOutput[]> {
+  const rows = await withLegacyRows(entries);
+  return rows.map(({ deployment, deployment_legacy }) => outputOf(deployment, deployment_legacy));
+}
+
+const specifiersOf = (deployment: DeploymentOutput) =>
+  deployment.type === "legacy" ? [deployment.legacy.specifier, deployment.legacy.earlySpecifier ?? null].filter((specifier) => specifier !== null) : [];
+
 export const legacyDeployment: DashboardDeploymentType = {
-  async read(entries) {
-    const rows = await withLegacyRows(entries);
-    return rows.map(({ deployment, deployment_legacy }) => outputOf(deployment, deployment_legacy));
-  },
+  read,
 
   async withStatus(entries) {
-    const rows = await getDB()
-      .select()
-      .from(deploymentT)
-      .innerJoin(deploymentLegacyT, legacyOfDeployment)
-      .leftJoin(modelInstallationT, sql`
-        ${legacyMatchesInstallation}
-      AND
-        ${modelInstallationT.deletedAt} IS NULL
-      `)
-      .leftJoin(modelInstallationStateT, stateOfInstallation)
-      .leftJoin(aiNodeT, installationOnLiveNode)
-      .where(inArray(deploymentT.id, idsOf(entries)));
-
-    const deployments = foldDeploymentStatusRows(rows.map(({ deployment, deployment_legacy, ...installation }) => ({
-      ...installation,
-      deployment: outputOf(deployment, deployment_legacy),
-    })));
-    await Promise.all([markDeploymentsMissingFromCatalog(deployments), markDeploymentsOnDeprecatedCatalog(deployments)]);
+    const deployments = await withInstallationStatus(await read(entries));
+    await Promise.all([markMissingFromCatalog(deployments, specifiersOf), markDeploymentsOnDeprecatedCatalog(deployments)]);
     return deployments;
   },
 
@@ -127,31 +79,8 @@ export const legacyDeployment: DashboardDeploymentType = {
   },
 
   async phases(entries) {
-    return getDB()
-      .select({
-        deploymentId: deploymentT.id,
-        deploymentName: deploymentT.name,
-        organizationId: deploymentT.organizationId,
-        orgName: organizationT.name,
-        publicSpecifier: deploymentT.publicSpecifier,
-        desiredReplicas: deploymentLegacyT.replicas,
-        installationId: modelInstallationT.id,
-        installationGroup: modelInstallationT.group,
-        liveNodeId: aiNodeT.id,
-        lifecycleState: modelInstallationStateT.lifecycleState,
-        errorMessage: modelInstallationStateT.errorMessage,
-      })
-      .from(deploymentT)
-      .innerJoin(deploymentLegacyT, legacyOfDeployment)
-      .leftJoin(organizationT, sql`${organizationT.id} = ${deploymentT.organizationId}`)
-      .leftJoin(modelInstallationT, sql`
-        ${legacyMatchesInstallation}
-      AND
-        ${modelInstallationT.deletedAt} IS NULL
-      `)
-      .leftJoin(modelInstallationStateT, stateOfInstallation)
-      .leftJoin(aiNodeT, installationOnLiveNode)
-      .where(inArray(deploymentT.id, idsOf(entries)));
+    const rows = await withLegacyRows(entries);
+    return phasesOf(entries, new Map(rows.map(({ deployment, deployment_legacy }) => [deployment.id, deployment_legacy.replicas])));
   },
 
   async reviewUpdate(entry, input) {

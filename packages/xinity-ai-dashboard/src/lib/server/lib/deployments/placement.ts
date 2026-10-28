@@ -4,6 +4,8 @@ export type Placement = InstallationOwnership & { specifier: string };
 
 export const ownedByLegacy = (legacyId: string): InstallationOwnership => ({ legacyId, managedId: null });
 
+export const ownedByManaged = (managedId: string): InstallationOwnership => ({ legacyId: null, managedId });
+
 export function ownerOf({ legacyId, managedId }: InstallationOwnership): string {
   return legacyId ?? managedId ?? "";
 }

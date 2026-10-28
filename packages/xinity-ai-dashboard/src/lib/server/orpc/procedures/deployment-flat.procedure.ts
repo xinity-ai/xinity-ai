@@ -19,7 +19,18 @@ const FlatCapacityCheckInput = LegacyDraftDto.extend({
   deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
 });
 
-const flatten = ({ legacy, ...shared }: DeploymentOutput): z.infer<typeof FlatDeploymentDto> => ({ ...shared, ...legacy });
+type LegacyDeployment = Extract<DeploymentOutput, { type: "legacy" }>;
+
+// Deployments of the other types have no flat shape, so this API does not see them.
+const isLegacy = (deployment: DeploymentOutput): deployment is LegacyDeployment => deployment.type === "legacy";
+
+function flattenLegacy(deployment: DeploymentOutput, notFound: () => Error): z.infer<typeof FlatDeploymentDto> {
+  if (!isLegacy(deployment)) {
+    throw notFound();
+  }
+  const { legacy, ...shared } = deployment;
+  return { ...shared, ...legacy };
+}
 
 const flatOs = rootOs.use(withOrganization).meta({ mcp: false });
 const deprecated = <T extends object>(route: T) => ({ ...route, tags, deprecated: true, description: DEPRECATION });
@@ -29,7 +40,9 @@ const listDeployments = flatOs
   .route(deprecated({ path: "/", method: "GET", summary: "List Deployments" } as const))
   .input(z.object({ withStatus: z.coerce.boolean().default(false) }))
   .output(FlatDeploymentDto.array())
-  .handler(async ({ context, input }) => (await call(deploymentsRouter.list, input, { context })).map(flatten));
+  .handler(async ({ context, input }) => (await call(deploymentsRouter.list, input, { context }))
+    .filter(isLegacy)
+    .map(({ legacy, ...shared }) => ({ ...shared, ...legacy })));
 
 const getDeployment = flatOs
   .use(requirePermission({ modelDeployment: ["read"] }))
@@ -37,7 +50,7 @@ const getDeployment = flatOs
   .input(z.object({ id: z.uuid(), withStatus: z.coerce.boolean().default(false) }))
   .output(FlatDeploymentDto)
   .errors({ NOT_FOUND: {} })
-  .handler(async ({ context, input }) => flatten(await call(deploymentsRouter.get, input, { context })));
+  .handler(async ({ context, input, errors }) => flattenLegacy(await call(deploymentsRouter.get, input, { context }), errors.NOT_FOUND));
 
 const findDeployment = flatOs
   .use(requirePermission({ modelDeployment: ["read"] }))
@@ -45,16 +58,16 @@ const findDeployment = flatOs
   .input(z.object({ publicSpecifier: z.string().trim() }))
   .output(FlatDeploymentDto)
   .errors({ NOT_FOUND: {} })
-  .handler(async ({ context, input }) => flatten(await call(deploymentsRouter.find, input, { context })));
+  .handler(async ({ context, input, errors }) => flattenLegacy(await call(deploymentsRouter.find, input, { context }), errors.NOT_FOUND));
 
 const createDeployment = flatOs
   .use(requirePermission({ modelDeployment: ["create"] }))
   .route(deprecated({ path: "/", method: "POST", summary: "Create Deployment" } as const))
   .input(FlatDeploymentInputDto)
   .output(FlatDeploymentDto)
-  .errors({ CONFLICT: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {} })
-  .handler(async ({ context, input: { name, description, enabled, publicSpecifier, ...legacy } }) =>
-    flatten(await call(deploymentsRouter.create, { name, description, enabled, publicSpecifier, type: "legacy", legacy }, { context })));
+  .errors({ CONFLICT: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, NOT_FOUND: {} })
+  .handler(async ({ context, input: { name, description, enabled, publicSpecifier, ...legacy }, errors }) =>
+    flattenLegacy(await call(deploymentsRouter.create, { name, description, enabled, publicSpecifier, type: "legacy", legacy }, { context }), errors.NOT_FOUND));
 
 const updateDeployment = flatOs
   .use(requirePermission({ modelDeployment: ["update"] }))
@@ -62,8 +75,13 @@ const updateDeployment = flatOs
   .input(FlatDeploymentUpdateDto)
   .output(FlatDeploymentDto)
   .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
-  .handler(async ({ context, input: { id, name, description, enabled, publicSpecifier, ...legacy } }) =>
-    flatten(await call(deploymentsRouter.update, { id, name, description, enabled, publicSpecifier, legacy }, { context })));
+  .handler(async ({ context, input: { id, name, description, enabled, publicSpecifier, ...legacy }, errors }) => {
+    if (!isLegacy(await call(deploymentsRouter.get, { id, withStatus: false }, { context }))) {
+      throw errors.NOT_FOUND();
+    }
+    const updated = await call(deploymentsRouter.update, { id, name, description, enabled, publicSpecifier, legacy }, { context });
+    return flattenLegacy(updated, errors.NOT_FOUND);
+  });
 
 const checkCapacity = flatOs
   .use(requirePermission({ modelDeployment: ["read"] }))

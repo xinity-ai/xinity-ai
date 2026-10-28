@@ -4,6 +4,7 @@ import type { DeploymentOutput, DeploymentUpdate } from "$lib/orpc/dtos/model.dt
 import { getDB } from "$lib/server/db";
 import type { DeploymentPhaseRow } from "$lib/server/notifications/scheduler";
 import { legacyDeployment } from "./legacy-deployment";
+import { managedDeployment } from "./managed-deployment";
 import type { ModelRequirementTable } from "./requirements";
 
 export type Transaction = Parameters<Parameters<ReturnType<typeof getDB>["transaction"]>[0]>[0];
@@ -32,7 +33,7 @@ function notServedYet(type: DeploymentType): DashboardDeploymentType {
 
 export const DASHBOARD_DEPLOYMENT_TYPES: Record<DeploymentType, DashboardDeploymentType> = {
   legacy: legacyDeployment,
-  managed: notServedYet("managed"),
+  managed: managedDeployment,
   canary: notServedYet("canary"),
 };
 

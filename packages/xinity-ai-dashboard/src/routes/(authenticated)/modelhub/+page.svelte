@@ -3,7 +3,7 @@
   import type { DeploymentDefinition } from "./+page.server";
   import type { ClusterOverview } from "$lib/server/orpc/procedures/cluster.procedure";
   import DeploymentModal from "./DeploymentModal.svelte";
-  import { DEPLOYMENT_TYPE_VIEWS } from "./deployment-types";
+  import { DEPLOYMENT_TYPE_VIEWS, hasView } from "./deployment-types";
   import TestChatModal from "./TestChatModal.svelte";
   import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
   import TestRerankModal from "./TestRerankModal.svelte";
@@ -51,7 +51,7 @@
 
   $effect(() => {
     Promise.resolve(data.deployments).then((deps) => {
-      deployments = deps;
+      deployments = deps.filter(hasView);
       deploymentsLoaded = true;
     });
   });
@@ -75,7 +75,7 @@
     const timer = setInterval(async () => {
       await Promise.all(uncleanIds.map(async (id) => {
         const [err, dep] = await orpc.deployments.get({ id, withStatus: true });
-        if (!err && dep) {
+        if (!err && dep && hasView(dep)) {
           deployments = deployments.map(d => d.id === id ? dep : d);
         }
       }));
@@ -91,7 +91,7 @@
     const timer = setInterval(async () => {
       const [err, deps] = await orpc.deployments.list({ withStatus: true });
       if (err) { browserLogger.warn({ err }, "Background deployment refresh failed"); return; }
-      deployments = deps;
+      deployments = deps.filter(hasView);
     }, 2 * 60 * 60 * 1000);
 
     return () => clearInterval(timer);
@@ -176,7 +176,7 @@
       toastState.add("Failed to refresh deployments", "error");
       return;
     }
-    deployments = deps;
+    deployments = deps.filter(hasView);
     refreshCapacity();
   }
 

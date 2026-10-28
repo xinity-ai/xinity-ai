@@ -120,8 +120,8 @@ const setupOnboarding = rootOs
           name: publicSpecifier,
           publicSpecifier,
           enabled: true,
-          type: "legacy",
-          legacy: { specifier: input.specifier, replicas: 1 },
+          type: "managed",
+          managed: { specifier: input.specifier, replicas: 1 },
         }, { context: orgContext });
         deploymentName = publicSpecifier;
       } catch (err) {

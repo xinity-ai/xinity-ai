@@ -78,8 +78,18 @@ export const LegacyDeploymentDto = z.object({
 });
 export type LegacyDeploymentOutput = z.infer<typeof LegacyDeploymentDto>;
 
+export const ManagedDeploymentDto = z.object({
+  /** Canonical model identifier. */
+  specifier: z.string().trim(),
+  replicas: z.number(),
+  kvCacheSize: z.number().nullish(),
+  preferredDriver: z.enum(["ollama", "vllm"]).nullish(),
+  settings: DeploymentSettingsDto.optional(),
+});
+
 export const DeploymentDto = z.discriminatedUnion("type", [
   DeploymentBaseDto.extend({ type: z.literal("legacy"), legacy: LegacyDeploymentDto }),
+  DeploymentBaseDto.extend({ type: z.literal("managed"), managed: ManagedDeploymentDto }),
 ]);
 export type DeploymentOutput = z.infer<typeof DeploymentDto>;
 
@@ -99,8 +109,15 @@ export const LegacyDeploymentInputDto = LegacyDeploymentDto.omit({ deprecatedMod
 });
 export type LegacyDeploymentInput = z.infer<typeof LegacyDeploymentInputDto>;
 
+export const ManagedDeploymentInputDto = ManagedDeploymentDto.extend({
+  replicas: ReplicasDto.default(1),
+  kvCacheSize: KvCacheSizeDto.nullish(),
+});
+export type ManagedDeploymentInput = z.infer<typeof ManagedDeploymentInputDto>;
+
 export const DeploymentInputDto = z.discriminatedUnion("type", [
   DeploymentBaseInputDto.extend({ type: z.literal("legacy"), legacy: LegacyDeploymentInputDto }),
+  DeploymentBaseInputDto.extend({ type: z.literal("managed"), managed: ManagedDeploymentInputDto }),
 ]);
 
 // Zod still applies a default under .optional(), so .partial() alone would reset omitted fields.
@@ -112,9 +129,12 @@ export const LegacyDeploymentPatchDto = LegacyDeploymentInputDto
   })
   .partial();
 
+export const ManagedDeploymentPatchDto = ManagedDeploymentInputDto.extend({ replicas: ReplicasDto }).partial();
+
 /** Changes to the deployment's type-specific part go under the key of its type. */
 export const DeploymentUpdateDto = DeploymentBaseInputDto.partial().extend({
   id: z.uuid(),
   legacy: LegacyDeploymentPatchDto.optional(),
+  managed: ManagedDeploymentPatchDto.optional(),
 });
 export type DeploymentUpdate = z.infer<typeof DeploymentUpdateDto>;

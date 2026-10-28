@@ -5,6 +5,7 @@ import { router } from "$lib/server/orpc/router";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
 import type { ModelType, ModelWithSpecifier } from "common-env/model-catalog";
 import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
+import { handleVariant, type VariantHandlers } from "$lib/util";
 
 export type OrgModel = {
   publicSpecifier: string;
@@ -18,13 +19,19 @@ export type OrgModel = {
 
 const DEFAULT_CONTEXT_WINDOW = 131072;
 
-// A canary request can land on either model, so only the shorter context is safe to rely on.
-function servingSpecifiers({ legacy }: DeploymentOutput): string[] {
-  const { specifier, earlySpecifier, progress, canaryProgressFrom = null, canaryProgressUntil = null } = legacy;
-  return earlySpecifier && calcCanaryProgress({ earlySpecifier, progress, canaryProgressFrom, canaryProgressUntil }) !== 100
-    ? [specifier, earlySpecifier]
-    : [specifier];
-}
+// The model the deployment is described by comes first. A canary request can land on either model, so only the shorter
+// context is safe to rely on.
+const SERVING_SPECIFIERS: VariantHandlers<DeploymentOutput, string[]> = {
+  legacy: ({ legacy }) => {
+    const { specifier, earlySpecifier, progress, canaryProgressFrom = null, canaryProgressUntil = null } = legacy;
+    return earlySpecifier && calcCanaryProgress({ earlySpecifier, progress, canaryProgressFrom, canaryProgressUntil }) !== 100
+      ? [specifier, earlySpecifier]
+      : [specifier];
+  },
+  managed: ({ managed }) => [managed.specifier],
+};
+
+const servingSpecifiers = (deployment: DeploymentOutput) => handleVariant(SERVING_SPECIFIERS, deployment);
 
 export async function loadOrgModels(locals: App.Locals): Promise<OrgModel[]> {
   const deployments = (await listDeployments(locals)).filter(d => d.enabled);
@@ -32,7 +39,7 @@ export async function loadOrgModels(locals: App.Locals): Promise<OrgModel[]> {
 
   return deployments
     .map((deployment) => {
-      const entry = catalog[deployment.legacy.specifier];
+      const entry = catalog[servingSpecifiers(deployment)[0]];
       return {
         publicSpecifier: deployment.publicSpecifier,
         name: deployment.name,

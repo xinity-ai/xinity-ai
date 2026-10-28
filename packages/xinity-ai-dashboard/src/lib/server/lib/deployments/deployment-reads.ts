@@ -1,0 +1,89 @@
+import {
+  aiNodeT,
+  canaryOfDeployment,
+  deploymentCanaryT,
+  deploymentT,
+  inArray,
+  installationOfDeployment,
+  installationOnLiveNode,
+  modelInstallationStateT,
+  modelInstallationT,
+  organizationT,
+  sql,
+  stateOfInstallation,
+  type Deployment,
+} from "common-db";
+import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
+import { getDB } from "$lib/server/db";
+import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
+import type { DeploymentPhaseRow } from "$lib/server/notifications/scheduler";
+import { foldDeploymentStatusRows } from "./deployment-status";
+
+const idsOf = (entries: { id: string }[]) => entries.map(({ id }) => id);
+
+const liveInstallation = sql`${installationOfDeployment} AND ${modelInstallationT.deletedAt} IS NULL`;
+
+export async function withInstallationStatus(deployments: DeploymentOutput[]): Promise<DeploymentOutput[]> {
+  const byId = new Map(deployments.map((deployment) => [deployment.id, deployment]));
+  const rows = await getDB()
+    .select({
+      deploymentId: deploymentT.id,
+      model_installation: modelInstallationT,
+      model_installation_state: modelInstallationStateT,
+      ai_node: aiNodeT,
+    })
+    .from(deploymentT)
+    .leftJoin(deploymentCanaryT, canaryOfDeployment)
+    .leftJoin(modelInstallationT, liveInstallation)
+    .leftJoin(modelInstallationStateT, stateOfInstallation)
+    .leftJoin(aiNodeT, installationOnLiveNode)
+    .where(inArray(deploymentT.id, idsOf(deployments)));
+  return foldDeploymentStatusRows(rows.flatMap(({ deploymentId, ...installation }) => {
+    const deployment = byId.get(deploymentId);
+    return deployment ? [{ ...installation, deployment }] : [];
+  }));
+}
+
+export async function phasesOf(entries: Deployment[], desiredReplicas: ReadonlyMap<string, number>): Promise<DeploymentPhaseRow[]> {
+  const rows = await getDB()
+    .select({
+      deploymentId: deploymentT.id,
+      deploymentName: deploymentT.name,
+      organizationId: deploymentT.organizationId,
+      orgName: organizationT.name,
+      publicSpecifier: deploymentT.publicSpecifier,
+      installationId: modelInstallationT.id,
+      installationGroup: modelInstallationT.group,
+      liveNodeId: aiNodeT.id,
+      lifecycleState: modelInstallationStateT.lifecycleState,
+      errorMessage: modelInstallationStateT.errorMessage,
+    })
+    .from(deploymentT)
+    .leftJoin(deploymentCanaryT, canaryOfDeployment)
+    .leftJoin(organizationT, sql`${organizationT.id} = ${deploymentT.organizationId}`)
+    .leftJoin(modelInstallationT, liveInstallation)
+    .leftJoin(modelInstallationStateT, stateOfInstallation)
+    .leftJoin(aiNodeT, installationOnLiveNode)
+    .where(inArray(deploymentT.id, idsOf(entries)));
+  return rows.map((row) => ({ ...row, desiredReplicas: desiredReplicas.get(row.deploymentId) ?? 0 }));
+}
+
+async function isMissingFromCatalog(specifier: string): Promise<boolean> {
+  try {
+    const resolution = await resolveSchedulable(specifier, null);
+    return resolution.status === "not_found";
+  } catch {
+    return false;
+  }
+}
+
+// An enabled deployment with no installation to report on may simply have a model the catalog no longer has.
+export async function markMissingFromCatalog(deployments: DeploymentOutput[], specifiersOf: (deployment: DeploymentOutput) => string[]): Promise<void> {
+  const candidates = deployments.filter((deployment) => !deployment.status && deployment.enabled);
+  await Promise.all(candidates.map(async (deployment) => {
+    const missing = await Promise.all(specifiersOf(deployment).map(isMissingFromCatalog));
+    if (missing.some(Boolean)) {
+      deployment.status = { phase: "not_in_catalog", progress: null, error: null };
+    }
+  }));
+}

@@ -37,6 +37,25 @@ describe("deprecated flat deployment API", () => {
     }
   });
 
+  test("does not see deployments of the other types", async () => {
+    const publicSpecifier = `flat-managed-e2e-${randomUUID()}`;
+    const created = await ownerFetch("/api/deployments/", {
+      method: "POST",
+      body: JSON.stringify({ name: publicSpecifier, publicSpecifier, enabled: false, type: "managed", managed: { specifier: MODEL } }),
+    });
+    expect(created.status).toBe(200);
+    const { id } = (await created.json()) as { id: string };
+
+    try {
+      expect((await ownerFetch(`/api/deployment/${id}`)).status).toBe(404);
+      expect((await ownerFetch(`/api/deployment/${id}`, { method: "PATCH", body: JSON.stringify({ name: "renamed" }) })).status).toBe(404);
+      const listed = (await (await ownerFetch("/api/deployment/")).json()) as FlatDeployment[];
+      expect(listed.some((deployment) => deployment.id === id)).toBe(false);
+    } finally {
+      await ownerFetch(`/api/deployments/${id}`, { method: "DELETE" });
+    }
+  });
+
   test("previews capacity for a flat draft", async () => {
     const res = await ownerFetch("/api/deployment/check-capacity", {
       method: "POST",

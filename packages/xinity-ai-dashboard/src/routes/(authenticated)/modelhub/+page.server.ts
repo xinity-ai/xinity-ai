@@ -40,4 +40,5 @@ export const load: PageServerLoad = async ({ parent, locals }) => {
   return { deployments, applications, ...capacity };
 };
 
-export type { DeploymentOutput as DeploymentDefinition };
+// The modelhub renders the types it has views for, see `hasView`.
+export type DeploymentDefinition = Extract<DeploymentOutput, { type: "legacy" }>;

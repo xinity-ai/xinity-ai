@@ -110,3 +110,52 @@ describe("Deployment input validation", () => {
     }
   });
 });
+
+describe("Managed deployment", () => {
+  type Managed = { id: string; name: string; type: "managed"; managed: { specifier: string; replicas: number; kvCacheSize?: number | null } };
+
+  async function withManaged(managed: Record<string, unknown>, run: (deployment: Managed) => Promise<void>) {
+    const publicSpecifier = `managed-e2e-${randomUUID()}`;
+    const created = await ownerFetch("/api/deployments/", {
+      method: "POST",
+      body: JSON.stringify({ name: publicSpecifier, publicSpecifier, enabled: false, type: "managed", managed: { specifier: MODEL, ...managed } }),
+    });
+    expect(created.status).toBe(200);
+    const deployment = (await created.json()) as Managed;
+    try {
+      await run(deployment);
+    } finally {
+      await ownerFetch(`/api/deployments/${deployment.id}`, { method: "DELETE" });
+    }
+  }
+
+  test("a partial update leaves the fields it does not name untouched", () =>
+    withManaged({ replicas: 3, kvCacheSize: 4 }, async ({ id, type }) => {
+      expect(type).toBe("managed");
+      const res = await ownerFetch(`/api/deployments/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name: "renamed", managed: { kvCacheSize: 6 } }),
+      });
+      expect(res.status).toBe(200);
+      const updated = (await res.json()) as Managed;
+      expect(updated.name).toBe("renamed");
+      expect(updated.managed.specifier).toBe(MODEL);
+      expect(updated.managed.replicas).toBe(3);
+      expect(updated.managed.kvCacheSize).toBe(6);
+    }));
+
+  test("refuses a patch for another type than the deployment's", () =>
+    withManaged({}, async ({ id }) => {
+      const res = await ownerFetch(`/api/deployments/${id}`, { method: "PATCH", body: JSON.stringify({ legacy: { replicas: 2 } }) });
+      expect(res.status).toBe(400);
+    }));
+
+  test("create refuses zero replicas", async () => {
+    const publicSpecifier = `managed-e2e-${randomUUID()}`;
+    const res = await ownerFetch("/api/deployments/", {
+      method: "POST",
+      body: JSON.stringify({ name: publicSpecifier, publicSpecifier, enabled: false, type: "managed", managed: { specifier: MODEL, replicas: 0 } }),
+    });
+    expect(res.status).toBe(400);
+  });
+});
