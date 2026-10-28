@@ -31,6 +31,8 @@
         baseUrl: apiBase,
         api: "openai-completions",
         apiKey: "$XINITY_API_KEY",
+        // Pi otherwise sends store: false, which overrides the API key's data collection setting
+        compat: { supportsStore: false },
         models: selection.entries.map(modelEntry),
       },
     },
