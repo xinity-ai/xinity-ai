@@ -1,10 +1,12 @@
-import { deploymentLegacyT, deploymentT, inArray, legacyOfDeployment, sql, type Deployment, type DeploymentLegacy } from "common-db";
+import { calcCanaryProgress, deploymentCanaryT, deploymentLegacyT, deploymentT, inArray, legacyOfDeployment, modelInstallationT, sql, type Deployment, type DeploymentLegacy } from "common-db";
+import type { RolloutAdvance } from "common-env";
 import type { DeploymentOutput, LegacyDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { validateCanaryModelTypes } from "./canary-deployment";
 import { markMissingFromCatalog, phasesOf, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType, Transaction } from "./deployment-types";
+import { createManaged } from "./managed-deployment";
 import { requirementsForDeployments } from "./requirements";
 
 const outputOf = (entry: Deployment, legacy: DeploymentLegacy): DeploymentOutput => ({ ...entry, type: "legacy", legacy });
@@ -21,6 +23,48 @@ export async function createLegacy(tx: Transaction, input: LegacyDeploymentInput
     throw new Error("Insert into deploymentLegacyT returned no row");
   }
   return legacy.id;
+}
+
+// A rollout timed by both ends keeps moving as before. Feedback-driven progress never had logic behind it.
+function advanceOf({ progress, canaryProgressFrom, canaryProgressUntil }: DeploymentLegacy): RolloutAdvance {
+  return canaryProgressFrom && canaryProgressUntil
+    ? { type: "time", version: 1, startProgress: progress, from: canaryProgressFrom.toISOString(), until: canaryProgressUntil.toISOString() }
+    : { type: "manual", version: 1 };
+}
+
+/**
+ * Moves the deployment onto a managed row, or a canary of two when it is mid-rollout. 
+ * The installations already serving a side are handed to its new row, so nothing is installed again. 
+ * The legacy row is left without a deployment, and the sync uninstalls whatever it still runs.
+ */
+export async function migrateLegacy(tx: Transaction, entry: Deployment): Promise<void> {
+  const [legacy] = await tx.select().from(deploymentLegacyT).where(sql`${deploymentLegacyT.id} = ${entry.legacyId}`).limit(1);
+  if (!legacy) {
+    throw new Error(`Deployment ${entry.id} has no legacy row to migrate`);
+  }
+  const { replicas, preferredDriver, settings } = legacy;
+  const takeOver = async (specifier: string, kvCacheSize: number | null) => {
+    const managedId = await createManaged(tx, { specifier, replicas, kvCacheSize, preferredDriver, settings });
+    await tx.update(modelInstallationT)
+      .set({ legacyId: null, managedId })
+      .where(sql`${modelInstallationT.legacyId} = ${legacy.id} AND ${modelInstallationT.specifier} = ${specifier} AND ${modelInstallationT.deletedAt} IS NULL`);
+    return managedId;
+  };
+
+  const toId = await takeOver(legacy.specifier, legacy.kvCacheSize);
+  const progress = Math.round(calcCanaryProgress(legacy));
+  if (!legacy.earlySpecifier || legacy.earlySpecifier === legacy.specifier || progress === 100) {
+    await tx.update(deploymentT).set({ type: "managed", legacyId: null, managedId: toId }).where(sql`${deploymentT.id} = ${entry.id}`);
+    return;
+  }
+  const fromId = await takeOver(legacy.earlySpecifier, legacy.earlyKvCacheSize);
+  const [canary] = await tx.insert(deploymentCanaryT)
+    .values({ fromId, toId, replicas, progress, advance: advanceOf(legacy) })
+    .returning({ id: deploymentCanaryT.id });
+  if (!canary) {
+    throw new Error("Insert into deploymentCanaryT returned no row");
+  }
+  await tx.update(deploymentT).set({ type: "canary", legacyId: null, canaryId: canary.id }).where(sql`${deploymentT.id} = ${entry.id}`);
 }
 
 async function markDeploymentsOnDeprecatedCatalog(deployments: DeploymentOutput[]): Promise<void> {

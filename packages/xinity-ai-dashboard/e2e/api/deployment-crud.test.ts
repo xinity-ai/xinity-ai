@@ -254,3 +254,54 @@ describe("Rollout", () => {
       expect((await startCanary(id, { progress: 150 })).status).toBe(400);
     }));
 });
+
+describe("Legacy migration", () => {
+  const EARLY_MODEL = "apertus-v1.1-1.5b-vllm";
+
+  async function withLegacy(legacy: Record<string, unknown>, run: (id: string) => Promise<void>) {
+    const publicSpecifier = `migrate-e2e-${randomUUID()}`;
+    const created = await ownerFetch("/api/deployments/", {
+      method: "POST",
+      body: JSON.stringify({ name: publicSpecifier, publicSpecifier, enabled: false, type: "legacy", legacy: { specifier: MODEL, ...legacy } }),
+    });
+    expect(created.status).toBe(200);
+    const { id } = (await created.json()) as { id: string };
+    try {
+      await run(id);
+    } finally {
+      await ownerFetch(`/api/deployments/${id}`, { method: "DELETE" });
+    }
+  }
+
+  const migrate = (id: string) => ownerFetch(`/api/deployments/${id}/migrate`, { method: "POST", body: "{}" });
+
+  test("a legacy deployment serving one model becomes a managed deployment of it", () =>
+    withLegacy({ replicas: 2, kvCacheSize: 4 }, async (id) => {
+      const res = await migrate(id);
+      expect(res.status).toBe(200);
+      const migrated = (await res.json()) as Managed;
+      expect(migrated.id).toBe(id);
+      expect(migrated.type).toBe("managed");
+      expect(migrated.managed.specifier).toBe(MODEL);
+      expect(migrated.managed.replicas).toBe(2);
+      expect(migrated.managed.kvCacheSize).toBe(4);
+    }));
+
+  test("a legacy deployment mid-rollout becomes a canary that carries on where it was", () =>
+    withLegacy({ earlySpecifier: EARLY_MODEL, progress: 30, replicas: 2 }, async (id) => {
+      const res = await migrate(id);
+      expect(res.status).toBe(200);
+      const migrated = (await res.json()) as Canary;
+      expect(migrated.type).toBe("canary");
+      expect(migrated.canary.progress).toBe(30);
+      expect(migrated.canary.replicas).toBe(2);
+      expect(migrated.canary.from.specifier).toBe(EARLY_MODEL);
+      expect(migrated.canary.to.specifier).toBe(MODEL);
+      expect(migrated.canary.advance.type).toBe("manual");
+    }));
+
+  test("refuses to migrate a deployment that is not legacy", () =>
+    withManaged({}, async ({ id }) => {
+      expect((await migrate(id)).status).toBe(400);
+    }));
+});

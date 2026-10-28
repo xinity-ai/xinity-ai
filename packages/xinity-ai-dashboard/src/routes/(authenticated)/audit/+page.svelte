@@ -78,6 +78,7 @@
     "member.update_role",
     "modelDeployment.create",
     "modelDeployment.delete",
+    "modelDeployment.migrate",
     "modelDeployment.retry",
     "modelDeployment.rollout",
     "modelDeployment.toggle_enabled",

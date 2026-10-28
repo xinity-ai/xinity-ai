@@ -6,7 +6,7 @@ import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
 import { requirementsForCanaries, requirementsForDeployments, requirementsForManaged, type CanaryMemberPlan, type DeploymentPlan, type ManagedPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
 import { byType, DASHBOARD_DEPLOYMENT_TYPES, type Transaction } from "$lib/server/lib/deployments/deployment-types";
-import { createLegacy } from "$lib/server/lib/deployments/legacy-deployment";
+import { createLegacy, migrateLegacy } from "$lib/server/lib/deployments/legacy-deployment";
 import { validateCanaryModelTypes } from "$lib/server/lib/deployments/canary-deployment";
 import { installationOwnersOf } from "$lib/server/lib/deployments/deployment-reads";
 import { reviewRollout } from "$lib/server/lib/deployments/rollouts";
@@ -543,6 +543,14 @@ const checkCapacity = rootOs
     return checkDeploymentCapacity(handleVariant(DRAFT_REQUIREMENTS, input, replacedOwnerIds[0]), replacedOwnerIds);
   });
 
+// Changes the deployment's type in one transaction. It keeps its id, so it reads back under the same one.
+async function reshapeDeployment(entry: Deployment, reshape: (tx: Transaction) => Promise<void>) {
+  await getDB().transaction(reshape);
+  syncDeployedModels();
+  const [reshaped] = await getDB().select().from(deploymentT).where(sql`${deploymentT.id} = ${entry.id}`).limit(1);
+  return reshaped && await readDeployment(reshaped);
+}
+
 const rolloutDeployment = rootOs
   .use(withOrganization)
   .use(requirePermission({ modelDeployment: ["update"] }))
@@ -570,10 +578,31 @@ const rolloutDeployment = rootOs
       }
     }
 
-    await getDB().transaction(review.apply);
-    syncDeployedModels();
-    const [rolled] = await getDB().select().from(deploymentT).where(sql`${deploymentT.id} = ${entry.id}`).limit(1);
-    const deployment = rolled && await readDeployment(rolled);
+    const deployment = await reshapeDeployment(entry, review.apply);
+    if (!deployment) throw errors.NOT_FOUND();
+    return deployment;
+  });
+
+const migrateDeployment = rootOs
+  .use(withOrganization)
+  .use(requirePermission({ modelDeployment: ["update"] }))
+  .use(auditMiddleware)
+  .meta({ audit: { action: "modelDeployment.migrate", resource: "modelDeployment", resourceId: { fromInput: "id" } } })
+  .route({
+    path: "/{id}/migrate", method: "POST", tags, summary: "Migrate Legacy Deployment",
+    description: "Turns a legacy deployment into a managed one, or a canary when it is mid-rollout. What already runs keeps running, and the deployment keeps its id and public name.",
+  })
+  .input(z.object({ id: z.uuid() }))
+  .output(DeploymentDto)
+  .errors({ NOT_FOUND: {}, BAD_REQUEST: {} })
+  .handler(async ({ context, input, errors }) => {
+    const entry = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
+    if (!entry) throw errors.NOT_FOUND();
+    if (entry.type !== "legacy") {
+      throw errors.BAD_REQUEST({ message: `Only a legacy deployment can be migrated, and this one is of type ${entry.type}` });
+    }
+
+    const deployment = await reshapeDeployment(entry, (tx) => migrateLegacy(tx, entry));
     if (!deployment) throw errors.NOT_FOUND();
     return deployment;
   });
@@ -589,4 +618,5 @@ export const deploymentsRouter = rootOs.prefix("/deployments").router({
   retry: retryDeployment,
   checkCapacity,
   rollout: rolloutDeployment,
+  migrate: migrateDeployment,
 });
