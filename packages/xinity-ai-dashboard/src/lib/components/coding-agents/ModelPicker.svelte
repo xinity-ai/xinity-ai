@@ -35,7 +35,7 @@
               <code class="ml-2 text-sm text-gray-500">{model.publicSpecifier}</code>
             </span>
             {#if model.vision}
-              <span class="inline-flex items-center gap-1 text-xs text-xinity-purple" title="Accepts images, declared as a modality in the config">
+              <span class="inline-flex items-center gap-1 text-xs text-xinity-purple" title="Accepts images, declared as an input in the config">
                 <Eye class="w-3 h-3" /> vision
               </span>
             {/if}

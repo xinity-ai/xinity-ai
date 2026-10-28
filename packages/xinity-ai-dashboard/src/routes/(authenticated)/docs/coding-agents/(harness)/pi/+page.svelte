@@ -19,7 +19,7 @@
       id: model.publicSpecifier,
       name: model.name,
       ...(model.vision ? { input: ["text", "image"] } : {}),
-      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+      contextWindow: model.contextWindow,
     };
   }
 

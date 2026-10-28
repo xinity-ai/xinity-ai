@@ -16,28 +16,28 @@
 
   const effectiveTitleModel = $derived(selection.selected.includes(titleModel) ? titleModel : selection.primary);
 
+  // Without an output limit OpenCode asks for 32k tokens, which a long reasoning phase can use up
+  // before the answer starts. It shrinks each request to the room the prompt leaves on its own.
   function modelEntry(model: OrgModel) {
-    if (!model.vision) return { name: model.name, tool_call: true };
     return {
       name: model.name,
-      tool_call: true,
-      attachment: true,
-      modalities: { input: ["text", "image"], output: ["text"] },
+      capabilities: { tools: true, input: model.vision ? ["text", "image"] : ["text"], output: ["text"] },
+      limit: { context: model.contextWindow, output: Math.floor(model.contextWindow / 4) },
     };
   }
 
   const configJson = $derived(JSON.stringify({
     "$schema": "https://opencode.ai/config.json",
-    provider: {
+    providers: {
       xinity: {
-        npm: "@ai-sdk/openai-compatible",
         name: "Xinity AI",
-        options: { baseURL: apiBase },
+        package: "@opencode/ai/providers/openai-compatible",
+        settings: { baseURL: apiBase },
         models: Object.fromEntries(selection.entries.map(m => [m.publicSpecifier, modelEntry(m)])),
       },
     },
     model: `xinity/${selection.primary}`,
-    small_model: `xinity/${effectiveTitleModel}`,
+    agents: { title: { model: `xinity/${effectiveTitleModel}` } },
   }, null, 2));
 </script>
 
@@ -96,10 +96,9 @@
       then hand it to OpenCode. It stores the key in its own credentials file, so nothing secret
       goes into the config you just wrote.
     </p>
-    <CodeExample code={`opencode auth login`} language="bash" withCopy />
+    <CodeExample code={`opencode auth login xinity`} language="bash" withCopy />
     <p class="text-gray-600 mt-4">
-      Choose "Other", enter <code class="bg-gray-100 px-1 rounded">xinity</code> as the provider id so it
-      matches the config, and paste the key (<code class="bg-gray-100 px-1 rounded">sk_...</code>).
+      Paste the key (<code class="bg-gray-100 px-1 rounded">sk_...</code>) when asked.
       Start OpenCode and run <code class="bg-gray-100 px-1 rounded">/models</code> to confirm your models are listed.
     </p>
   </section>

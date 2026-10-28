@@ -17,7 +17,7 @@
   function modelEntry(model: OrgModel) {
     return {
       name: model.name,
-      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+      contextWindow: model.contextWindow,
       ...(model.vision ? { supportsVision: true } : {}),
     };
   }

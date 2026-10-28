@@ -7,7 +7,7 @@ const placeholder: OrgModel = {
   tools: true,
   vision: false,
   ready: false,
-  contextWindow: null,
+  contextWindow: 131072,
 };
 
 export type ModelSelection = ReturnType<typeof createModelSelection>;
