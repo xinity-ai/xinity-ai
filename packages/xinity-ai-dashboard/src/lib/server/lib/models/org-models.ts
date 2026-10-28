@@ -29,12 +29,7 @@ const SERVING_SPECIFIERS: VariantHandlers<DeploymentOutput, string[]> = {
       : [specifier];
   },
   managed: ({ managed }) => [managed.specifier],
-  canary: ({ canary }) => {
-    const { from, to, progress, canaryProgressFrom = null, canaryProgressUntil = null } = canary;
-    return calcCanaryProgress({ earlySpecifier: from.specifier, progress, canaryProgressFrom, canaryProgressUntil }) !== 100
-      ? [to.specifier, from.specifier]
-      : [to.specifier];
-  },
+  canary: ({ canary }) => canary.progress === 100 ? [canary.to.specifier] : [canary.to.specifier, canary.from.specifier],
 };
 
 const servingSpecifiers = (deployment: DeploymentOutput) => handleVariant(SERVING_SPECIFIERS, deployment);

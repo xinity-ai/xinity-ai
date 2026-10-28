@@ -556,7 +556,7 @@ describe("orchestration: requirements per deployment", () => {
 
   test("splits a canary's replicas between its members, each owning its installations", () => {
     const member = (id: string) => ({ id, specifier: "same", kvCacheSize: null, preferredDriver: null, settings: { version: 1 as const } });
-    const rollout = { replicas: 4, canaryProgressFrom: null, canaryProgressUntil: null, from: member("from"), to: member("to") };
+    const rollout = { replicas: 4, from: member("from"), to: member("to") };
 
     const midway = requirementsForCanaries([{ ...rollout, progress: 25 }]);
     expect(midway["from:same"]).toMatchObject({ managedId: "from", legacyId: null, replicas: 3 });

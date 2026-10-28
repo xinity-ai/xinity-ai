@@ -1,4 +1,4 @@
-import { calcCanaryProgress, calcRolloutProgress, type DeploymentCanary, type DeploymentLegacy, type DeploymentManaged } from "common-db";
+import { calcCanaryProgress, type DeploymentCanary, type DeploymentLegacy, type DeploymentManaged } from "common-db";
 import type { DeploymentSettings } from "common-env";
 import type { Provider } from "common-env/model-catalog";
 import { ownedByLegacy, ownedByManaged, requirementKey, type InstallationOwnership } from "./placement";
@@ -15,7 +15,7 @@ export type ManagedPlan = Pick<DeploymentManaged, "id" | "specifier" | "replicas
 
 export type CanaryMemberPlan = Omit<ManagedPlan, "replicas">;
 
-export type CanaryPlan = Pick<DeploymentCanary, "replicas" | "progress" | "canaryProgressFrom" | "canaryProgressUntil"> & { from: CanaryMemberPlan; to: CanaryMemberPlan };
+export type CanaryPlan = Pick<DeploymentCanary, "replicas" | "progress"> & { from: CanaryMemberPlan; to: CanaryMemberPlan };
 
 const tableOf = (requirements: ModelRequirement[]): ModelRequirementTable =>
   Object.fromEntries(requirements.map((requirement) => [requirementKey(requirement), requirement]));
@@ -47,11 +47,8 @@ export function requirementsForManaged(rows: ManagedPlan[]): ModelRequirementTab
 
 // The members share the canary's replicas by progress, each rounded up so a member taking any traffic keeps a replica.
 export function requirementsForCanaries(canaries: CanaryPlan[]): ModelRequirementTable {
-  return tableOf(canaries.flatMap((canary) => {
-    const progress = calcRolloutProgress(canary);
-    return [
-      managedRequirement(canary.from, Math.ceil(canary.replicas * ((100 - progress) / 100))),
-      managedRequirement(canary.to, Math.ceil(canary.replicas * (progress / 100))),
-    ].filter(({ replicas }) => replicas > 0);
-  }));
+  return tableOf(canaries.flatMap((canary) => [
+    managedRequirement(canary.from, Math.ceil(canary.replicas * ((100 - canary.progress) / 100))),
+    managedRequirement(canary.to, Math.ceil(canary.replicas * (canary.progress / 100))),
+  ].filter(({ replicas }) => replicas > 0)));
 }

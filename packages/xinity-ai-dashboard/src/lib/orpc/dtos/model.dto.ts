@@ -3,6 +3,7 @@
  */
 import { z } from "zod";
 import { OPTIMIZATION_GOALS } from "common-env/deployment-settings";
+import { rolloutAdvanceSchema } from "common-env/rollout-advance";
 import { CommonDto, commonInputFilter } from "./common.dto";
 
 export const DeploymentSettingsDto = z.object({
@@ -92,9 +93,7 @@ const CanaryMemberDto = ManagedDeploymentDto.omit({ replicas: true });
 export const CanaryDeploymentDto = z.object({
   replicas: z.number().describe("Replicas the two members share, split between them by progress"),
   progress: z.number().describe("Share of traffic, in percent, that goes to `to`"),
-  canaryProgressUntil: z.date().nullish().describe("When progress reaches 100"),
-  canaryProgressFrom: z.date().nullish().describe("When progress started moving towards 100"),
-  canaryProgressWithFeedback: z.boolean().default(false),
+  advance: rolloutAdvanceSchema.describe("How progress moves"),
   from: CanaryMemberDto.describe("The model traffic moves away from"),
   to: CanaryMemberDto.describe("The model traffic moves to"),
 });
@@ -149,10 +148,19 @@ export const ManagedDeploymentPatchDto = ManagedDeploymentInputDto.extend({ repl
 
 const CanaryMemberPatchDto = CanaryMemberInputDto.partial();
 
+export const RolloutAdvanceInputDto = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("manual") }),
+  z.object({
+    type: z.literal("time"),
+    until: z.coerce.date().describe("When progress reaches 100, moving there evenly from the current progress and time"),
+  }),
+]);
+export type RolloutAdvanceInput = z.infer<typeof RolloutAdvanceInputDto>;
+
 export const CanaryDeploymentPatchDto = CanaryDeploymentDto.extend({
   replicas: ReplicasDto,
-  progress: ProgressDto,
-  canaryProgressWithFeedback: z.boolean(),
+  progress: ProgressDto.describe("Under a time-based advance, the rollout moves on to 100 from here"),
+  advance: RolloutAdvanceInputDto,
   from: CanaryMemberPatchDto,
   to: CanaryMemberPatchDto,
 }).partial();

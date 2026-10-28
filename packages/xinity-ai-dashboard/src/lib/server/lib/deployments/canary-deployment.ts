@@ -1,11 +1,13 @@
-import { canaryOfDeployment, deploymentCanaryT, deploymentManagedT, deploymentT, inArray, sql, type Deployment, type DeploymentCanary, type DeploymentManaged } from "common-db";
-import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
+import { calcRolloutProgress, canaryOfDeployment, deploymentCanaryT, deploymentManagedT, deploymentT, inArray, sql, type Deployment, type DeploymentCanary, type DeploymentManaged } from "common-db";
+import type { RolloutAdvance } from "common-env";
+import type { DeploymentOutput, RolloutAdvanceInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import { markMissingFromCatalog, phasesOf, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType } from "./deployment-types";
 import { hasChanges, rejectWhileEnabled, restrictedChanges } from "./managed-deployment";
 import { requirementsForCanaries, type CanaryPlan } from "./requirements";
+import { handleVariant, type VariantHandlers } from "$lib/util";
 
 type CanaryRow = { entry: Deployment; canary: DeploymentCanary; from: DeploymentManaged; to: DeploymentManaged };
 
@@ -46,6 +48,42 @@ export async function validateCanaryModelTypes(toSpecifier: string, fromSpecifie
     return `Cannot mix model types in a canary deployment: the canary is "${toType}" but the model it replaces is "${fromType}"`;
   }
   return null;
+}
+
+// A time-based advance moves on evenly from the progress and time it is given.
+const STORED_ADVANCE: VariantHandlers<RolloutAdvanceInput, RolloutAdvance, [number]> = {
+  manual: () => ({ type: "manual", version: 1 }),
+  time: ({ until }, progress) => ({ type: "time", version: 1, startProgress: progress, from: new Date().toISOString(), until: until.toISOString() }),
+};
+
+// Setting progress by hand under a time-based advance restarts it from there, towards the same end.
+const REANCHORED_ADVANCE: VariantHandlers<RolloutAdvance, RolloutAdvance, [number]> = {
+  manual: (advance) => advance,
+  time: (advance, progress) => ({ ...advance, startProgress: progress, from: new Date().toISOString() }),
+};
+
+function advanceChange(current: DeploymentCanary, progress: number | undefined, advance: RolloutAdvanceInput | undefined): RolloutAdvance | undefined {
+  if (advance) {
+    return handleVariant(STORED_ADVANCE, advance, progress ?? current.progress);
+  }
+  return progress === undefined ? undefined : handleVariant(REANCHORED_ADVANCE, current.advance, progress);
+}
+
+const PROGRESS_NOW: VariantHandlers<RolloutAdvance, number | undefined> = {
+  manual: () => undefined,
+  time: ({ startProgress, from, until }) =>
+    calcRolloutProgress({ progress: startProgress, canaryProgressFrom: new Date(from), canaryProgressUntil: new Date(until) }),
+};
+
+/** Writes the progress each canary's advance has reached by now, which is what the gateway splits traffic by. */
+export async function advanceRollouts(): Promise<void> {
+  const canaries = await getDB().select().from(deploymentCanaryT);
+  await Promise.all(canaries.map(async (canary) => {
+    const progress = handleVariant(PROGRESS_NOW, canary.advance);
+    if (progress !== undefined && progress !== canary.progress) {
+      await getDB().update(deploymentCanaryT).set({ progress }).where(sql`${deploymentCanaryT.id} = ${canary.id}`);
+    }
+  }));
 }
 
 export const canaryDeployment: DashboardDeploymentType = {
@@ -103,9 +141,10 @@ export const canaryDeployment: DashboardDeploymentType = {
     if (!canary || !input.canary) {
       return;
     }
-    const { from, to, ...rollout } = input.canary;
-    if (hasChanges(rollout)) {
-      await tx.update(deploymentCanaryT).set(rollout).where(sql`${deploymentCanaryT.id} = ${canary.id}`);
+    const { from, to, advance, ...rollout } = input.canary;
+    const changes = { ...rollout, advance: advanceChange(canary, rollout.progress, advance) };
+    if (hasChanges(changes)) {
+      await tx.update(deploymentCanaryT).set(changes).where(sql`${deploymentCanaryT.id} = ${canary.id}`);
     }
     for (const [memberId, patch] of [[canary.fromId, from], [canary.toId, to]] as const) {
       if (hasChanges(patch)) {

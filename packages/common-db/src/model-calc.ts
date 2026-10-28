@@ -1,7 +1,7 @@
-import type { DeploymentCanary, DeploymentLegacy } from "./schema/models";
+import type { DeploymentLegacy } from "./schema/models";
 
 /** Share of traffic, in percent, that has moved to the rollout's new side by now. */
-export function calcRolloutProgress(rollout: Pick<DeploymentCanary, "progress" | "canaryProgressFrom" | "canaryProgressUntil">): number {
+export function calcRolloutProgress(rollout: Pick<DeploymentLegacy, "progress" | "canaryProgressFrom" | "canaryProgressUntil">): number {
   const { progress, canaryProgressFrom, canaryProgressUntil } = rollout;
   if (progress === 100) {
     return 100;

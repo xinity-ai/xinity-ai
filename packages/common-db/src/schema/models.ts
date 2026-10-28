@@ -1,7 +1,7 @@
 import { type InferSelectModel, sql } from "drizzle-orm";
 import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
-import { DEPLOYMENT_TYPES, GROUP_STAGES, type DeploymentSettings, type GpuInfo, type InstallationGroup, type InterconnectPort } from "common-env";
+import { DEPLOYMENT_TYPES, GROUP_STAGES, type DeploymentSettings, type RolloutAdvance, type GpuInfo, type InstallationGroup, type InterconnectPort } from "common-env";
 
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
 export const inferenceDriverEnum = pgEnum("inference_driver", ["ollama", "vllm"]);
@@ -109,11 +109,8 @@ export const deploymentCanaryT = pgTable("deployment_canary", {
   replicas: integer().notNull().default(1),
   /** Share of traffic, in percent, that goes to the `to` member. */
   progress: integer().notNull().default(0),
-  /** When present, marks the point at which progress should reach 100 */
-  canaryProgressUntil: timestamp("canary_progress_until", { withTimezone: true }),
-  /** When present, marks the start of canary progress modification. Usually equal to updatedAt */
-  canaryProgressFrom: timestamp("canary_progress_from", { withTimezone: true }),
-  canaryProgressWithFeedback: boolean("canary_progress_with_feedback").notNull().default(false),
+  /** How progress moves. The dashboard writes `progress` from it, which is all the gateway reads. */
+  advance: jsonb().notNull().$type<RolloutAdvance>().default({ type: "manual", version: 1 }),
 
   createdAt,
   updatedAt,

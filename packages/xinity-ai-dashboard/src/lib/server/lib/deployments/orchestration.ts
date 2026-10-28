@@ -11,6 +11,7 @@ import { buildClusterState, chargeCapacity, chargeOf, freeGbOn, poolCharge, rank
 import { ENGINE_SCHEDULERS } from "./engines";
 import type { MemberSlot, NodeSlot, PlacementRequest } from "./engines/engine";
 import { firstFreePort, ownerOf, type Placement } from "./placement";
+import { advanceRollouts } from "./canary-deployment";
 import { byType, enabledDeployments } from "./deployment-types";
 import type { ModelRequirementTable } from "./requirements";
 import type { Capacity, DeploymentStrategy } from "./strategy";
@@ -539,6 +540,7 @@ async function installationsThatDoNotFit(): Promise<Set<string>> {
 }
 
 async function runSyncDeployedModels() {
+  await advanceRollouts();
   const requiredModels = await assembleModelRequirementTable();
   const [existing, availableServers] = await installationsAndLiveNodes();
 

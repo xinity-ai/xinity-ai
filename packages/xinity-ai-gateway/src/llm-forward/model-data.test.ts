@@ -448,7 +448,7 @@ describe("getModelInfo for a canary deployment", () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     }]);
-    queryQueue.push([{ id: "canary-id", fromId: "from-id", toId: "to-id", replicas: 2, progress, canaryProgressFrom: null, canaryProgressUntil: null, canaryProgressWithFeedback: false }]);
+    queryQueue.push([{ id: "canary-id", fromId: "from-id", toId: "to-id", replicas: 2, progress, advance: { type: "manual", version: 1 } }]);
     queryQueue.push([{ id: "from-id", specifier: "llama2:latest" }]);
     queryQueue.push([{ id: "to-id", specifier: "llama3:latest" }]);
   }

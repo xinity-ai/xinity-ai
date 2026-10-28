@@ -168,8 +168,6 @@ const DRAFT_REQUIREMENTS: VariantHandlers<z.infer<typeof CapacityCheckInput>, Mo
   managed: ({ managed }, id) => requirementsForManaged([managedDraftPlan(managed, id)]),
   canary: ({ canary: { from, to, ...rollout } }) => requirementsForCanaries([{
     ...rollout,
-    canaryProgressFrom: null,
-    canaryProgressUntil: null,
     from: memberDraftPlan(from, "draft-from"),
     to: memberDraftPlan(to, "draft-to"),
   }]),
