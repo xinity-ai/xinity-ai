@@ -10,6 +10,9 @@
  *   - One node starts offline and toggles every 3 minutes
  *   - One node removed from the cluster while its installations survive
  *
+ * Deployments are managed, except one legacy and one canary rolling out over
+ * a day, so every deployment type shows in the model hub.
+ *
  * Cleans up all created rows on exit so no stale state is left behind.
  *
  * Usage: bun run simulate:compute [small|large] [minutes]   (default: small 30)
@@ -23,6 +26,8 @@ import {
   aiNodeT,
   deploymentT,
   deploymentLegacyT,
+  deploymentManagedT,
+  deploymentCanaryT,
   modelInstallationT,
   modelInstallationStateT,
   organizationT,
@@ -31,7 +36,6 @@ import {
   asc,
   sql,
   inArray,
-  type SQL,
 } from "common-db";
 import type { GpuInfo } from "common-env";
 
@@ -68,12 +72,21 @@ const H100_GPUS = [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", vramMb: 81
 // never present in a real deployment, safe to use as demo IPs.
 
 const ASCENT_MODELS: ModelSpec[] = [
-  { publicSpecifier: "gemma-4-e4b-it-ollama", driver: "ollama", estCapacity: 8 },
-  { publicSpecifier: "qwen3-embedding-0.6b-ollama", driver: "ollama", estCapacity: 1 },
+  { publicSpecifier: "qwen3.6-35b-a3b-ollama", driver: "ollama", estCapacity: 8 },
+  { publicSpecifier: "bge-m3-ollama", driver: "ollama", estCapacity: 1 },
 ];
 
-const RTX_MODELS: ModelSpec[] = [
-  { publicSpecifier: "mistral-small-4-119b-nvfp4-vllm", driver: "vllm", estCapacity: 48 },
+const CANARY_FROM: ModelSpec = { publicSpecifier: "qwen3.6-27b-fp8-vllm", driver: "vllm", estCapacity: 48 };
+const CANARY_TO: ModelSpec = { publicSpecifier: "qwen3.6-35b-a3b-fp8-vllm", driver: "vllm", estCapacity: 48 };
+
+type DemoDeployment =
+  | { type: "managed" | "legacy"; specifier: string }
+  | { type: "canary"; from: string; to: string; progress: number };
+
+/** Anything installed that no entry names becomes a managed deployment of its own. */
+const DEMO_DEPLOYMENTS: DemoDeployment[] = [
+  { type: "legacy", specifier: "bge-m3-ollama" },
+  { type: "canary", from: CANARY_FROM.publicSpecifier, to: CANARY_TO.publicSpecifier, progress: 30 },
 ];
 
 const SMALL_MACHINES: DemoMachine[] = [
@@ -81,8 +94,8 @@ const SMALL_MACHINES: DemoMachine[] = [
   { host: "192.0.2.2", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 51, models: ASCENT_MODELS, available: true },
   { host: "192.0.2.3", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 59, models: ASCENT_MODELS, available: false },
   { host: "192.0.2.4", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 47, models: ASCENT_MODELS, available: true, removed: true },
-  { host: "192.0.2.11", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 65, models: RTX_MODELS, available: true },
-  { host: "192.0.2.12", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 75, models: RTX_MODELS, available: false, togglesOnOff: true },
+  { host: "192.0.2.11", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 65, models: [CANARY_FROM], available: true },
+  { host: "192.0.2.12", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 75, models: [CANARY_TO], available: false, togglesOnOff: true },
   { host: "192.0.2.21", machineName: "H100 Inference Server", gpus: H100_GPUS, estCapacity: 79, baseUtilization: 28, models: [{ publicSpecifier: "qwen3-30b-a3b-instruct-fp8-vllm", driver: "vllm", estCapacity: 70 }], available: true },
 ];
 
@@ -101,13 +114,13 @@ function generateLargeMachines(): DemoMachine[] {
       baseUtilization: 35 + (i * 3) % 30,
       models: [
         {
-          publicSpecifier: "gemma-4-e4b-it-ollama",
+          publicSpecifier: "qwen3.6-35b-a3b-ollama",
           driver: "ollama",
           estCapacity: 8,
           lifecycleState: offline ? "failed" : (i === 7 || i === 15) ? "downloading" : "ready",
         },
         {
-          publicSpecifier: "qwen3-embedding-0.6b-ollama",
+          publicSpecifier: "bge-m3-ollama",
           driver: "ollama",
           estCapacity: 1,
           lifecycleState: offline ? "failed" : "ready",
@@ -127,9 +140,9 @@ function generateLargeMachines(): DemoMachine[] {
       estCapacity: 95,
       baseUtilization: 50 + (i * 5) % 25,
       models: [
-        { publicSpecifier: "mistral-small-4-119b-nvfp4-vllm", driver: "vllm", estCapacity: 48 },
+        i % 3 === 0 ? CANARY_FROM : CANARY_TO,
         {
-          publicSpecifier: "ministral-3-8b-vllm",
+          publicSpecifier: "gemma-4-26b-a4b-nvfp4-vllm",
           driver: "vllm",
           estCapacity: 24,
           lifecycleState: i === 4 ? "installing" : "ready",
@@ -170,7 +183,7 @@ function generateLargeMachines(): DemoMachine[] {
       estCapacity: 85,
       baseUtilization: 40 + (i * 6) % 25,
       models: [
-        { publicSpecifier: "qwen3-coder-30b-a3b-vllm", driver: "vllm", estCapacity: 70 },
+        { publicSpecifier: "phi-4-14b-vllm", driver: "vllm", estCapacity: 70 },
         { publicSpecifier: "qwen3-30b-a3b-instruct-fp8-vllm", driver: "vllm", estCapacity: 70 },
       ],
       available: true,
@@ -186,7 +199,7 @@ function generateLargeMachines(): DemoMachine[] {
       estCapacity: 60,
       baseUtilization: 30 + (i * 8) % 20,
       models: [
-        { publicSpecifier: "whisper-large-v3-vllm", driver: "vllm", estCapacity: 8 },
+        { publicSpecifier: "qwen3-asr-1.7b-vllm", driver: "vllm", estCapacity: 8 },
       ],
       available: true,
     });
@@ -227,11 +240,25 @@ async function main() {
     throw new Error("DB_CONNECTION_URL not set and no root .env found");
   }
   const db = preconfigureDB(process.env.DB_CONNECTION_URL).getDB();
-  const deleteDeployments = async (where: SQL) => {
-    const deleted = await db.delete(deploymentT).where(where).returning({ legacyId: deploymentT.legacyId });
+  const deleteDemoDeployments = async () => {
+    const deleted = await db.delete(deploymentT)
+      .where(sql`${deploymentT.publicSpecifier} LIKE ${SIM_DEPLOYMENT_PREFIX + "%"}`)
+      .returning({ legacyId: deploymentT.legacyId, managedId: deploymentT.managedId, canaryId: deploymentT.canaryId });
+    const canaryIds = deleted.flatMap(({ canaryId }) => (canaryId ? [canaryId] : []));
+    const members = canaryIds.length > 0
+      ? await db.delete(deploymentCanaryT).where(inArray(deploymentCanaryT.id, canaryIds))
+        .returning({ fromId: deploymentCanaryT.fromId, toId: deploymentCanaryT.toId })
+      : [];
     const legacyIds = deleted.flatMap(({ legacyId }) => (legacyId ? [legacyId] : []));
+    const managedIds = [
+      ...deleted.flatMap(({ managedId }) => (managedId ? [managedId] : [])),
+      ...members.flatMap(({ fromId, toId }) => [fromId, toId]),
+    ];
     if (legacyIds.length > 0) {
       await db.delete(deploymentLegacyT).where(inArray(deploymentLegacyT.id, legacyIds));
+    }
+    if (managedIds.length > 0) {
+      await db.delete(deploymentManagedT).where(inArray(deploymentManagedT.id, managedIds));
     }
   };
 
@@ -254,35 +281,58 @@ async function main() {
     await db.delete(usageEventT).where(inArray(usageEventT.nodeId, ids));
     await db.delete(aiNodeT).where(inArray(aiNodeT.id, ids));
   }
-  await deleteDeployments(sql`${deploymentT.publicSpecifier} LIKE ${SIM_DEPLOYMENT_PREFIX + "%"}`);
+  await deleteDemoDeployments();
 
-  // Create deployments (one per unique model specifier across all machines).
-  const uniqueModels = new Map<string, ModelSpec>();
-  for (const machine of machines) {
-    for (const model of machine.models) {
-      if (!uniqueModels.has(model.publicSpecifier)) uniqueModels.set(model.publicSpecifier, model);
+  // Create deployments: those DEMO_DEPLOYMENTS names, and a managed one for every other model installed.
+  const replicasOf = (...specifiers: string[]) =>
+    machines.filter((m) => m.models.some((model) => specifiers.includes(model.publicSpecifier))).length;
+  const installed = new Set(machines.flatMap((m) => m.models.map((model) => model.publicSpecifier)));
+  const named = new Set(DEMO_DEPLOYMENTS.flatMap((d) => d.type === "canary" ? [d.from, d.to] : [d.specifier]));
+  const deployments: DemoDeployment[] = [
+    ...DEMO_DEPLOYMENTS,
+    ...[...installed].filter((specifier) => !named.has(specifier)).map((specifier) => ({ type: "managed" as const, specifier })),
+  ];
+
+  type Owner = { legacyId: string } | { managedId: string };
+  const ownerBySpecifier = new Map<string, Owner>();
+  const insertManaged = async (specifier: string, replicas: number) => {
+    const [managed] = await db.insert(deploymentManagedT).values({ specifier, replicas }).returning();
+    ownerBySpecifier.set(specifier, { managedId: managed!.id });
+    return managed!.id;
+  };
+
+  for (const deployment of deployments) {
+    const shared = { organizationId: org.id, enabled: true };
+    if (deployment.type === "canary") {
+      const replicas = replicasOf(deployment.from, deployment.to);
+      const now = new Date();
+      const [canary] = await db.insert(deploymentCanaryT).values({
+        fromId: await insertManaged(deployment.from, replicas),
+        toId: await insertManaged(deployment.to, replicas),
+        replicas,
+        progress: deployment.progress,
+        advance: {
+          type: "time", version: 1, startProgress: deployment.progress,
+          from: now.toISOString(), until: new Date(now.getTime() + 24 * 3_600_000).toISOString(),
+        },
+      }).returning();
+      await db.insert(deploymentT).values({
+        ...shared, name: deployment.to, publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${deployment.to}`, type: "canary", canaryId: canary!.id,
+      });
+    } else if (deployment.type === "legacy") {
+      const [legacy] = await db.insert(deploymentLegacyT).values({
+        specifier: deployment.specifier, replicas: replicasOf(deployment.specifier), progress: 100,
+      }).returning();
+      ownerBySpecifier.set(deployment.specifier, { legacyId: legacy!.id });
+      await db.insert(deploymentT).values({
+        ...shared, name: deployment.specifier, publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${deployment.specifier}`, type: "legacy", legacyId: legacy!.id,
+      });
+    } else {
+      const managedId = await insertManaged(deployment.specifier, replicasOf(deployment.specifier));
+      await db.insert(deploymentT).values({
+        ...shared, name: deployment.specifier, publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${deployment.specifier}`, type: "managed", managedId,
+      });
     }
-  }
-
-  const deploymentIds: string[] = [];
-  const deploymentIdBySpecifier = new Map<string, string>();
-  for (const publicSpecifier of uniqueModels.keys()) {
-    const replicaCount = machines.filter((m) => m.models.some((m2) => m2.publicSpecifier === publicSpecifier)).length;
-    const [legacy] = await db.insert(deploymentLegacyT).values({
-      specifier: publicSpecifier,
-      replicas: replicaCount,
-      progress: 100,
-    }).returning();
-    await db.insert(deploymentT).values({
-      organizationId: org.id,
-      name: publicSpecifier,
-      publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${publicSpecifier}`,
-      type: "legacy",
-      legacyId: legacy!.id,
-      enabled: true,
-    });
-    deploymentIds.push(legacy!.id);
-    deploymentIdBySpecifier.set(publicSpecifier, legacy!.id);
   }
 
   // Create nodes and their model installations.
@@ -308,7 +358,7 @@ async function main() {
     for (const model of machine.models) {
       const [installation] = await db.insert(modelInstallationT).values({
         nodeId: node!.id,
-        deploymentId: deploymentIdBySpecifier.get(model.publicSpecifier)!,
+        ...ownerBySpecifier.get(model.publicSpecifier)!,
         specifier: model.publicSpecifier,
         estCapacity: model.estCapacity,
         kvCacheCapacity: 0,
@@ -366,9 +416,7 @@ async function main() {
       await db.delete(usageEventT).where(inArray(usageEventT.nodeId, nodeIds));
       await db.delete(aiNodeT).where(inArray(aiNodeT.id, nodeIds));
     }
-    if (deploymentIds.length > 0) {
-      await deleteDeployments(inArray(deploymentT.legacyId, deploymentIds));
-    }
+    await deleteDemoDeployments();
     console.log("Done.");
     process.exit(0);
   }
