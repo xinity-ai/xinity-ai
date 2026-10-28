@@ -14,6 +14,7 @@
   import { useDebouncedValue } from "$lib/state/debounced.svelte";
   import PaginationFooter from "$lib/components/PaginationFooter.svelte";
   import { humanDate, localDayStart } from "$lib/util";
+  import { AUDIT_ACTIONS } from "$lib/audit-actions";
   import type { PageData } from "./$types";
   import type { AuditEvent } from "common-db";
 
@@ -37,64 +38,6 @@
   let actorInputValue = $state($searchParams.actor ?? "");
 
   const LIMIT = 50;
-
-  const AUDIT_ACTIONS = [
-    "account.change_password",
-    "account.create_dashboard_api_key",
-    "account.delete_dashboard_api_key",
-    "account.delete_passkey",
-    "account.disable_2fa",
-    "account.enable_2fa",
-    "account.request_password_reset",
-    "account.sign_in",
-    "account.sign_in_sso",
-    "account.sign_out",
-    "account.sign_up",
-    "account.verify_email",
-    "aiApplication.create",
-    "aiApplication.delete",
-    "aiApplication.update",
-    "apiCall.delete",
-    "apiCall.reassign_application",
-    "apiCall.update_metadata",
-    "apiKey.create",
-    "apiKey.delete",
-    "apiKey.toggle_collect_data",
-    "apiKey.toggle_enabled",
-    "apiKey.update",
-    "compute.remove_node",
-    "instanceAdmin.add_user_to_org",
-    "instanceAdmin.ban_user",
-    "instanceAdmin.create_user",
-    "instanceAdmin.remove_user_from_org",
-    "instanceAdmin.reset_user_password",
-    "instanceAdmin.set_email_verified",
-    "instanceAdmin.set_sso_self_manage",
-    "instanceAdmin.unban_user",
-    "instanceAdmin.update_user_role",
-    "invitation.cancel",
-    "invitation.create",
-    "member.remove",
-    "member.update_role",
-    "modelDeployment.create",
-    "modelDeployment.delete",
-    "modelDeployment.migrate",
-    "modelDeployment.retry",
-    "modelDeployment.rollout",
-    "modelDeployment.toggle_enabled",
-    "modelDeployment.update",
-    "onboarding.cli",
-    "onboarding.setup",
-    "organization.create",
-    "organization.delete",
-    "organization.update",
-    "sso.delete_provider",
-    "sso.register_oidc",
-    "sso.register_saml",
-    "sso.request_domain_verification",
-    "sso.verify_domain",
-    "user.update_settings",
-  ] as const;
 
   const RESOURCE_GROUPS: Record<string, string[]> = {};
   for (const a of AUDIT_ACTIONS) {

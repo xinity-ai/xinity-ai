@@ -79,7 +79,7 @@ The `auditMiddleware` (from `root.ts`) fires after the handler, recording actor,
 
 | Field | Required | Purpose |
 |-------|----------|---------|
-| `action` | yes | Literal from the `AuditAction` union in `audit.ts` (add new ones there) |
+| `action` | yes | One of `AUDIT_ACTIONS` in `src/lib/audit-actions.ts` (add new ones there, the audit page filter reads the same list) |
 | `resource` | yes | Logical resource name (e.g. `"apiKey"`, `"member"`) |
 | `resourceId` | no | Extracts the target entity ID: `{ fromInput: "id" }` for update/delete, `{ fromOutput: "id" }` for create |
 | `captureInput` | no | List of input field names to store in the `context` jsonb column |
@@ -149,7 +149,7 @@ The `$app/environment` stub sets `building: true` and `browser: false`, so patte
 ### Checklist addition
 
 - [ ] If the procedure is a security-relevant mutation, does it have `.use(auditMiddleware)` and an audit tag in `.meta()`?
-- [ ] Is the action literal added to `AuditAction` in `audit.ts`?
+- [ ] Is the action added to `AUDIT_ACTIONS` in `src/lib/audit-actions.ts`?
 - [ ] Run `cd packages/xinity-cli && bun run build`, bundle must succeed without errors
 
 ## Key Files

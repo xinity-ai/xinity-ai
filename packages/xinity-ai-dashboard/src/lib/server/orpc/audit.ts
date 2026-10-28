@@ -2,70 +2,9 @@ import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { forwardAuditEvent } from "$lib/server/audit/audit-forwarder";
 import { auditEventT, type AuditActorType } from "common-db";
+import type { AuditAction } from "$lib/audit-actions";
 
 const log = rootLogger.child({ name: "orpc.audit" });
-
-/** Every audited action. Naming follows `resource.verb` with a snake_case verb. Add a literal here when tagging a new procedure. */
-export type AuditAction =
-  | "account.change_password"
-  | "account.create_dashboard_api_key"
-  | "account.delete_dashboard_api_key"
-  | "account.delete_passkey"
-  | "account.disable_2fa"
-  | "account.enable_2fa"
-  | "account.request_password_reset"
-  | "account.sign_in"
-  | "account.sign_in_sso"
-  | "account.sign_out"
-  | "account.sign_up"
-  | "account.verify_email"
-  | "aiApplication.create"
-  | "aiApplication.delete"
-  | "aiApplication.update"
-  | "apiCall.delete"
-  | "apiCall.reassign_application"
-  | "apiCall.update_metadata"
-  | "apiKey.create"
-  | "apiKey.delete"
-  | "apiKey.toggle_collect_data"
-  | "apiKey.toggle_enabled"
-  | "apiKey.update"
-  | "dynamicConfig.clear"
-  | "dynamicConfig.set"
-  | "compute.remove_node"
-  | "instanceAdmin.add_user_to_org"
-  | "instanceAdmin.ban_user"
-  | "instanceAdmin.convert_legacy_calls"
-  | "instanceAdmin.create_user"
-  | "instanceAdmin.move_media_to_s3"
-  | "instanceAdmin.remove_user_from_org"
-  | "instanceAdmin.reset_user_password"
-  | "instanceAdmin.set_email_verified"
-  | "instanceAdmin.set_sso_self_manage"
-  | "instanceAdmin.unban_user"
-  | "instanceAdmin.update_user_role"
-  | "invitation.cancel"
-  | "invitation.create"
-  | "member.remove"
-  | "member.update_role"
-  | "modelDeployment.create"
-  | "modelDeployment.delete"
-  | "modelDeployment.migrate"
-  | "modelDeployment.retry"
-  | "modelDeployment.rollout"
-  | "modelDeployment.toggle_enabled"
-  | "modelDeployment.update"
-  | "onboarding.cli"
-  | "onboarding.setup"
-  | "organization.create"
-  | "organization.delete"
-  | "organization.update"
-  | "sso.delete_provider"
-  | "sso.register_oidc"
-  | "sso.register_saml"
-  | "sso.request_domain_verification"
-  | "sso.verify_domain"
-  | "user.update_settings";
 
 export type AuditTag = {
   action: AuditAction;
