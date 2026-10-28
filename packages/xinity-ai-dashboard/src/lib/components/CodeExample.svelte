@@ -41,7 +41,8 @@
     </button>
   {/if}
   <pre
-    class="bg-[#f5f2f0] text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"><code
+    class="bg-[#f5f2f0] text-gray-100 p-4 rounded-lg overflow-x-auto text-sm"
+    class:pr-14={withCopy}><code
       bind:this={codeEl}
       class="language-{language}">{code}</code
     ></pre>

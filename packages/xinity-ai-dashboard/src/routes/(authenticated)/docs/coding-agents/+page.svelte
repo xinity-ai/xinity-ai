@@ -49,6 +49,20 @@
         Generate a <code>models.json</code> and create a key for Pi in one go.
       </p>
     </a>
+    <a
+      href="/docs/coding-agents/cline/"
+      class="group block p-6 bg-white border rounded-lg shadow-sm hover:shadow-md transition"
+    >
+      <div class="flex items-center gap-3 mb-3">
+        <div class="p-2 rounded-lg bg-xinity-purple/10 text-xinity-purple group-hover:bg-xinity-purple/15 transition-colors">
+          <Terminal class="w-5 h-5" />
+        </div>
+        <h2 class="text-lg font-semibold group-hover:text-xinity-purple transition-colors">Cline</h2>
+      </div>
+      <p class="text-sm text-gray-600">
+        Generate a <code>models.json</code> that the Cline CLI and editor extension both read.
+      </p>
+    </a>
   </div>
 </div>
 
