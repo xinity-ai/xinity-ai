@@ -4,7 +4,7 @@ Every release is signed by the release workflow of the xinity repository, using 
 
 Two things are signed:
 
-- **`SHASUMS256.txt`**, the list of SHA-256 checksums of every release asset: the CLI and service binaries, the bundles, the database migrations, the install scripts and the SBOMs. A valid signature on this list together with a matching checksum proves a file is genuine.
+- **`SHASUMS256.txt`**, the list of SHA-256 checksums of every release asset: the CLI and service binaries, the bundles, the database migrations, the install scripts and the SBOM. A valid signature on this list together with a matching checksum proves a file is genuine.
 - **Container images** on `ghcr.io/xinity-ai`, signed by digest.
 
 The signer is identified by:
