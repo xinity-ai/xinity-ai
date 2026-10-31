@@ -4,7 +4,7 @@
 // The lockfile scan alone cannot tell which workspace dependencies end up in which binary, the bundler's module graph can.
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
 
 type LockEntry = [spec: string, registry: string, info: object, integrity?: string];
@@ -119,6 +119,8 @@ components.set(bunPurl, {
 });
 
 const sortedComponents = [...components.values()].sort((a, b) => a.purl.localeCompare(b.purl));
+const binaryPurl = `pkg:github/xinity-ai/xinity-ai@v${values.version}#${relative(repoRoot, process.cwd())}`;
+const binaryLicense = licenseOf(JSON.parse(readFileSync("package.json", "utf8")));
 
 const bom = {
   bomFormat: "CycloneDX",
@@ -129,14 +131,16 @@ const bom = {
     timestamp: new Date().toISOString(),
     component: {
       type: "application",
-      "bom-ref": values.name,
+      "bom-ref": binaryPurl,
       name: values.name,
       version: values.version,
+      purl: binaryPurl,
+      ...(binaryLicense && { licenses: [{ expression: binaryLicense }] }),
       supplier: { name: "Xinity AI" },
     },
   },
   components: sortedComponents,
-  dependencies: [{ ref: values.name, dependsOn: sortedComponents.map((c) => c["bom-ref"]) }],
+  dependencies: [{ ref: binaryPurl, dependsOn: sortedComponents.map((c) => c["bom-ref"]) }],
 };
 
 writeFileSync(values.out, `${JSON.stringify(bom, null, 2)}\n`);

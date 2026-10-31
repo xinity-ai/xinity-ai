@@ -258,7 +258,7 @@ jobs:
   # so no signing key exists.
   sign:
     name: Sign checksums
-    needs: [prepare, build-binaries, build-bundles]
+    needs: [prepare, build-binaries, build-bundles, build-images]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -280,10 +280,10 @@ jobs:
           pattern: release-*
           merge-multiple: true
 
-      - name: Download binary SBOMs
+      - name: Download binary and image SBOMs
         uses: actions/download-artifact@v5
         with:
-          path: binary-sboms
+          path: sbom-parts
           pattern: sbom-*
           merge-multiple: true
 
@@ -300,7 +300,7 @@ jobs:
       - name: Combine release SBOM
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: bun scripts/combine-sbom.ts --version "$VERSION" --out release/sbom.cdx.json binary-sboms/*.cdx.json
+        run: bun scripts/combine-sbom.ts --version "$VERSION" --out release/sbom.cdx.json sbom-parts/*.cdx.json
 
       - name: Generate SHASUMS256.txt
         working-directory: release
@@ -440,7 +440,7 @@ jobs:
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@v0
 
-      - name: Generate and attest image SBOMs
+      - name: Generate image SBOM
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
@@ -450,13 +450,26 @@ jobs:
             | jq -r '.manifests[] | select(.platform.os == "linux") | .digest' \
             | while read -r platform_digest; do
                 syft scan "registry:${IMAGE}@${platform_digest}" \
-                  --source-name "${{ matrix.image }}" \
-                  --source-version "${VERSION}" \
-                  -o cyclonedx-json=image-only.cdx.json
-                jq --slurpfile binary ".sbom/${{ matrix.image }}.cdx.json" \
-                  '.components += $binary[0].components' image-only.cdx.json > image.cdx.json
-                cosign attest --yes --type cyclonedx --predicate image.cdx.json "${IMAGE}@${platform_digest}"
+                  -o "cyclonedx-json=platform-${platform_digest#sha256:}.cdx.json"
               done
+          mkdir image-sbom
+          jq -s \
+            --arg name "${IMAGE}" \
+            --arg version "$VERSION" \
+            --arg purl "pkg:oci/${{ matrix.image }}@${DIGEST/:/%3A}?repository_url=${IMAGE}" '
+              ([.[:-1][].components[] | select(.type != "file")] | unique_by(."bom-ref")) as $packages
+              | {
+                  metadata: {component: {type: "container", "bom-ref": $purl, name: $name, version: $version, purl: $purl, licenses: .[-1].metadata.component.licenses}},
+                  components: $packages,
+                  dependencies: [{ref: $purl, dependsOn: ([$packages[]."bom-ref"] + [.[-1].metadata.component."bom-ref"])}]
+                }' platform-*.cdx.json ".sbom/${{ matrix.image }}.cdx.json" > "image-sbom/${{ matrix.image }}-image.cdx.json"
+
+      - name: Upload image SBOM
+        uses: actions/upload-artifact@v5
+        with:
+          name: sbom-${{ matrix.image }}-image
+          path: image-sbom/
+          retention-days: 1
 
   # The only job that writes to the repository: one release commit carrying the
   # version bump, the changelog and nix/release.json, pushed together with its tag.
