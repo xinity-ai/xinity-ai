@@ -18,6 +18,7 @@ const { values } = parseArgs({
     // Skip the Vite build step (used in CI where vite runs once before the
     // per-arch loop to avoid repeating the ~10 minute build three times).
     "no-vite": { type: "boolean", default: false },
+    metafile: { type: "string" },
   },
 });
 
@@ -52,6 +53,7 @@ const buildResult = await Bun.build({
   compile: true,
   minify: true,
   target: target as Parameters<typeof Bun.build>[0]["target"],
+  metafile: values.metafile !== undefined,
 });
 
 if (!buildResult.success) {
@@ -60,6 +62,10 @@ if (!buildResult.success) {
     console.error(msg);
   }
   process.exit(1);
+}
+
+if (values.metafile) {
+  await Bun.write(values.metafile, JSON.stringify(buildResult.metafile));
 }
 
 // Rename the compiled binary from its auto-derived name to the desired outfile.

@@ -97,6 +97,7 @@ jobs:
             custom_build: true
             pre_build: true
             build_flags: "--no-vite"
+            vite_module_lists: ".svelte-kit/output/sbom-modules-*.json"
 
     steps:
       - name: Checkout repository
@@ -140,10 +141,12 @@ jobs:
             fi
 
             if [ "${{ matrix.custom_build || 'false' }}" = "true" ]; then
-              bun run build.ts --target "$target" --outfile "${BINARY_NAME}" ${{ matrix.build_flags }}
+              bun run build.ts --target "$target" --outfile "${BINARY_NAME}" \
+                --metafile "sbom-modules-${suffix}.json" ${{ matrix.build_flags }}
             else
               bun build --compile --minify \
                 --sourcemap=external \
+                --metafile="sbom-modules-${suffix}.json" \
                 --target="${target}" \
                 ${{ matrix.entry }} \
                 --outfile "${BINARY_NAME}"
@@ -156,12 +159,30 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: Generate SBOM
+        working-directory: ${{ matrix.workdir }}
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          bun ../../scripts/generate-sbom.ts \
+            --name "${{ matrix.package }}" \
+            --version "$VERSION" \
+            --out "${{ matrix.package }}.cdx.json" \
+            sbom-modules-*.json ${{ matrix.vite_module_lists }}
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v5
         with:
           name: release-${{ matrix.package }}
           path: |
             ${{ matrix.workdir }}/*.tar.gz
+          retention-days: 1
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v5
+        with:
+          name: sbom-${{ matrix.package }}
+          path: ${{ matrix.workdir }}/${{ matrix.package }}.cdx.json
           retention-days: 1
 
   build-bundles:
@@ -237,7 +258,7 @@ jobs:
   # so no signing key exists.
   sign:
     name: Sign checksums
-    needs: [build-binaries, build-bundles]
+    needs: [prepare, build-binaries, build-bundles]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -249,6 +270,7 @@ jobs:
           sparse-checkout: |
             scripts/install.sh
             scripts/install.ps1
+            scripts/combine-sbom.ts
           sparse-checkout-cone-mode: false
 
       - name: Download all artifacts
@@ -258,10 +280,27 @@ jobs:
           pattern: release-*
           merge-multiple: true
 
+      - name: Download binary SBOMs
+        uses: actions/download-artifact@v5
+        with:
+          path: binary-sboms
+          pattern: sbom-*
+          merge-multiple: true
+
       - name: Add install scripts to release
         run: |
           cp scripts/install.sh release/install.sh
           cp scripts/install.ps1 release/install.ps1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Combine release SBOM
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: bun scripts/combine-sbom.ts --version "$VERSION" --out release/sbom.cdx.json binary-sboms/*.cdx.json
 
       - name: Generate SHASUMS256.txt
         working-directory: release
@@ -281,6 +320,13 @@ jobs:
           path: |
             release/SHASUMS256.txt
             release/SHASUMS256.txt.sigstore.json
+          retention-days: 1
+
+      - name: Upload release SBOM
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-sbom
+          path: release/sbom.cdx.json
           retention-days: 1
 
   build-images:
@@ -331,6 +377,12 @@ jobs:
         with:
           name: release-${{ matrix.image }}
           path: .artifacts
+
+      - name: Download binary SBOM
+        uses: actions/download-artifact@v5
+        with:
+          name: sbom-${{ matrix.image }}
+          path: .sbom
 
       - name: Organize binaries by arch
         run: |
@@ -384,6 +436,27 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "${IMAGE_NAMESPACE}/${{ matrix.image }}@${DIGEST}"
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate and attest image SBOMs
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          docker buildx imagetools inspect --raw "${IMAGE}@${DIGEST}" \
+            | jq -r '.manifests[] | select(.platform.os == "linux") | .digest' \
+            | while read -r platform_digest; do
+                syft scan "registry:${IMAGE}@${platform_digest}" \
+                  --source-name "${{ matrix.image }}" \
+                  --source-version "${VERSION}" \
+                  -o cyclonedx-json=image-only.cdx.json
+                jq --slurpfile binary ".sbom/${{ matrix.image }}.cdx.json" \
+                  '.components += $binary[0].components' image-only.cdx.json > image.cdx.json
+                cosign attest --yes --type cyclonedx --predicate image.cdx.json "${IMAGE}@${platform_digest}"
+              done
 
   # The only job that writes to the repository: one release commit carrying the
   # version bump, the changelog and nix/release.json, pushed together with its tag.

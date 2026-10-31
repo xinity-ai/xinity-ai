@@ -2,6 +2,8 @@ import tailwindcss from '@tailwindcss/vite';
 import devtoolsJson from 'vite-plugin-devtools-json';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig, type Plugin } from 'vite';
+import { writeFileSync } from 'node:fs';
+import { basename, resolve } from 'node:path';
 import { dependencies, devDependencies } from "./package.json";
 
 /**
@@ -54,12 +56,33 @@ function betterAuthOAuth2Fix(): Plugin {
 	};
 }
 
+/**
+ * Records which npm modules each build output bundled, as input for the release SBOM.
+ * Bun's compile step only sees the runtime dependencies Vite left external.
+ */
+function bundledModuleList(): Plugin {
+	return {
+		name: 'bundled-module-list',
+		apply: 'build',
+		generateBundle(options, bundle) {
+			if (!options.dir) return;
+			const modules = Object.values(bundle)
+				.flatMap((output) => (output.type === 'chunk' ? Object.keys(output.modules) : []))
+				.filter((id) => id.includes('/node_modules/'))
+				.map((id) => id.replace(/^\0/, '').replace(/\?.*$/, ''));
+			const listFile = resolve(options.dir, '..', `sbom-modules-${basename(options.dir)}.json`);
+			writeFileSync(listFile, JSON.stringify([...new Set(modules)]));
+		},
+	};
+}
+
 export default defineConfig({
 	plugins: [
 		betterAuthOAuth2Fix(),
 		tailwindcss(),
 		sveltekit(),
-		devtoolsJson()
+		devtoolsJson(),
+		bundledModuleList()
 	],
 	server: {
 		warmup: {
