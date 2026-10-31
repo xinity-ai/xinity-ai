@@ -1,5 +1,6 @@
 {
   "name": "xinity-tether",
+  "license": "Apache-2.0",
   "module": "src/index.ts",
   "type": "module",
   "private": true,

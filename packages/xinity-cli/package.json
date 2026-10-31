@@ -1,5 +1,6 @@
 {
   "name": "xinity-cli",
+  "license": "Apache-2.0",
   "type": "module",
   "private": true,
   "main": "src/index.ts",

@@ -1,5 +1,6 @@
 {
   "name": "xinity-ai-gateway",
+  "license": "Apache-2.0",
   "type": "module",
   "private": true,
   "scripts": {

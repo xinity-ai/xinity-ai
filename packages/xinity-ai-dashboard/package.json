@@ -1,5 +1,6 @@
 {
 	"name": "xinity-ai-dashboard",
+	"license": "Elastic-2.0",
 	"private": true,
 	"type": "module",
 	"scripts": {
