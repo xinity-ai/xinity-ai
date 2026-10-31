@@ -1,5 +1,6 @@
 {
   "name": "xinity-ai-daemon",
+  "license": "Apache-2.0",
   "main": "src/index.ts",
   "devDependencies": {
     "@orpc/openapi": "catalog:orpc",

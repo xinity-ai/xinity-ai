@@ -18,6 +18,7 @@ const { values } = parseArgs({
   options: {
     target: { type: "string", default: "bun-linux-x64" },
     outfile: { type: "string", default: "dist/xinity" },
+    metafile: { type: "string" },
   },
 });
 
@@ -132,6 +133,7 @@ const bundleResult = await Bun.build({
   // embeds the Bun runtime and resolves these imports natively.
   external: ["bun"],
   plugins: [dashboardStubPlugin],
+  metafile: values.metafile !== undefined,
 });
 
 if (!bundleResult.success) {
@@ -140,6 +142,10 @@ if (!bundleResult.success) {
     console.error(log);
   }
   process.exit(1);
+}
+
+if (values.metafile) {
+  await Bun.write(values.metafile, JSON.stringify(bundleResult.metafile));
 }
 
 console.log("Bundle OK");

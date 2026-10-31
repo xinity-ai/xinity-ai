@@ -4,7 +4,7 @@ Every release is signed by the release workflow of the xinity repository, using 
 
 Two things are signed:
 
-- **`SHASUMS256.txt`**, the list of SHA-256 checksums of every release asset: the CLI and service binaries, the bundles, the database migrations and the install scripts. A valid signature on this list together with a matching checksum proves a file is genuine.
+- **`SHASUMS256.txt`**, the list of SHA-256 checksums of every release asset: the CLI and service binaries, the bundles, the database migrations, the install scripts and the SBOM. A valid signature on this list together with a matching checksum proves a file is genuine.
 - **Container images** on `ghcr.io/xinity-ai`, signed by digest.
 
 The signer is identified by:
@@ -58,6 +58,10 @@ cosign verify ghcr.io/xinity-ai/xinity-ai-gateway:<version> \
 ```
 
 Image signatures use the format of cosign 3. Tools that read the older cosign format, such as the signature policies of podman and skopeo, do not see them.
+
+## Software bill of materials
+
+Every release lists the third-party components it is built from in `sbom.cdx.json`, a [CycloneDX](https://cyclonedx.org/) SBOM with name, version, license and package URL for each component. It covers every binary with the npm packages compiled into it and the Bun runtime it embeds, and every container image, identified by digest, with the Debian packages of both architectures and the binary it runs. Its dependency graph records which binary or image contains which package. The binaries hide their dependencies from scanners such as Trivy or Grype, so this file is the record of what is inside. It is listed in `SHASUMS256.txt`, so the checks above cover it.
 
 ## When verification fails
 
