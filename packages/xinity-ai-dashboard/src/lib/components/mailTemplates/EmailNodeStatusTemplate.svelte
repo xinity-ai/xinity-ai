@@ -1,6 +1,7 @@
 <script>
-  import EmailFooter from "./partials/EmailFooter.svelte";
-  import EmailHeader from "./partials/EmailHeader.svelte";
+  import EmailButton from "./partials/EmailButton.svelte";
+  import EmailLayout from "./partials/EmailLayout.svelte";
+  import EmailText from "./partials/EmailText.svelte";
 
   const {
     nodeHost = "",
@@ -12,39 +13,22 @@
 
   // svelte-ignore state_referenced_locally
   const isOnline = status === "online";
+  const statusColor = isOnline ? "#16a34a" : "#dc2626";
+  const title = `Node ${isOnline ? "Online" : "Offline"}`;
 </script>
 
-<mjml>
-  <mj-head>
-    <mj-title>Node {isOnline ? "Online" : "Offline"}</mj-title>
-    <mj-preview>AI node {nodeHost} is now {status}</mj-preview>
-  </mj-head>
-
-  <mj-body background-color="#f4f4f4">
-    <EmailHeader />
-
-    <mj-section background-color="#ffffff" padding="20px">
-      <mj-column>
-        <mj-text font-size="20px" font-weight="bold" color={isOnline ? "#16a34a" : "#dc2626"}>
-          Node {isOnline ? "Online" : "Offline"}
-        </mj-text>
-        <mj-text>
-          The inference node <strong>{nodeHost}</strong> has gone <strong>{status}</strong>.
-        </mj-text>
-        {#if !isOnline}
-          <mj-text>
-            Deployments hosted on this node may be affected. The orchestration service will attempt
-            to redistribute workloads to available nodes.
-          </mj-text>
-        {:else}
-          <mj-text>
-            The node is back online and available for workloads.
-          </mj-text>
-        {/if}
-        <mj-button href={dashboardUrl} background-color={isOnline ? "#16a34a" : "#dc2626"}>View Infrastructure</mj-button>
-      </mj-column>
-    </mj-section>
-
-    <EmailFooter {appName} {preferencesUrl} />
-  </mj-body>
-</mjml>
+<EmailLayout {title} preview="AI node {nodeHost} is now {status}" {appName} {preferencesUrl}>
+  <EmailText style="font-size:20px;font-weight:bold;color:{statusColor}">{title}</EmailText>
+  <EmailText>
+    The inference node <strong>{nodeHost}</strong> has gone <strong>{status}</strong>.
+  </EmailText>
+  {#if !isOnline}
+    <EmailText>
+      Deployments hosted on this node may be affected. The orchestration service will attempt
+      to redistribute workloads to available nodes.
+    </EmailText>
+  {:else}
+    <EmailText>The node is back online and available for workloads.</EmailText>
+  {/if}
+  <EmailButton href={dashboardUrl} color={statusColor}>View Infrastructure</EmailButton>
+</EmailLayout>

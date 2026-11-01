@@ -1,6 +1,10 @@
+import { plugin } from "bun";
 import { mock } from "bun:test";
+import { SveltePlugin } from "bun-plugin-svelte";
 import { resolveConfig } from "common-env";
 import { dashboardConfig, type DashboardConfig } from "../src/lib/server/config-schema";
+
+plugin(SveltePlugin({ forceSide: "server" }));
 
 mock.module("$app/environment", () => ({
   building: false,

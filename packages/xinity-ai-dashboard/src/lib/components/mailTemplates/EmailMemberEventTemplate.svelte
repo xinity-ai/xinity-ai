@@ -1,6 +1,7 @@
 <script lang="ts">
-  import EmailFooter from "./partials/EmailFooter.svelte";
-  import EmailHeader from "./partials/EmailHeader.svelte";
+  import EmailButton from "./partials/EmailButton.svelte";
+  import EmailLayout from "./partials/EmailLayout.svelte";
+  import EmailText from "./partials/EmailText.svelte";
 
   const {
     memberName = "",
@@ -29,37 +30,22 @@
   const title = $derived(titles[eventType] ?? "Member Update");
 </script>
 
-<mjml>
-  <mj-head>
-    <mj-title>{title}</mj-title>
-    <mj-preview>{title} in {orgName}</mj-preview>
-  </mj-head>
-
-  <mj-body background-color="#f4f4f4">
-    <EmailHeader />
-
-    <mj-section background-color="#ffffff" padding="20px">
-      <mj-column>
-        <mj-text font-size="20px" font-weight="bold">{title}</mj-text>
-        {#if eventType === "joined"}
-          <mj-text>
-            <strong>{memberName}</strong> has joined <strong>{orgName}</strong> as <strong>{role}</strong>.
-          </mj-text>
-        {:else if eventType === "role_changed"}
-          <mj-text>
-            <strong>{memberName}</strong>'s role in <strong>{orgName}</strong> has been changed to <strong>{role}</strong>.
-          </mj-text>
-        {:else if eventType === "removed"}
-          <mj-text>
-            <strong>{memberName}</strong> has been removed from <strong>{orgName}</strong>.
-          </mj-text>
-        {:else}
-          <mj-text>A member update has occurred.</mj-text>
-        {/if}
-        <mj-button href={dashboardUrl} background-color="#007BFF">View Organization</mj-button>
-      </mj-column>
-    </mj-section>
-
-    <EmailFooter {appName} {preferencesUrl} />
-  </mj-body>
-</mjml>
+<EmailLayout {title} preview="{title} in {orgName}" {appName} {preferencesUrl}>
+  <EmailText style="font-size:20px;font-weight:bold">{title}</EmailText>
+  {#if eventType === "joined"}
+    <EmailText>
+      <strong>{memberName}</strong> has joined <strong>{orgName}</strong> as <strong>{role}</strong>.
+    </EmailText>
+  {:else if eventType === "role_changed"}
+    <EmailText>
+      <strong>{memberName}</strong>'s role in <strong>{orgName}</strong> has been changed to <strong>{role}</strong>.
+    </EmailText>
+  {:else if eventType === "removed"}
+    <EmailText>
+      <strong>{memberName}</strong> has been removed from <strong>{orgName}</strong>.
+    </EmailText>
+  {:else}
+    <EmailText>A member update has occurred.</EmailText>
+  {/if}
+  <EmailButton href={dashboardUrl}>View Organization</EmailButton>
+</EmailLayout>

@@ -1,6 +1,5 @@
 import type { Component } from "svelte";
 import { render } from 'svelte/server';
-import mjml from "mjml";
 import nodemailer from "nodemailer";
 import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
@@ -21,17 +20,14 @@ export const commonEmailProps = {
   preferencesUrl: `${config.origin}/settings/notifications/`,
 };
 
-export async function renderEmailTemplate<Props extends Record<string, unknown>>(
+export function renderEmailTemplate<Props extends Record<string, unknown>>(
   EmailComponent: AnyComponent,
   props: Props
 ) {
-  const e = render(EmailComponent, {
-    props,
-  });
-
-  return await mjml(e.body, {
-    keepComments: false,
-  });
+  const { head, body } = render(EmailComponent, { props });
+  const html = `<!doctype html><html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="width=device-width, initial-scale=1">${head}</head><body style="margin:0;padding:0">${body}</body></html>`;
+  // Svelte's hydration markers are dead weight in a mail client, but Outlook's conditional comments must survive.
+  return html.replace(/<!--(?!\[if )[\s\S]*?-->/g, "");
 }
 
 export async function sendEmail<Props extends Record<string, unknown>>({
@@ -51,12 +47,7 @@ export async function sendEmail<Props extends Record<string, unknown>>({
   }
 
   try {
-    const { html, errors } = await renderEmailTemplate(template, props);
-
-    if (errors.length > 0) {
-      log.warn({ errors }, "MJML rendering produced errors");
-    }
-
+    const html = renderEmailTemplate(template, props);
     const info = await mailer.transport.sendMail({
       from: mailer.from,
       to,

@@ -1,6 +1,7 @@
 <script>
-  import EmailFooter from "./partials/EmailFooter.svelte";
-  import EmailHeader from "./partials/EmailHeader.svelte";
+  import EmailButton from "./partials/EmailButton.svelte";
+  import EmailLayout from "./partials/EmailLayout.svelte";
+  import EmailText from "./partials/EmailText.svelte";
 
   const {
     userName = "",
@@ -12,29 +13,15 @@
   const greeting = $derived(userName ? `Welcome, ${userName}!` : `Welcome to ${appName}!`);
 </script>
 
-<mjml>
-  <mj-head>
-    <mj-title>Welcome to {appName}</mj-title>
-    <mj-preview>Get started with your new account</mj-preview>
-  </mj-head>
-
-  <mj-body background-color="#f4f4f4">
-    <EmailHeader></EmailHeader>
-    <mj-section background-color="#ffffff" padding="20px">
-      <mj-column>
-        <mj-text font-size="20px" font-weight="bold"
-          >{greeting}</mj-text
-        >
-        <mj-text
-          >We're excited to have you on board. Start exploring your dashboard or
-          set up your profile.</mj-text
-        >
-        <mj-button href={appUrl + "/"} background-color="#007BFF"
-          >Get Started</mj-button
-        >
-      </mj-column>
-    </mj-section>
-
-    <EmailFooter {appName} {preferencesUrl}></EmailFooter>
-  </mj-body>
-</mjml>
+<EmailLayout
+  title="Welcome to {appName}"
+  preview="Get started with your new account"
+  {appName}
+  {preferencesUrl}
+>
+  <EmailText style="font-size:20px;font-weight:bold">{greeting}</EmailText>
+  <EmailText>
+    We're excited to have you on board. Start exploring your dashboard or set up your profile.
+  </EmailText>
+  <EmailButton href={appUrl + "/"}>Get Started</EmailButton>
+</EmailLayout>

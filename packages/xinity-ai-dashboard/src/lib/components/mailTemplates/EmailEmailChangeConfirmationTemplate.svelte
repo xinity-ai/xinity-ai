@@ -1,6 +1,7 @@
 <script>
-  import EmailFooter from "./partials/EmailFooter.svelte";
-  import EmailHeader from "./partials/EmailHeader.svelte";
+  import EmailButton from "./partials/EmailButton.svelte";
+  import EmailLayout from "./partials/EmailLayout.svelte";
+  import EmailText from "./partials/EmailText.svelte";
 
   const {
     url = "",
@@ -10,34 +11,19 @@
   } = $props();
 </script>
 
-<mjml>
-  <mj-head>
-    <mj-title>Confirm Your New Email</mj-title>
-    <mj-preview>Security check: confirm your new email</mj-preview>
-  </mj-head>
-
-  <mj-body background-color="#f4f4f4">
-    <EmailHeader />
-
-    <mj-section background-color="#ffffff" padding="20px">
-      <mj-column>
-        <mj-text font-size="20px" font-weight="bold"
-          >Confirm Your Email Change</mj-text
-        >
-        <mj-text
-          >You requested to change your email address to <strong
-            >{newEmail}</strong
-          >. Please confirm to complete the update.</mj-text
-        >
-        <mj-button href={url} background-color="#17a2b8"
-          >Confirm Email</mj-button
-        >
-        <mj-text font-size="14px" color="#999999"
-          >If you didn't request this, you can ignore this email.</mj-text
-        >
-      </mj-column>
-    </mj-section>
-
-    <EmailFooter {appName} {preferencesUrl} />
-  </mj-body>
-</mjml>
+<EmailLayout
+  title="Confirm Your New Email"
+  preview="Security check: confirm your new email"
+  {appName}
+  {preferencesUrl}
+>
+  <EmailText style="font-size:20px;font-weight:bold">Confirm Your Email Change</EmailText>
+  <EmailText>
+    You requested to change your email address to <strong>{newEmail}</strong>. Please confirm to
+    complete the update.
+  </EmailText>
+  <EmailButton href={url} color="#17a2b8">Confirm Email</EmailButton>
+  <EmailText style="font-size:14px;color:#999999">
+    If you didn't request this, you can ignore this email.
+  </EmailText>
+</EmailLayout>
