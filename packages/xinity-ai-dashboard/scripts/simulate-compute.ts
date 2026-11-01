@@ -66,12 +66,12 @@ const H100_GPUS = [{ vendor: "nvidia", name: "NVIDIA H100 80GB HBM3", vramMb: 81
 // never present in a real deployment, safe to use as demo IPs.
 
 const ASCENT_MODELS: ModelSpec[] = [
-  { publicSpecifier: "qwen3-8b", driver: "ollama", estCapacity: 8 },
-  { publicSpecifier: "nomic-embed", driver: "ollama", estCapacity: 1 },
+  { publicSpecifier: "gemma-4-e4b-it-ollama", driver: "ollama", estCapacity: 8 },
+  { publicSpecifier: "qwen3-embedding-0.6b-ollama", driver: "ollama", estCapacity: 1 },
 ];
 
 const RTX_MODELS: ModelSpec[] = [
-  { publicSpecifier: "mistral-small-3.2-24b", driver: "vllm", estCapacity: 48 },
+  { publicSpecifier: "mistral-small-4-119b-nvfp4-vllm", driver: "vllm", estCapacity: 48 },
 ];
 
 const SMALL_MACHINES: DemoMachine[] = [
@@ -81,7 +81,7 @@ const SMALL_MACHINES: DemoMachine[] = [
   { host: "192.0.2.4", machineName: "Ascent GX10", gpus: ASCENT_GPUS, estCapacity: 110, baseUtilization: 47, models: ASCENT_MODELS, available: true, removed: true },
   { host: "192.0.2.11", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 65, models: RTX_MODELS, available: true },
   { host: "192.0.2.12", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 75, models: RTX_MODELS, available: false, togglesOnOff: true },
-  { host: "192.0.2.21", machineName: "H100 Inference Server", gpus: H100_GPUS, estCapacity: 79, baseUtilization: 28, models: [{ publicSpecifier: "llama-3.3-70b", driver: "vllm", estCapacity: 70 }], available: true },
+  { host: "192.0.2.21", machineName: "H100 Inference Server", gpus: H100_GPUS, estCapacity: 79, baseUtilization: 28, models: [{ publicSpecifier: "qwen3-30b-a3b-instruct-fp8-vllm", driver: "vllm", estCapacity: 70 }], available: true },
 ];
 
 function generateLargeMachines(): DemoMachine[] {
@@ -99,13 +99,13 @@ function generateLargeMachines(): DemoMachine[] {
       baseUtilization: 35 + (i * 3) % 30,
       models: [
         {
-          publicSpecifier: "qwen3-8b",
+          publicSpecifier: "gemma-4-e4b-it-ollama",
           driver: "ollama",
           estCapacity: 8,
           lifecycleState: offline ? "failed" : (i === 7 || i === 15) ? "downloading" : "ready",
         },
         {
-          publicSpecifier: "nomic-embed",
+          publicSpecifier: "qwen3-embedding-0.6b-ollama",
           driver: "ollama",
           estCapacity: 1,
           lifecycleState: offline ? "failed" : "ready",
@@ -125,9 +125,9 @@ function generateLargeMachines(): DemoMachine[] {
       estCapacity: 95,
       baseUtilization: 50 + (i * 5) % 25,
       models: [
-        { publicSpecifier: "mistral-small-3.2-24b", driver: "vllm", estCapacity: 48 },
+        { publicSpecifier: "mistral-small-4-119b-nvfp4-vllm", driver: "vllm", estCapacity: 48 },
         {
-          publicSpecifier: "gemma-3-12b",
+          publicSpecifier: "ministral-3-8b-vllm",
           driver: "vllm",
           estCapacity: 24,
           lifecycleState: i === 4 ? "installing" : "ready",
@@ -147,9 +147,9 @@ function generateLargeMachines(): DemoMachine[] {
       estCapacity: 79,
       baseUtilization: 25 + (i * 7) % 30,
       models: [
-        { publicSpecifier: "llama-3.3-70b", driver: "vllm", estCapacity: 70 },
+        { publicSpecifier: "qwen3-30b-a3b-instruct-fp8-vllm", driver: "vllm", estCapacity: 70 },
         {
-          publicSpecifier: "phi-4-mini",
+          publicSpecifier: "phi-4-mini-vllm",
           driver: "vllm",
           estCapacity: 12,
           lifecycleState: i === 2 ? "failed" : "ready",
@@ -168,8 +168,8 @@ function generateLargeMachines(): DemoMachine[] {
       estCapacity: 85,
       baseUtilization: 40 + (i * 6) % 25,
       models: [
-        { publicSpecifier: "deepseek-v3", driver: "vllm", estCapacity: 70 },
-        { publicSpecifier: "llama-3.3-70b", driver: "vllm", estCapacity: 70 },
+        { publicSpecifier: "qwen3-coder-30b-a3b-vllm", driver: "vllm", estCapacity: 70 },
+        { publicSpecifier: "qwen3-30b-a3b-instruct-fp8-vllm", driver: "vllm", estCapacity: 70 },
       ],
       available: true,
     });
@@ -184,7 +184,7 @@ function generateLargeMachines(): DemoMachine[] {
       estCapacity: 60,
       baseUtilization: 30 + (i * 8) % 20,
       models: [
-        { publicSpecifier: "whisper-large-v3", driver: "vllm", estCapacity: 8 },
+        { publicSpecifier: "whisper-large-v3-vllm", driver: "vllm", estCapacity: 8 },
       ],
       available: true,
     });
@@ -284,7 +284,7 @@ async function main() {
       available: machine.available,
       gpuCount: machine.gpus.length,
       gpus: machine.gpus,
-      driverVersions: machine.models.some((m) => m.driver === "vllm") ? { vllm: "0.19.1" } : { ollama: "0.6.3" },
+      driverVersions: machine.models.some((m) => m.driver === "vllm") ? { vllm: "0.20.2" } : { ollama: "0.33.1" },
       machineName: machine.machineName,
       deletedAt: machine.removed ? new Date() : null,
     }).returning();
