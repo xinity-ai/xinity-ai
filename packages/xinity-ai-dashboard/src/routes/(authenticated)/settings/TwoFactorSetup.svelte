@@ -39,16 +39,16 @@
     errorMessage = "";
     isSubmitting = true;
 
-    const res = await twoFactor.enable({ password });
+    const res = await twoFactor.enable({ password, method: "totp" });
     isSubmitting = false;
 
-    if (res.error) {
-      errorMessage = res.error.message ?? "Failed to enable two-factor authentication";
+    if (res.error || res.data?.method !== "totp") {
+      errorMessage = res.error?.message ?? "Failed to enable two-factor authentication";
       return;
     }
 
-    totpURI = res.data?.totpURI ?? "";
-    backupCodes = res.data?.backupCodes ?? [];
+    totpURI = res.data.totpURI;
+    backupCodes = res.data.backupCodes;
     password = "";
     step = "qr";
   }

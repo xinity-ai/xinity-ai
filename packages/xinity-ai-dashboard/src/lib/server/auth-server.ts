@@ -151,7 +151,7 @@ export async function adminCreateUser(
     email: normalizedEmail,
     name,
     emailVerified: false,
-  });
+  }, { method: "admin" });
   if (!user) {
     throw new Error("Failed to create user");
   }
