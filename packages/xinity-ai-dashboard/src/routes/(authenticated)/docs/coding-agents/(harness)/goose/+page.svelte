@@ -49,12 +49,13 @@
   </nav>
 
   <h1 class="mb-4 text-4xl font-bold">Goose</h1>
-  <p class="mb-8 text-lg text-gray-600">
+  <p class="mb-2 text-lg text-gray-600">
     Point <a href="https://github.com/aaif-goose/goose" target="_blank" rel="noopener" class="text-xinity-magenta hover:text-xinity-pink">Goose</a>
     at your own deployments. The gateway speaks the OpenAI chat completions API, so Goose
     treats it as a custom provider. The CLI and the desktop app share their settings, so
     connecting one connects both.
   </p>
+  <p class="mb-8 text-sm text-gray-500">Last tested with Goose 1.57.0.</p>
 
   <ModelPicker {selection} />
 

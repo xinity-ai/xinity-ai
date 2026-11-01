@@ -57,11 +57,12 @@
   </nav>
 
   <h1 class="mb-4 text-4xl font-bold">Pi</h1>
-  <p class="mb-8 text-lg text-gray-600">
+  <p class="mb-2 text-lg text-gray-600">
     Point <a href="https://pi.dev" target="_blank" rel="noopener" class="text-xinity-magenta hover:text-xinity-pink">Pi</a>
     at your own deployments. The gateway speaks the OpenAI chat completions API, so Pi
     treats it as a custom provider.
   </p>
+  <p class="mb-8 text-sm text-gray-500">Last tested with Pi 1.4.0.</p>
 
   <ModelPicker {selection} />
 

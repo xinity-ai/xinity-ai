@@ -50,11 +50,12 @@
   </nav>
 
   <h1 class="mb-4 text-4xl font-bold">Qwen Code</h1>
-  <p class="mb-8 text-lg text-gray-600">
+  <p class="mb-2 text-lg text-gray-600">
     Point <a href="https://github.com/QwenLM/qwen-code" target="_blank" rel="noopener" class="text-xinity-magenta hover:text-xinity-pink">Qwen Code</a>
     at your own deployments. The gateway speaks the OpenAI chat completions API, so Qwen Code
     treats it as an OpenAI compatible provider.
   </p>
+  <p class="mb-8 text-sm text-gray-500">Last tested with Qwen Code 0.26.5.</p>
 
   <ModelPicker {selection} />
 

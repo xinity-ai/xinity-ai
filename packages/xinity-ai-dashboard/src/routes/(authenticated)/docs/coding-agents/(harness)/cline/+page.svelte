@@ -53,12 +53,13 @@
   </nav>
 
   <h1 class="mb-4 text-4xl font-bold">Cline</h1>
-  <p class="mb-8 text-lg text-gray-600">
+  <p class="mb-2 text-lg text-gray-600">
     Point <a href="https://cline.bot" target="_blank" rel="noopener" class="text-xinity-magenta hover:text-xinity-pink">Cline</a>
     at your own deployments. The gateway speaks the OpenAI chat completions API, so Cline
     treats it as a custom provider. The CLI and the editor extension share their settings, so
     connecting one connects both.
   </p>
+  <p class="mb-8 text-sm text-gray-500">Last tested with Cline 3.0.74.</p>
 
   <ModelPicker {selection} />
 
