@@ -14,6 +14,7 @@ import { config } from "../../config";
 import { rootLogger } from "../../logger";
 import { getMetricsSnapshot, type GpuSnapshot } from "../metrics-sampler";
 import { listInstallations } from "../model-registry";
+import { connectingRelayStats } from "./proxy";
 import { getNodeId, getMachineName } from "../statekeeper";
 
 const log = rootLogger.child({ name: "metrics" });
@@ -110,9 +111,27 @@ export async function handleDaemonMetrics(req: Request): Promise<Response> {
 
   const buildInfo = createBuildInfo("daemon_build_info", { ...node, version });
 
+  const relays = connectingRelayStats();
+  const relayConnecting = createGauge(
+    "daemon_proxy_websocket_connecting",
+    "Relayed WebSocket connections whose backend has not completed its handshake.",
+  );
+  relayConnecting.set(node, relays.connections);
+  const relayQueued = createGauge(
+    "daemon_proxy_websocket_queued_bytes",
+    "Bytes held for relayed WebSocket connections whose backend has not completed its handshake.",
+  );
+  relayQueued.set(node, relays.queuedBytes);
+  const relayOldest = createGauge(
+    "daemon_proxy_websocket_connecting_oldest_seconds",
+    "Time the longest-waiting relayed WebSocket connection has waited for its backend handshake. 0 when none is waiting.",
+  );
+  relayOldest.set(node, round(relays.oldestSeconds, 3));
+  const proxyMetrics = [relayConnecting, relayQueued, relayOldest];
+
   const snapshot = getMetricsSnapshot();
   if (snapshot === null) {
-    return metricsResponse([up, buildInfo], engineBodies);
+    return metricsResponse([up, buildInfo, ...proxyMetrics], engineBodies);
   }
 
   const sampleFailures = createCounter(
@@ -150,6 +169,7 @@ export async function handleDaemonMetrics(req: Request): Promise<Response> {
   return metricsResponse([
     up,
     buildInfo,
+    ...proxyMetrics,
     sampleFailures,
     info,
     gpuGauge("daemon_gpu_utilization_percent", "GPU compute utilization (0-100).",
