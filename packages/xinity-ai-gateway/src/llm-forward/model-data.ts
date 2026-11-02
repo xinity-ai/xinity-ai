@@ -211,6 +211,7 @@ type CatalogMeta = {
   type?: string;
   tags?: string[];
   maxContextLength: number;
+  audioPositionsPerSecond?: number;
   requestParams?: Record<string, string>;
 };
 
@@ -221,7 +222,7 @@ async function resolveCatalogMeta(specifier: string, driver: "vllm" | "ollama"):
   }
   if (result.status === "found") {
     const { engineSpecifier, type, tags, sizing, requestParams } = result.model;
-    return { engineSpecifier, type, tags, maxContextLength: sizing.maxContextLength, requestParams };
+    return { engineSpecifier, type, tags, maxContextLength: sizing.maxContextLength, audioPositionsPerSecond: sizing.audioPositionsPerSecond, requestParams };
   }
   return legacyCatalogMeta(specifier, driver);
 }
@@ -262,6 +263,7 @@ export type ModelInfo = {
   type?: string;
   tags?: string[];
   maxContextLength: number;
+  audioPositionsPerSecond?: number;
   requestParams?: Record<string, string>;
   /** Call when the request completes to release load-balancer resources. */
   release: () => void;
@@ -347,6 +349,7 @@ export async function getModelInfo(orgId: string, publicSpecifier: string, prefi
       type: meta.type,
       tags: meta.tags,
       maxContextLength: meta.maxContextLength,
+      audioPositionsPerSecond: meta.audioPositionsPerSecond,
       requestParams: meta.requestParams,
       release: result.release,
     },
