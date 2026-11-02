@@ -15,6 +15,7 @@ import { buildGenerationParams, buildOutputConfig } from "../responses/generatio
 import type { ApiCallInputMessage } from "common-db";
 import { createResponseStream } from "../responses/stream";
 import { withResponseIdRoute } from "../endpoint-guards";
+import { detachRelease } from "../release-registry";
 import { extractText, normalizeMessages } from "../responses/input-normalize";
 import { loadResponse, loadResponseInputItems } from "../responses/persistence";
 import { newResponseId } from "../responses/response-id";
@@ -145,7 +146,7 @@ async function prepareResponseRequest(req: Request): Promise<PreparedRequest | R
   };
 }
 
-async function runDeepResearch(prepared: PreparedRequest): Promise<Response> {
+async function runDeepResearch(req: Request, prepared: PreparedRequest): Promise<Response> {
   const {
     auth, body, modelInfo, provider, originalModel, baseModelName,
     responseId, createdAt, input, messagesForLLM, include, outputConfig, logFields, creation, callStartTime,
@@ -194,15 +195,15 @@ async function runDeepResearch(prepared: PreparedRequest): Promise<Response> {
   void runBackground({
     orgId: auth.orgId, responseId, createdAt, originalModel, body,
     genParams, include, outputConfig, logFields, deepResearch: { compactionUsage },
-  });
+  }).finally(detachRelease(req));
   return Response.json(baseResponse, { status: 202 });
 }
 
-async function runInBackground(prepared: PreparedRequest, genParams: GenerationParams): Promise<Response> {
+async function runInBackground(req: Request, prepared: PreparedRequest, genParams: GenerationParams): Promise<Response> {
   const { auth, body, originalModel, responseId, createdAt, include, outputConfig, logFields, creation } = prepared;
 
   const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
-  void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields });
+  void runBackground({ orgId: auth.orgId, responseId, createdAt, originalModel, body, genParams, include, outputConfig, logFields }).finally(detachRelease(req));
   return Response.json(baseResponse, { status: 202 });
 }
 
@@ -257,7 +258,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
     if (prepared instanceof Response) return prepared;
 
     if (prepared.deepResearch) {
-      return runDeepResearch(prepared);
+      return runDeepResearch(req, prepared);
     }
 
     const { body, modelInfo, provider, messagesForLLM, activeTools, hasTools, outputConfig } = prepared;
@@ -267,7 +268,7 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
 
     // Background generation outlives the request that started it, so it takes no request-scoped deadline.
     if (body.background) {
-      return runInBackground(prepared, paramsWith(req.signal));
+      return runInBackground(req, prepared, paramsWith(req.signal));
     }
 
     const idle = body.stream ? createIdleTimeout() : undefined;

@@ -7,11 +7,13 @@ const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync } = mo
 mockBackendFetch();
 
 const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } = await import("./handle-responses");
+const { withMetrics } = await import("../../metrics");
 
 let server: any;
 let lastUpstreamBody: Record<string, unknown> | undefined;
 /** The message list the backend was last asked to complete. */
 let lastChatMessages: Array<{ role: string; content: unknown }> = [];
+let backendAnswers: Promise<void> = Promise.resolve();
 
 beforeAll(() => {
   server = Bun.serve({
@@ -19,6 +21,7 @@ beforeAll(() => {
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/v1/chat/completions") {
+        await backendAnswers;
         const body = (await req.json()) as {
           stream?: boolean;
           reasoning_effort?: string;
@@ -61,6 +64,7 @@ beforeAll(() => {
 afterEach(() => {
   mocks.clearAll();
   lastUpstreamBody = undefined;
+  backendAnswers = Promise.resolve();
 });
 
 afterAll(() => {
@@ -172,6 +176,40 @@ describe("handleResponses", () => {
     const stored = await waitForResponseStatus(responseStore, body.id, "completed");
     expect(stored?.status).toBe("completed");
     expect(stored?.output?.[0]?.content?.[0]?.text).toBe("Hello");
+  });
+
+  test("keeps the backend slot of a background response until generation ends, not until the 202", async () => {
+    let answerBackend = () => {};
+    backendAnswers = new Promise((resolve) => { answerBackend = resolve; });
+    let releases = 0;
+    getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
+      nodeId: "node-1",
+      host: `localhost:${server.port}`,
+      specifier: "test-model",
+      model: "test-model",
+      driver: "vllm",
+      authToken: null,
+      tls: false,
+      tags: [],
+      maxContextLength: 131072,
+      release: () => { releases++; },
+    }));
+
+    const handler = withMetrics("responses", handleCreateResponseRequest);
+    const res = await handler(new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", input: "Hi", background: true }),
+    }), server);
+    expect(res.status).toBe(202);
+    expect(releases).toBe(0);
+
+    answerBackend();
+    const { id } = (await res.json()) as { id: string };
+    await waitForResponseStatus(responseStore, id, "completed");
+    await Bun.sleep(0);
+    expect(releases).toBe(1);
   });
 
   test("should get a stored response", async () => {
