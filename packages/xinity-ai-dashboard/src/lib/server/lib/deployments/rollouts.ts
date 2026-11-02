@@ -4,6 +4,7 @@ import { MIN_CANARY_REPLICAS, type RolloutTarget } from "$lib/orpc/dtos/model.dt
 import { getDB } from "$lib/server/db";
 import type { VariantHandlers } from "$lib/util";
 import { storedAdvance, validateCanaryModelTypes, withCanaryRows } from "./canary-deployment";
+import { uninstallOwnedBy } from "./deployment-reads";
 import type { CapacityNeed, Transaction } from "./deployment-types";
 import { createManaged } from "./managed-deployment";
 import { requirementsForCanaries, requirementsForManaged } from "./requirements";
@@ -56,14 +57,18 @@ async function startCanary(target: CanaryTarget, entry: Deployment): Promise<Rol
   };
 }
 
-// The member that is not kept is left without a deployment, so the sync uninstalls what it runs. Deleting it would
-// delete its installation rows before the daemons saw them removed.
+// A row that is replaced stays, with its installations marked deleted. Deleting the row would delete its
+// installation rows before the daemons saw them removed.
+
+const OTHER_MEMBER = { from: "to", to: "from" } as const;
+
 async function endCanary({ managed: { keep } }: ManagedTarget, entry: Deployment): Promise<RolloutReview> {
   const [row] = await withCanaryRows([entry]);
   if (!row) {
     return { rejected: "The deployment has no rollout to end" };
   }
   const kept = row[keep];
+  const dropped = row[OTHER_MEMBER[keep]];
   return {
     models: [],
     mustFit: { requirements: requirementsForManaged([{ ...kept, replicas: row.canary.replicas }]), replacing: [row.from.id, row.to.id] },
@@ -71,6 +76,7 @@ async function endCanary({ managed: { keep } }: ManagedTarget, entry: Deployment
       await tx.update(deploymentManagedT).set({ replicas: row.canary.replicas }).where(sql`${deploymentManagedT.id} = ${kept.id}`);
       await tx.update(deploymentT).set({ type: "managed", managedId: kept.id, canaryId: null }).where(sql`${deploymentT.id} = ${entry.id}`);
       await tx.delete(deploymentCanaryT).where(sql`${deploymentCanaryT.id} = ${row.canary.id}`);
+      await uninstallOwnedBy(tx, [dropped.id]);
     },
   };
 }

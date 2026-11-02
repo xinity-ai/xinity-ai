@@ -4,7 +4,7 @@ import { MIN_CANARY_REPLICAS, type DeploymentOutput, type LegacyDeploymentInput 
 import { getDB } from "$lib/server/db";
 import { resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { validateCanaryModelTypes } from "./canary-deployment";
-import { markMissingFromCatalog, phasesOf, withInstallationStatus } from "./deployment-reads";
+import { markMissingFromCatalog, phasesOf, uninstallOwnedBy, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType, Transaction } from "./deployment-types";
 import { createManaged } from "./managed-deployment";
 import { requirementsForDeployments } from "./requirements";
@@ -55,6 +55,7 @@ export async function migrateLegacy(tx: Transaction, entry: Deployment): Promise
   const progress = Math.round(calcCanaryProgress(legacy));
   if (!legacy.earlySpecifier || legacy.earlySpecifier === legacy.specifier || progress === 100) {
     await tx.update(deploymentT).set({ type: "managed", legacyId: null, managedId: toId }).where(sql`${deploymentT.id} = ${entry.id}`);
+    await uninstallOwnedBy(tx, [legacy.id]);
     return;
   }
   const fromId = await takeOver(legacy.earlySpecifier, legacy.earlyKvCacheSize);
@@ -65,6 +66,7 @@ export async function migrateLegacy(tx: Transaction, entry: Deployment): Promise
     throw new Error("Insert into deploymentCanaryT returned no row");
   }
   await tx.update(deploymentT).set({ type: "canary", legacyId: null, canaryId: canary.id }).where(sql`${deploymentT.id} = ${entry.id}`);
+  await uninstallOwnedBy(tx, [legacy.id]);
 }
 
 async function markDeploymentsOnDeprecatedCatalog(deployments: DeploymentOutput[]): Promise<void> {

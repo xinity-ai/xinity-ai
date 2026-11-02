@@ -18,6 +18,7 @@ import { getDB } from "$lib/server/db";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import type { DeploymentPhaseRow } from "$lib/server/notifications/scheduler";
 import { foldDeploymentStatusRows } from "./deployment-status";
+import type { Transaction } from "./deployment-types";
 
 const idsOf = (entries: { id: string }[]) => entries.map(({ id }) => id);
 
@@ -89,9 +90,16 @@ export async function markMissingFromCatalog(deployments: DeploymentOutput[], sp
 }
 
 /** Ids of the rows whose installations serve the deployment. */
-export async function installationOwnersOf(entry: Deployment): Promise<string[]> {
+export async function installationOwnersOf(entry: Deployment, db: Transaction | ReturnType<typeof getDB> = getDB()): Promise<string[]> {
   const [canary] = entry.canaryId
-    ? await getDB().select().from(deploymentCanaryT).where(sql`${deploymentCanaryT.id} = ${entry.canaryId}`).limit(1)
+    ? await db.select().from(deploymentCanaryT).where(sql`${deploymentCanaryT.id} = ${entry.canaryId}`).limit(1)
     : [];
   return [entry.legacyId, entry.managedId, canary?.fromId, canary?.toId].filter((id) => typeof id === "string");
+}
+
+export async function uninstallOwnedBy(tx: Transaction, ownerIds: string[]): Promise<void> {
+  await tx.update(modelInstallationT).set({ deletedAt: new Date() }).where(sql`
+    (${inArray(modelInstallationT.legacyId, ownerIds)} OR ${inArray(modelInstallationT.managedId, ownerIds)})
+    AND ${modelInstallationT.deletedAt} IS NULL
+  `);
 }

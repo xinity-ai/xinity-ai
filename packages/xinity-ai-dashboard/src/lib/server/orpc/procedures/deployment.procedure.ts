@@ -8,7 +8,7 @@ import { requirementsForCanaries, requirementsForDeployments, requirementsForMan
 import { byType, DASHBOARD_DEPLOYMENT_TYPES, type Transaction } from "$lib/server/lib/deployments/deployment-types";
 import { createLegacy, migrateLegacy } from "$lib/server/lib/deployments/legacy-deployment";
 import { validateCanaryModelTypes } from "$lib/server/lib/deployments/canary-deployment";
-import { installationOwnersOf } from "$lib/server/lib/deployments/deployment-reads";
+import { installationOwnersOf, uninstallOwnedBy } from "$lib/server/lib/deployments/deployment-reads";
 import { reviewRollout } from "$lib/server/lib/deployments/rollouts";
 import { createManaged } from "$lib/server/lib/deployments/managed-deployment";
 import { DEPLOYMENT_TYPES, deploymentSettingsSchema, FOOTPRINT_PART_MEMORY, type FootprintPart, type FootprintPartKind } from "common-env";
@@ -359,8 +359,16 @@ Immediately unregisters it, and drops it completely.
   .input(z.object({ id: z.uuid() }))
   .errors({ NOT_FOUND: {} })
   .handler(async ({ context, input, errors }) => {
-    const deployment = await internalUpdateDeployment(context.activeOrganizationId, input.id, { deletedAt: new Date() });
-    if (!deployment) {
+    const deleted = await getDB().transaction(async (tx) => {
+      const [deployment] = await tx.update(deploymentT).set({ deletedAt: new Date() })
+        .where(matchActiveDeploymentInOrg(input.id, context.activeOrganizationId))
+        .returning();
+      if (deployment) {
+        await uninstallOwnedBy(tx, await installationOwnersOf(deployment, tx));
+      }
+      return deployment;
+    });
+    if (!deleted) {
       throw errors.NOT_FOUND();
     }
     syncDeployedModels();
@@ -543,9 +551,26 @@ const checkCapacity = rootOs
     return checkDeploymentCapacity(handleVariant(DRAFT_REQUIREMENTS, input, replacedOwnerIds[0]), replacedOwnerIds);
   });
 
+const CHANGED_MEANWHILE = "The deployment was changed while this was being applied. Load it again and retry";
+
+const pointsAtSameRows = (a: Deployment, b: Deployment) =>
+  a.type === b.type && a.legacyId === b.legacyId && a.managedId === b.managedId && a.canaryId === b.canaryId && !b.deletedAt;
+
 // Changes the deployment's type in one transaction. It keeps its id, so it reads back under the same one.
+// The change was planned from `entry`, so it applies only while the deployment still points at the same rows: two
+// people ending one canary on different sides would otherwise uninstall both.
 async function reshapeDeployment(entry: Deployment, reshape: (tx: Transaction) => Promise<void>) {
-  await getDB().transaction(reshape);
+  const applied = await getDB().transaction(async (tx) => {
+    const [current] = await tx.select().from(deploymentT).where(sql`${deploymentT.id} = ${entry.id}`).for("update");
+    if (!current || !pointsAtSameRows(entry, current)) {
+      return false;
+    }
+    await reshape(tx);
+    return true;
+  });
+  if (!applied) {
+    return "changed meanwhile" as const;
+  }
   syncDeployedModels();
   const [reshaped] = await getDB().select().from(deploymentT).where(sql`${deploymentT.id} = ${entry.id}`).limit(1);
   return reshaped && await readDeployment(reshaped);
@@ -562,7 +587,7 @@ const rolloutDeployment = rootOs
   })
   .input(RolloutDto)
   .output(DeploymentDto)
-  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {} })
+  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
     const entry = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!entry) throw errors.NOT_FOUND();
@@ -579,6 +604,7 @@ const rolloutDeployment = rootOs
     }
 
     const deployment = await reshapeDeployment(entry, review.apply);
+    if (deployment === "changed meanwhile") throw errors.CONFLICT({ message: CHANGED_MEANWHILE });
     if (!deployment) throw errors.NOT_FOUND();
     return deployment;
   });
@@ -594,7 +620,7 @@ const migrateDeployment = rootOs
   })
   .input(z.object({ id: z.uuid() }))
   .output(DeploymentDto)
-  .errors({ NOT_FOUND: {}, BAD_REQUEST: {} })
+  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
     const entry = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!entry) throw errors.NOT_FOUND();
@@ -603,6 +629,7 @@ const migrateDeployment = rootOs
     }
 
     const deployment = await reshapeDeployment(entry, (tx) => migrateLegacy(tx, entry));
+    if (deployment === "changed meanwhile") throw errors.CONFLICT({ message: CHANGED_MEANWHILE });
     if (!deployment) throw errors.NOT_FOUND();
     return deployment;
   });
