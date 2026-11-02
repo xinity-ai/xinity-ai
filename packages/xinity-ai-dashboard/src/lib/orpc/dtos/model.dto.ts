@@ -175,9 +175,14 @@ export const RolloutDto = z.discriminatedUnion("type", [
   z.object({
     id: z.uuid(),
     type: z.literal("managed"),
-    managed: z.object({
-      keep: z.enum(CANARY_MEMBERS).describe("The model that keeps serving with all of the canary's replicas: `to` promotes, `from` rolls back"),
-    }),
+    managed: z.union([
+      z.object({
+        keep: z.enum(CANARY_MEMBERS).describe("The model that keeps serving with all of the canary's replicas: `to` promotes, `from` rolls back"),
+      }).describe("Ends a canary on one of its two models"),
+      z.object({
+        to: CanaryMemberInputDto.describe("The model that replaces the current one. Driver and settings default to those of the current model"),
+      }).describe("Replaces a managed deployment's model at once. Serving pauses until the new model is installed"),
+    ]),
   }),
 ]);
 export type RolloutTarget = z.infer<typeof RolloutDto>;

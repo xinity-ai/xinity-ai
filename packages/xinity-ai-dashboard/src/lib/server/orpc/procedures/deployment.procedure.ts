@@ -7,7 +7,7 @@ import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallRea
 import { requirementsForCanaries, requirementsForDeployments, requirementsForManaged, type CanaryMemberPlan, type DeploymentPlan, type ManagedPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
 import { byType, DASHBOARD_DEPLOYMENT_TYPES, type Transaction } from "$lib/server/lib/deployments/deployment-types";
 import { createLegacy, migrateLegacy } from "$lib/server/lib/deployments/legacy-deployment";
-import { validateCanaryModelTypes } from "$lib/server/lib/deployments/canary-deployment";
+import { modelTypeMismatch } from "$lib/server/lib/deployments/canary-deployment";
 import { installationOwnersOf, uninstallOwnedBy } from "$lib/server/lib/deployments/deployment-reads";
 import { reviewRollout } from "$lib/server/lib/deployments/rollouts";
 import { createManaged } from "$lib/server/lib/deployments/managed-deployment";
@@ -453,7 +453,7 @@ const CREATIONS: VariantHandlers<z.infer<typeof DeploymentInputDto>, DeploymentC
     return {
       specifiers: [legacy.specifier, ...(earlySpecifier ? [earlySpecifier] : [])],
       requirements: requirementsForDeployments([draftPlan(legacy)]),
-      mismatch: () => validateCanaryModelTypes(legacy.specifier, earlySpecifier),
+      mismatch: () => modelTypeMismatch(legacy.specifier, earlySpecifier),
       insert: async (tx) => ({ legacyId: await createLegacy(tx, { ...legacy, earlySpecifier }) }),
     };
   },
@@ -583,7 +583,7 @@ const rolloutDeployment = rootOs
   .meta({ audit: { action: "modelDeployment.rollout", resource: "modelDeployment", resourceId: { fromInput: "id" }, captureInput: ["type", "canary", "managed"] } })
   .route({
     path: "/{id}/rollout", method: "POST", tags, summary: "Start or End a Rollout",
-    description: "Turns a managed deployment into a canary that moves its traffic to another model, or ends a canary on one of its two models. The deployment keeps its id and public name.",
+    description: "Turns a managed deployment into a canary that moves its traffic to another model, ends a canary on one of its two models, or replaces a managed deployment's model at once. The deployment keeps its id and public name.",
   })
   .input(RolloutDto)
   .output(DeploymentDto)

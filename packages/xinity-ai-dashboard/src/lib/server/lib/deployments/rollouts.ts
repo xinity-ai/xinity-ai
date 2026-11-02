@@ -1,9 +1,9 @@
 import { deploymentCanaryT, deploymentManagedT, deploymentT, sql, type Deployment, type DeploymentManaged } from "common-db";
 import type { DeploymentType } from "common-env";
-import { MIN_CANARY_REPLICAS, type RolloutTarget } from "$lib/orpc/dtos/model.dto";
+import { MIN_CANARY_REPLICAS, type CanaryMemberInput, type RolloutTarget } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import type { VariantHandlers } from "$lib/util";
-import { storedAdvance, validateCanaryModelTypes, withCanaryRows } from "./canary-deployment";
+import { modelTypeMismatch, storedAdvance, withCanaryRows } from "./canary-deployment";
 import { uninstallOwnedBy } from "./deployment-reads";
 import type { CapacityNeed, Transaction } from "./deployment-types";
 import { createManaged } from "./managed-deployment";
@@ -17,8 +17,8 @@ export type RolloutReview =
   | { rejected: string }
   | { models: string[]; mustFit: CapacityNeed; apply: (tx: Transaction) => Promise<void> };
 
-// The new member runs like the one it replaces unless the rollout says otherwise.
-const newMemberOf = (from: DeploymentManaged, { canary: { to } }: CanaryTarget) => ({
+// The new model runs like the one it replaces unless the rollout says otherwise.
+const newMemberOf = (from: DeploymentManaged, to: CanaryMemberInput) => ({
   specifier: to.specifier,
   replicas: from.replicas,
   kvCacheSize: to.kvCacheSize ?? null,
@@ -26,17 +26,22 @@ const newMemberOf = (from: DeploymentManaged, { canary: { to } }: CanaryTarget) 
   settings: to.settings ?? from.settings,
 });
 
+async function managedRowOf(entry: Deployment) {
+  const [row] = await getDB().select().from(deploymentManagedT).where(sql`${deploymentManagedT.id} = ${entry.managedId}`).limit(1);
+  return row;
+}
+
 async function startCanary(target: CanaryTarget, entry: Deployment): Promise<RolloutReview> {
-  const [from] = await getDB().select().from(deploymentManagedT).where(sql`${deploymentManagedT.id} = ${entry.managedId}`).limit(1);
+  const from = await managedRowOf(entry);
   if (!from) {
     return { rejected: "The deployment has no model to roll out from" };
   }
-  const mismatch = await validateCanaryModelTypes(target.canary.to.specifier, from.specifier);
+  const mismatch = await modelTypeMismatch(target.canary.to.specifier, from.specifier);
   if (mismatch) {
     return { rejected: mismatch };
   }
   const { progress, advance } = target.canary;
-  const to = newMemberOf(from, target);
+  const to = newMemberOf(from, target.canary.to);
   const replicas = Math.max(MIN_CANARY_REPLICAS, from.replicas);
   return {
     models: [to.specifier],
@@ -57,18 +62,42 @@ async function startCanary(target: CanaryTarget, entry: Deployment): Promise<Rol
   };
 }
 
-// A row that is replaced stays, with its installations marked deleted. Deleting the row would delete its
-// installation rows before the daemons saw them removed.
+async function switchModel({ managed }: ManagedTarget, entry: Deployment): Promise<RolloutReview> {
+  if (!("to" in managed)) {
+    return { rejected: "A managed deployment has no rollout to end. Name the model that replaces its current one in `to`" };
+  }
+  const from = await managedRowOf(entry);
+  if (!from) {
+    return { rejected: "The deployment has no model to replace" };
+  }
+  const mismatch = await modelTypeMismatch(managed.to.specifier, from.specifier);
+  if (mismatch) {
+    return { rejected: mismatch };
+  }
+  const to = newMemberOf(from, managed.to);
+  return {
+    models: [to.specifier],
+    mustFit: { requirements: requirementsForManaged([{ id: "switch-draft", ...to }]), replacing: [from.id] },
+    apply: async (tx) => {
+      const managedId = await createManaged(tx, to);
+      await tx.update(deploymentT).set({ managedId }).where(sql`${deploymentT.id} = ${entry.id}`);
+      await uninstallOwnedBy(tx, [from.id]);
+    },
+  };
+}
 
 const OTHER_MEMBER = { from: "to", to: "from" } as const;
 
-async function endCanary({ managed: { keep } }: ManagedTarget, entry: Deployment): Promise<RolloutReview> {
+async function endCanary({ managed }: ManagedTarget, entry: Deployment): Promise<RolloutReview> {
+  if (!("keep" in managed)) {
+    return { rejected: "A rollout ends on one of its two models. Name it in `keep`" };
+  }
   const [row] = await withCanaryRows([entry]);
   if (!row) {
     return { rejected: "The deployment has no rollout to end" };
   }
-  const kept = row[keep];
-  const dropped = row[OTHER_MEMBER[keep]];
+  const kept = row[managed.keep];
+  const dropped = row[OTHER_MEMBER[managed.keep]];
   return {
     models: [],
     mustFit: { requirements: requirementsForManaged([{ ...kept, replicas: row.canary.replicas }]), replacing: [row.from.id, row.to.id] },
@@ -84,7 +113,7 @@ async function endCanary({ managed: { keep } }: ManagedTarget, entry: Deployment
 // Which type each type of deployment can become through a rollout, by its current type.
 const ROLLOUTS: { [T in DeploymentType]: Partial<VariantHandlers<RolloutTarget, Promise<RolloutReview>, [Deployment]>> } = {
   legacy: {},
-  managed: { canary: startCanary },
+  managed: { canary: startCanary, managed: switchModel },
   canary: { managed: endCanary },
 };
 

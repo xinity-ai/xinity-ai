@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { ownerFetch } from "./api-helpers";
 
 const MODEL = "apertus-v1.1-0.5b-vllm";
+const EMBEDDING_MODEL = "bge-m3-vllm";
 
 type Deployment = {
   id: string;
@@ -234,6 +235,28 @@ describe("Rollout", () => {
   test("refuses to end a rollout on a managed deployment", () =>
     withManaged({}, async ({ id }) => {
       expect((await endCanary(id, "to")).status).toBe(400);
+    }));
+
+  test("switching replaces the model at once and keeps the deployment and its replicas", () =>
+    withManaged({ replicas: 2, kvCacheSize: 4 }, async ({ id }) => {
+      const res = await rollout(id, { type: "managed", managed: { to: { specifier: MODEL, kvCacheSize: 6 } } });
+      expect(res.status).toBe(200);
+      const switched = (await res.json()) as Managed;
+      expect(switched.id).toBe(id);
+      expect(switched.type).toBe("managed");
+      expect(switched.managed.replicas).toBe(2);
+      expect(switched.managed.kvCacheSize).toBe(6);
+    }));
+
+  test("refuses to switch to a model of another kind", () =>
+    withManaged({}, async ({ id }) => {
+      expect((await rollout(id, { type: "managed", managed: { to: { specifier: EMBEDDING_MODEL } } })).status).toBe(400);
+    }));
+
+  test("refuses to switch the model of a canary", () =>
+    withManaged({}, async ({ id }) => {
+      expect((await startCanary(id)).status).toBe(200);
+      expect((await rollout(id, { type: "managed", managed: { to: { specifier: MODEL } } })).status).toBe(400);
     }));
 
   test("refuses to start a canary on a canary", () =>

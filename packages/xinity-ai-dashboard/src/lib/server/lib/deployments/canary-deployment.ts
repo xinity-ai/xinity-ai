@@ -40,13 +40,13 @@ async function resolveType(specifier: string): Promise<string | undefined> {
   return resolution.status === "found" ? resolution.model.type : undefined;
 }
 
-export async function validateCanaryModelTypes(toSpecifier: string, fromSpecifier: string | null): Promise<string | null> {
+export async function modelTypeMismatch(toSpecifier: string, fromSpecifier: string | null): Promise<string | null> {
   if (!fromSpecifier) {
     return null;
   }
   const [toType, fromType] = await Promise.all([resolveType(toSpecifier), resolveType(fromSpecifier)]);
   if (toType && fromType && toType !== fromType) {
-    return `Cannot mix model types in a canary deployment: the canary is "${toType}" but the model it replaces is "${fromType}"`;
+    return `${toSpecifier} is a ${toType} model, but the model it replaces is a ${fromType} model. A deployment keeps the kind of model it serves`;
   }
   return null;
 }
@@ -117,7 +117,7 @@ export const canaryDeployment: DashboardDeploymentType = {
     const merged: CanaryPlan = { ...row.canary, ...rollout, from: { ...row.from, ...fromPatch }, to: { ...row.to, ...toPatch } };
 
     if (fromPatch.specifier || toPatch.specifier) {
-      const mismatch = await validateCanaryModelTypes(merged.to.specifier, merged.from.specifier);
+      const mismatch = await modelTypeMismatch(merged.to.specifier, merged.from.specifier);
       if (mismatch) {
         return { rejected: mismatch };
       }

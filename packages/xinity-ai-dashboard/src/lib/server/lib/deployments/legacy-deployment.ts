@@ -3,7 +3,7 @@ import type { RolloutAdvance } from "common-env";
 import { MIN_CANARY_REPLICAS, type DeploymentOutput, type LegacyDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
-import { validateCanaryModelTypes } from "./canary-deployment";
+import { modelTypeMismatch } from "./canary-deployment";
 import { markMissingFromCatalog, phasesOf, uninstallOwnedBy, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType, Transaction } from "./deployment-types";
 import { createManaged } from "./managed-deployment";
@@ -116,7 +116,7 @@ export const legacyDeployment: DashboardDeploymentType = {
   async reviewUpdate(entry, input) {
     const patch = input.legacy ?? {};
     if (patch.specifier) {
-      const mismatch = await validateCanaryModelTypes(patch.specifier, patch.earlySpecifier ?? null);
+      const mismatch = await modelTypeMismatch(patch.specifier, patch.earlySpecifier ?? null);
       if (mismatch) {
         return { rejected: mismatch };
       }
