@@ -196,6 +196,9 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@sveltejs/adapter-bun@1.0.0": "patches/@sveltejs%2Fadapter-bun@1.0.0.patch",
+  },
   "overrides": {
     "esbuild": "0.28.2",
     "samlify": "2.13.1",

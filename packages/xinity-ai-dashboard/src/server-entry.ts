@@ -1,16 +1,14 @@
 /**
  * Production entrypoint, compiled by build.ts.
  *
- * Importing the adapter entry starts Bun.serve, since its self-start check is true inside
- * the compiled bundle, but it builds the SvelteKit server only once a request reaches its
- * fetch handler. hooks.server.ts starts the deployment sync service, the notification
- * scheduler and the shutdown handlers from its module body, so an idle process would run
- * none of them. One request to ourselves forces that initialisation.
+ * Importing the adapter's entry starts Bun.serve and initialises SvelteKit, which runs
+ * hooks.server.ts and with it the background services. Everything the adapter reads from
+ * the environment has to be in place before that import.
  */
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { activationRefusal, exitOnHealthFlag, localRequest, type TlsConfig } from "common-env";
+import { activationRefusal, exitOnHealthFlag, type TlsConfig } from "common-env";
 import { dashboardConfig } from "./lib/server/config-schema";
 import { config } from "./lib/server/config";
 import { rootLogger } from "./lib/server/logging";
@@ -33,43 +31,26 @@ async function writeTlsMaterial(tls: TlsConfig): Promise<{ cert: string; key: st
   return { cert, key };
 }
 
-// The adapter reads these from process.env before any of our code runs, so a declared value
-// reaches it only by being placed here. Assigned one at a time on purpose: a spread would put
-// DB_CONNECTION_URL, BETTER_AUTH_SECRET, LICENSE_KEY and the S3 credentials somewhere every
-// child process and crash dump can read them, for no gain.
-process.env.HTTP_HOST = config.server.host;
-process.env.HTTP_PORT = String(config.server.port);
-process.env.HTTP_IDLE_TIMEOUT = String(config.server.idleTimeout);
-process.env.HTTP_OVERRIDE_ORIGIN = config.origin;
+// The adapter reads these from process.env when its module loads, so a declared value reaches
+// it only by being placed here. The prefix matches envPrefix in vite.config.ts. Assigned one at
+// a time on purpose: a spread would put DB_CONNECTION_URL, BETTER_AUTH_SECRET, LICENSE_KEY and
+// the S3 credentials somewhere every child process and crash dump can read them, for no gain.
+const ADAPTER_ENV_PREFIX = "BUN_SVELTE_ADAPTER_";
+process.env[`${ADAPTER_ENV_PREFIX}HOST`] = config.server.host;
+process.env[`${ADAPTER_ENV_PREFIX}PORT`] = String(config.server.port);
+process.env[`${ADAPTER_ENV_PREFIX}CONNECTION_IDLE_TIMEOUT`] = String(config.server.idleTimeout);
+process.env[`${ADAPTER_ENV_PREFIX}ORIGIN`] = config.origin;
 // Not for the adapter: orpc-client is browser-importable, so the environment is the only
 // place it can read an absolute URL from while rendering on the server.
 process.env.ORIGIN = config.origin;
-process.env.HTTP_XFF_DEPTH = String(config.proxy.xffDepth);
 if (config.server.unixSocket) {
-  process.env.HTTP_SOCKET = config.server.unixSocket;
+  process.env[`${ADAPTER_ENV_PREFIX}SOCKET_PATH`] = config.server.unixSocket;
 }
 if (config.tls) {
   const { cert, key } = await writeTlsMaterial(config.tls);
-  process.env.TLS_CERT_FILE = cert;
-  process.env.TLS_KEY_FILE = key;
-}
-if (config.proxy.header) {
-  process.env.HTTP_IP_HEADER = config.proxy.header;
-}
-if (config.proxy.trustedProxies.length > 0) {
-  process.env.HTTP_TRUSTED_PROXIES = config.proxy.trustedProxies.join(",");
+  process.env[`${ADAPTER_ENV_PREFIX}TLS_CERT_FILE`] = cert;
+  process.env[`${ADAPTER_ENV_PREFIX}TLS_KEY_FILE`] = key;
 }
 
-// @ts-ignore: the adapter's build output does not exist until build.ts has run vite.
-const { serveOptions, tlsOptions } = await import("../build/index.js");
-
-/** A real route, since this app logs 404s at error level and a warm-up must not look like a fault. */
-const WARMUP_PATH = "/login/";
-
-const { unix, hostname, port } = serveOptions();
-const { url, init } = localRequest({ host: hostname, port, unixSocket: unix, tls: "tls" in tlsOptions() }, WARMUP_PATH);
-try {
-  await fetch(url, init);
-} catch (err) {
-  console.error(`[startup] Warm-up request to ${url} failed. Background services will start with the first request instead.`, err);
-}
+// @ts-ignore: the adapter's server entry does not exist until build.ts has run vite.
+await import("../.svelte-kit/output/server/adapter-index.js");
