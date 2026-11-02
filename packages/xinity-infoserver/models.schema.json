@@ -66,7 +66,8 @@
                 "tools",
                 "custom_code",
                 "vision",
-                "diarization"
+                "diarization",
+                "realtime"
               ]
             }
           },
@@ -86,7 +87,8 @@
                     "tools",
                     "custom_code",
                     "vision",
-                    "diarization"
+                    "diarization",
+                    "realtime"
                   ]
                 }
               },
@@ -98,7 +100,8 @@
                     "tools",
                     "custom_code",
                     "vision",
-                    "diarization"
+                    "diarization",
+                    "realtime"
                   ]
                 }
               }

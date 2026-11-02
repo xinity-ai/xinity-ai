@@ -50,6 +50,7 @@ export const ModelSizing = z.looseObject({
   kvBytesPerToken: z.number().int().positive().optional().describe("KV cache one token of context consumes, in bytes, i.e. 2 * num_hidden_layers * num_key_value_heads * head_dim * dtype_bytes. How many requests a deployment can serve at once follows from this and the cache it was given, so it is the figure concurrency is computed from"),
   maxContextLength: z.number().int().positive().describe("Maximum supported context window in tokens"),
   attentionWindow: z.number().int().positive().optional().describe("Sliding-window attention span in tokens, for models that have one. KV per request stops growing past this point, so a windowed model needs far less cache at long context than kvBytesPerToken alone suggests"),
+  audioPositionsPerSecond: z.number().positive().optional().describe("Context positions one second of audio occupies in a realtime transcription stream, 12.5 for a model that steps every 80 ms. With maxContextLength it gives the longest audio one stream holds"),
   stateBytesPerSequence: z.number().int().positive().optional().describe("Recurrent state one concurrent request consumes, in bytes, for hybrid architectures whose layers are not all attention, such as Mamba or gated deltanet. Unlike kvBytesPerToken this does not grow with context: it is a fixed cost per request in flight. Present only for hybrid models, and vLLM refuses to start when its per-sequence state does not fit, so a concurrency cap that ignores it can be one the engine rejects"),
   attentionHeads: z.number().int().positive().optional().describe("Attention heads per layer of the language model, num_attention_heads in config.json"),
   kvHeads: z.number().int().positive().optional().describe("Key/value heads per layer of the language model, num_key_value_heads in config.json. Equal to attentionHeads without grouped-query attention, fewer with it"),
@@ -181,7 +182,7 @@ export const ModelFields = z.looseObject({
   type: ModelTypeEnum.default("chat").describe("Usage type, which determines API compatibility"),
   family: z.string().default("unknown").describe("Family of the model. May be unknown"),
   variantOf: z.string().optional().describe("Specifier of the standard variant of this model, when this entry is a variant of it. The UI presents the group together while each variant stays separately deployable and keeps its own license, description and capacity. A variant may not itself have variants"),
-  tags: z.array(TagEnum).default([]).describe("Capabilities this variant supports: tools, vision, custom_code"),
+  tags: z.array(TagEnum).default([]).describe("Capabilities this variant supports: tools, vision, custom_code, diarization, realtime"),
   isCustom: z.boolean().default(false).describe("Set for fine-tuned models"),
 
   unlisted: z.boolean().default(false).describe("Keeps the entry out of the model picker without making it unusable. Deployments referencing it keep working, and a user can still reach it deliberately"),
@@ -214,6 +215,14 @@ function withModelRules<T extends typeof ModelFields | typeof RelayedModelFields
     .refine(
       model => !model.requestParams || !hasBlockedRequestParam(Object.keys(model.requestParams)),
       { message: "requestParams must not contain blocked prefixes", path: ["requestParams"] },
+    )
+    .refine(
+      model => !model.tags.includes("realtime") || model.type === "transcription",
+      { message: "the realtime tag is for transcription models", path: ["tags"] },
+    )
+    .refine(
+      model => !model.tags.includes("realtime") || model.sizing.audioPositionsPerSecond !== undefined,
+      { message: "a realtime model needs sizing.audioPositionsPerSecond", path: ["sizing", "audioPositionsPerSecond"] },
     )
     .transform(model => (
       model.engine === "vllm" && model.engineArgs
