@@ -52,7 +52,7 @@ bun run changelog:preview
 
 ## Adding or removing workspace packages
 
-Each service Dockerfile copies every workspace `package.json` so that `bun install --frozen-lockfile` can resolve the lockfile. These COPY lines are auto-managed by `scripts/sync-dockerfile-manifests.ts` between `# [sync:workspace-manifests]` markers.
+Each service Dockerfile copies every workspace `package.json` (and `patches/` when present) so that `bun install --frozen-lockfile` can resolve the lockfile. These COPY lines are auto-managed by `scripts/sync-dockerfile-manifests.ts` between `# [sync:workspace-manifests]` markers.
 
 After adding, removing, or renaming a package under `packages/`, run:
 

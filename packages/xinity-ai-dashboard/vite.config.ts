@@ -89,7 +89,14 @@ export default defineConfig({
 					async: true,
 				},
 			},
-			adapter: adapter(),
+			// compile makes the adapter import every static file from its server entry, so build.ts can
+			// bundle that entry into build/ or compile it into the release binary. The adapter's own
+			// executable goes to a scratch directory and is never shipped.
+			adapter: adapter({
+				out: '.svelte-kit/adapter-bun-executable',
+				envPrefix: 'BUN_SVELTE_ADAPTER_',
+				buildOptions: { compile: true },
+			}),
 			experimental: {
 				remoteFunctions: true
 			},

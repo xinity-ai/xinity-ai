@@ -21,6 +21,8 @@ const packages = readdirSync(PACKAGES_DIR, { withFileTypes: true })
 const copyLines = [
   START_MARKER,
   "COPY package.json bun.lock ./",
+  // bun install applies patchedDependencies and fails without the patch files.
+  ...(existsSync(join(ROOT, "patches")) ? ["COPY patches patches"] : []),
   ...packages.map(
     (p) => `COPY packages/${p}/package.json packages/${p}/package.json`,
   ),

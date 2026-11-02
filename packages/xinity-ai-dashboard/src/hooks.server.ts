@@ -15,12 +15,13 @@ import { DYNAMIC_CONFIG_CHANNEL, logMigrationFailureFatal, readDynamicConfig } f
 import { createDbConfigFeed, createSecretUnsealer } from "common-env";
 import { getDB, subscribe } from "$lib/server/db";
 import { loadDeploymentId } from "$lib/server/lib/instance/deployment-id";
-import { stampClientAddress } from "$lib/server/lib/auth/client-address";
+import { createClientAddressResolver, stampClientAddress } from "$lib/server/lib/auth/client-address";
 import { flushAuditEvents } from "$lib/server/audit/audit-forwarder";
 import { onShutdown, installShutdownHandlers } from "$lib/server/shutdown";
 import { startHealthProbe } from "$lib/server/lib/instance/health";
 
 const log = rootLogger.child({ name: "hooks" });
+const resolveClientAddress = createClientAddressResolver(config.proxy);
 
 const migrationState = await checkMigrationState();
 
@@ -79,12 +80,13 @@ const migrationGuard: Handle = ({ event, resolve }) => {
  */
 const fillLocals: Handle = ({ event, resolve }) => {
   event.locals.request = event.request;
-  let clientAddress = "";
+  let socketAddress: string | undefined;
   try {
-    clientAddress = event.getClientAddress();
+    socketAddress = event.getClientAddress();
   } catch {
     // getClientAddress throws when the address is unavailable
   }
+  const clientAddress = resolveClientAddress(event.request, socketAddress);
   event.locals.clientAddress = clientAddress;
   stampClientAddress(event.request, clientAddress);
   const incoming = event.request.headers.get("x-trace-id");

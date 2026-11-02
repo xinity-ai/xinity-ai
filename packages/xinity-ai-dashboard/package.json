@@ -5,7 +5,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "bun --bun vite dev --port 5173 | pino-pretty",
-		"build": "bun --env-file=example.env --bun vite build",
+		"build": "bun --env-file=example.env --bun vite build && bun run build.ts --bundle --no-vite",
 		"build:compile": "bun run build.ts",
 		"preview": "bun --env-file=.env --bun vite preview --port 5173 | pino-pretty",
 		"prepare": "bun --bun svelte-kit sync || echo ''",

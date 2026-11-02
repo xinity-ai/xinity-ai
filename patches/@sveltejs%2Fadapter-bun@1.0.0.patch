@@ -1,0 +1,82 @@
+diff --git a/src/env.js b/src/env.js
+index 2dc88c6529f0cbaf47a68e3fcb1ceda704665574..323e353d403226ff77369df2bd994b934438a518 100644
+--- a/src/env.js
++++ b/src/env.js
+@@ -15,7 +15,10 @@ const expected = new Set([
+ 	'ADDRESS_HEADER',
+ 	'PROTOCOL_HEADER',
+ 	'HOST_HEADER',
+-	'PORT_HEADER'
++	'PORT_HEADER',
++	'ORIGIN',
++	'TLS_CERT_FILE',
++	'TLS_KEY_FILE'
+ ]);
+ 
+ if (env_prefix) {
+diff --git a/src/handler.js b/src/handler.js
+index a5cce744b7873975a161beb1deb02766e5635deb..27758a6d6adf7d39be20e08f292f4327bd45486d 100644
+--- a/src/handler.js
++++ b/src/handler.js
+@@ -8,6 +8,8 @@ const protocol_header = env('PROTOCOL_HEADER', '').toLowerCase();
+ const host_header = env('HOST_HEADER', '').toLowerCase();
+ const port_header = env('PORT_HEADER', '').toLowerCase();
+ const xff_depth = number_env('XFF_DEPTH', 1, { min: 1 });
++const runtime_origin = env('ORIGIN');
++const public_origin = runtime_origin ? new URL(runtime_origin).origin : origin;
+ 
+ await server.init({
+ 	env: Bun.env,
+@@ -46,7 +48,7 @@ function normalize_request(request) {
+ 	try {
+ 		// an empty Host header makes request.url relative, so parsing belongs in the try
+ 		const url = new URL(request.url);
+-		const request_origin = origin || get_origin(request, url);
++		const request_origin = public_origin || get_origin(request, url);
+ 		return request_origin === url.origin
+ 			? request
+ 			: new Request(request_origin + url.pathname + url.search, request);
+diff --git a/src/index.js b/src/index.js
+index 54e54a8cd44efde72aa2a1a1102b603a4df12209..b285f6311f5e25c3677890cae212159c77e67442 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -1,7 +1,7 @@
+ /** @import { Serve } from 'bun' */
+ import fs from 'node:fs';
+ import process from 'node:process';
+-import { server_options } from '#@sveltejs/adapter-bun';
++import { env_prefix, server_options } from '#@sveltejs/adapter-bun';
+ import { routes } from './routes.js';
+ import { handler } from './handler.js';
+ import { boolean_env, bytes_env, env, number_env } from './env.js';
+@@ -52,6 +52,16 @@ options.maxRequestBodySize = bytes_env('BODY_SIZE_LIMIT', options.maxRequestBody
+ 
+ const shutdown_timeout = number_env('SHUTDOWN_TIMEOUT', 30);
+ 
++const tls_cert_file = env('TLS_CERT_FILE');
++const tls_key_file = env('TLS_KEY_FILE');
++
++if (!tls_cert_file !== !tls_key_file) {
++	throw new Error(`${env_prefix}TLS_CERT_FILE and ${env_prefix}TLS_KEY_FILE must be set together`);
++}
++if (tls_cert_file && tls_key_file) {
++	options.tls = { cert: Bun.file(tls_cert_file), key: Bun.file(tls_key_file) };
++}
++
+ options.fetch = handler;
+ options.routes = routes;
+ 
+diff --git a/src/routes-util.js b/src/routes-util.js
+index 6504ad01fbf2a26504c8e98d89c52dd7ebf9e0c0..9ae340646c9c9427a60181bdb325f9039d8699db 100644
+--- a/src/routes-util.js
++++ b/src/routes-util.js
+@@ -10,7 +10,8 @@ import path from 'node:path';
+  * @returns {string}
+  */
+ function resolve_file(subdir, filename) {
+-	return embed ? filename : path.resolve(dir, subdir, filename);
++	// a plain (non-compiled) bundle of the embed output imports files as paths relative to itself
++	return embed ? path.resolve(dir, filename) : path.resolve(dir, subdir, filename);
+ }
+ 
+ /**

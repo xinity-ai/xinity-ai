@@ -10,6 +10,7 @@ WORKDIR /usr/src/app
 # Copy only manifests first (maximizes layer cache)
 # [sync:workspace-manifests] - auto-generated, do not edit
 COPY package.json bun.lock ./
+COPY patches patches
 COPY packages/common-db/package.json packages/common-db/package.json
 COPY packages/common-env/package.json packages/common-env/package.json
 COPY packages/common-log/package.json packages/common-log/package.json
