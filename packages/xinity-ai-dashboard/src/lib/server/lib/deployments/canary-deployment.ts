@@ -1,6 +1,6 @@
 import { calcRolloutProgress, canaryOfDeployment, deploymentCanaryT, deploymentManagedT, deploymentT, inArray, sql, type Deployment, type DeploymentCanary, type DeploymentManaged } from "common-db";
 import type { RolloutAdvance } from "common-env";
-import type { DeploymentOutput, RolloutAdvanceInput } from "$lib/orpc/dtos/model.dto";
+import { MIN_CANARY_REPLICAS, type DeploymentOutput, type RolloutAdvanceInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import { markMissingFromCatalog, phasesOf, withInstallationStatus } from "./deployment-reads";
@@ -24,7 +24,8 @@ export async function withCanaryRows(entries: Deployment[]): Promise<CanaryRow[]
   return rows.flatMap(({ deployment, deployment_canary: canary }) => {
     const from = memberById.get(canary.fromId);
     const to = memberById.get(canary.toId);
-    return from && to ? [{ entry: deployment, canary, from, to }] : [];
+    const replicas = Math.max(MIN_CANARY_REPLICAS, canary.replicas);
+    return from && to ? [{ entry: deployment, canary: { ...canary, replicas }, from, to }] : [];
   });
 }
 

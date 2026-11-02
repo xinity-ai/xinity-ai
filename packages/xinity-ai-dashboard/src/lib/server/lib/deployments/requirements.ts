@@ -1,6 +1,7 @@
 import { calcCanaryProgress, type DeploymentCanary, type DeploymentLegacy, type DeploymentManaged } from "common-db";
 import type { DeploymentSettings } from "common-env";
 import type { Provider } from "common-env/model-catalog";
+import { MIN_CANARY_REPLICAS } from "$lib/orpc/dtos/model.dto";
 import { ownedByLegacy, ownedByManaged, requirementKey, type InstallationOwnership } from "./placement";
 
 export type ModelRequirement = InstallationOwnership & { specifier: string; replicas: number; kvCacheSize: number | null; preferredDriver: Provider | null; settings: DeploymentSettings };
@@ -30,10 +31,8 @@ export function requirementsForDeployments(deployments: DeploymentPlan[]): Model
     if (progress === 100 || !earlySpecifier || earlySpecifier === specifier) {
       return [side(specifier, replicas, deployment.kvCacheSize)];
     }
-    return [
-      side(specifier, Math.ceil(replicas * (progress / 100)), deployment.kvCacheSize),
-      side(earlySpecifier, Math.ceil(replicas * ((100 - progress) / 100)), deployment.earlyKvCacheSize),
-    ];
+    const split = canaryReplicas(replicas, progress);
+    return [side(specifier, split.to, deployment.kvCacheSize), side(earlySpecifier, split.from, deployment.earlyKvCacheSize)];
   }));
 }
 
@@ -45,10 +44,21 @@ export function requirementsForManaged(rows: ManagedPlan[]): ModelRequirementTab
   return tableOf(rows.map((row) => managedRequirement(row, row.replicas)));
 }
 
-// The members share the canary's replicas by progress, each rounded up so a member taking any traffic keeps a replica.
+export function canaryReplicas(replicas: number, progress: number): { from: number; to: number } {
+  const budget = Math.max(MIN_CANARY_REPLICAS, replicas);
+  if (progress <= 0) {
+    return { from: budget, to: 0 };
+  }
+  if (progress >= 100) {
+    return { from: 0, to: budget };
+  }
+  const from = Math.min(budget - 1, Math.max(1, Math.round(budget * ((100 - progress) / 100))));
+  return { from, to: budget - from };
+}
+
 export function requirementsForCanaries(canaries: CanaryPlan[]): ModelRequirementTable {
-  return tableOf(canaries.flatMap((canary) => [
-    managedRequirement(canary.from, Math.ceil(canary.replicas * ((100 - canary.progress) / 100))),
-    managedRequirement(canary.to, Math.ceil(canary.replicas * (canary.progress / 100))),
-  ].filter(({ replicas }) => replicas > 0)));
+  return tableOf(canaries.flatMap((canary) => {
+    const split = canaryReplicas(canary.replicas, canary.progress);
+    return [managedRequirement(canary.from, split.from), managedRequirement(canary.to, split.to)];
+  }).filter(({ replicas }) => replicas > 0));
 }

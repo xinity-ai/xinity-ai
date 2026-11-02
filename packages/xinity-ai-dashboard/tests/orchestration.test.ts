@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectIncompleteGroups, collectReassignableOrphans, collectReplicasThatDoNotFit, capacityNeed, findPlacement, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
 import { buildClusterState, freeGbOn, rankServers, resourcesOf } from "../src/lib/server/lib/deployments/cluster-state";
 import { layoutForVllm, vllmScheduler } from "../src/lib/server/lib/deployments/engines/vllm";
-import { requirementsForCanaries, requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
+import { canaryReplicas, requirementsForCanaries, requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
 import type { DeploymentStrategy } from "../src/lib/server/lib/deployments/strategy";
 import type { AiNode, DeploymentLegacy, ModelInstallation } from "common-db";
 import type { SchedulableModel } from "../src/lib/server/lib/models/model-catalog";
@@ -563,6 +563,26 @@ describe("orchestration: requirements per deployment", () => {
     expect(midway["to:same"]).toMatchObject({ managedId: "to", legacyId: null, replicas: 1 });
 
     expect(Object.keys(requirementsForCanaries([{ ...rollout, progress: 100 }]))).toEqual(["to:same"]);
+  });
+
+  test("a rollout's split adds up to exactly its replicas, the new model taking the larger part past half the traffic", () => {
+    expect(canaryReplicas(3, 50)).toEqual({ from: 2, to: 1 });
+    expect(canaryReplicas(3, 51)).toEqual({ from: 1, to: 2 });
+    expect(canaryReplicas(2, 10)).toEqual({ from: 1, to: 1 });
+    expect(canaryReplicas(2, 99)).toEqual({ from: 1, to: 1 });
+    for (let replicas = 2; replicas <= 10; replicas++) {
+      for (let progress = 1; progress < 100; progress++) {
+        const { from, to } = canaryReplicas(replicas, progress);
+        expect(from + to).toBe(replicas);
+        expect(Math.min(from, to)).toBeGreaterThanOrEqual(1);
+      }
+    }
+  });
+
+  test("a rollout runs on at least two replicas, and gives them all to one model at either end", () => {
+    expect(canaryReplicas(1, 30)).toEqual({ from: 1, to: 1 });
+    expect(canaryReplicas(4, 0)).toEqual({ from: 4, to: 0 });
+    expect(canaryReplicas(4, 100)).toEqual({ from: 0, to: 4 });
   });
 
 });

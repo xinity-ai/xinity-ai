@@ -44,6 +44,8 @@ export const DeploymentStatusDto = z.object({
 export type StatusPhase = z.infer<typeof DeploymentStatusDto>["phase"];
 
 export const ReplicasDto = z.number().int().min(1);
+export const MIN_CANARY_REPLICAS = 2;
+export const CanaryReplicasDto = z.number().int().min(MIN_CANARY_REPLICAS);
 export const ProgressDto = z.number().int().min(0).max(100);
 export const KvCacheSizeDto = z.number().positive();
 
@@ -91,7 +93,7 @@ export const ManagedDeploymentDto = z.object({
 const CanaryMemberDto = ManagedDeploymentDto.omit({ replicas: true });
 
 export const CanaryDeploymentDto = z.object({
-  replicas: z.number().describe("Replicas the two members share, split between them by progress"),
+  replicas: z.number().describe("Replicas the two members share, split between them by progress, at least 2"),
   progress: z.number().describe("Share of traffic, in percent, that goes to `to`"),
   advance: rolloutAdvanceSchema.describe("How progress moves"),
   from: CanaryMemberDto.describe("The model traffic moves away from"),
@@ -181,7 +183,7 @@ export const RolloutDto = z.discriminatedUnion("type", [
 export type RolloutTarget = z.infer<typeof RolloutDto>;
 
 export const CanaryDeploymentPatchDto = CanaryDeploymentDto.extend({
-  replicas: ReplicasDto,
+  replicas: CanaryReplicasDto,
   progress: ProgressDto.describe("Under a time-based advance, the rollout moves on to 100 from here"),
   advance: RolloutAdvanceInputDto,
   from: CanaryMemberPatchDto,

@@ -1,6 +1,6 @@
 import { deploymentCanaryT, deploymentManagedT, deploymentT, sql, type Deployment, type DeploymentManaged } from "common-db";
 import type { DeploymentType } from "common-env";
-import type { RolloutTarget } from "$lib/orpc/dtos/model.dto";
+import { MIN_CANARY_REPLICAS, type RolloutTarget } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import type { VariantHandlers } from "$lib/util";
 import { storedAdvance, validateCanaryModelTypes, withCanaryRows } from "./canary-deployment";
@@ -36,16 +36,17 @@ async function startCanary(target: CanaryTarget, entry: Deployment): Promise<Rol
   }
   const { progress, advance } = target.canary;
   const to = newMemberOf(from, target);
+  const replicas = Math.max(MIN_CANARY_REPLICAS, from.replicas);
   return {
     models: [to.specifier],
     mustFit: {
-      requirements: requirementsForCanaries([{ replicas: from.replicas, progress, from, to: { id: "rollout-draft", ...to } }]),
+      requirements: requirementsForCanaries([{ replicas, progress, from, to: { id: "rollout-draft", ...to } }]),
       replacing: [from.id],
     },
     apply: async (tx) => {
       const toId = await createManaged(tx, to);
       const [canary] = await tx.insert(deploymentCanaryT)
-        .values({ fromId: from.id, toId, replicas: from.replicas, progress, advance: storedAdvance(advance, progress) })
+        .values({ fromId: from.id, toId, replicas, progress, advance: storedAdvance(advance, progress) })
         .returning({ id: deploymentCanaryT.id });
       if (!canary) {
         throw new Error("Insert into deploymentCanaryT returned no row");

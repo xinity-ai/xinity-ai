@@ -1,6 +1,6 @@
 import { calcCanaryProgress, deploymentCanaryT, deploymentLegacyT, deploymentT, inArray, legacyOfDeployment, modelInstallationT, sql, type Deployment, type DeploymentLegacy } from "common-db";
 import type { RolloutAdvance } from "common-env";
-import type { DeploymentOutput, LegacyDeploymentInput } from "$lib/orpc/dtos/model.dto";
+import { MIN_CANARY_REPLICAS, type DeploymentOutput, type LegacyDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { validateCanaryModelTypes } from "./canary-deployment";
@@ -59,7 +59,7 @@ export async function migrateLegacy(tx: Transaction, entry: Deployment): Promise
   }
   const fromId = await takeOver(legacy.earlySpecifier, legacy.earlyKvCacheSize);
   const [canary] = await tx.insert(deploymentCanaryT)
-    .values({ fromId, toId, replicas, progress, advance: advanceOf(legacy) })
+    .values({ fromId, toId, replicas: Math.max(MIN_CANARY_REPLICAS, replicas), progress, advance: advanceOf(legacy) })
     .returning({ id: deploymentCanaryT.id });
   if (!canary) {
     throw new Error("Insert into deploymentCanaryT returned no row");

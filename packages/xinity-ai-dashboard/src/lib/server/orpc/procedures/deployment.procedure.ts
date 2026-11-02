@@ -1,7 +1,7 @@
 import { rootOs, withOrganization, requirePermission, auditMiddleware } from "../root";
 import { inArray, sql, deploymentT, deploymentCanaryT, modelInstallationT, modelInstallationStateT, canaryOfDeployment, installationOfDeployment, stateOfInstallation, type Deployment } from "common-db";
 import z from "zod";
-import { CanaryMemberInputDto, DeploymentDto, RolloutDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ManagedDeploymentInputDto, ProgressDto, ReplicasDto, type CanaryMemberInput, type DeploymentUpdate, type ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
+import { CanaryMemberInputDto, CanaryReplicasDto, DeploymentDto, MIN_CANARY_REPLICAS, RolloutDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ManagedDeploymentInputDto, ProgressDto, ReplicasDto, type CanaryMemberInput, type DeploymentUpdate, type ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
 import { requirementsForCanaries, requirementsForDeployments, requirementsForManaged, type CanaryMemberPlan, type DeploymentPlan, type ManagedPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
@@ -64,7 +64,7 @@ const CapacityCheckInput = z.discriminatedUnion("type", [
     type: z.literal("canary"),
     deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
     canary: z.object({
-      replicas: ReplicasDto.default(1),
+      replicas: CanaryReplicasDto.default(MIN_CANARY_REPLICAS),
       progress: ProgressDto.default(0),
       from: CanaryMemberInputDto,
       to: CanaryMemberInputDto,
