@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, type Snippet } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
@@ -402,9 +402,9 @@
   </Card.Content>
 </Card.Root>
 
-{#snippet tempPasswordDisplay(password: string, description: string, onDone: () => void)}
+{#snippet tempPasswordDisplay(password: string, description: Snippet, onDone: () => void)}
   <div class="space-y-4">
-    <p class="text-sm text-muted-foreground">{@html description}</p>
+    <p class="text-sm text-muted-foreground">{@render description()}</p>
     <div class="flex items-center gap-2">
       <code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">{password}</code>
       <Button variant="outline" size="icon-sm" onclick={() => copyToClipboard(password)}>
@@ -416,6 +416,14 @@
       <Button onclick={onDone}>Done</Button>
     </div>
   </div>
+{/snippet}
+
+{#snippet createdUserDescription()}
+  User <span class="font-medium text-foreground">{createUserName}</span> has been created. Give them this temporary password:
+{/snippet}
+
+{#snippet resetPasswordDescription()}
+  New temporary password for <span class="font-medium text-foreground">{resetPasswordTargetUser?.name}</span>:
 {/snippet}
 
 <!-- Ban Modal -->
@@ -447,7 +455,7 @@
       <h2 class="text-lg font-semibold mb-4">User Created</h2>
       {@render tempPasswordDisplay(
         createUserTempPassword,
-        `User <span class="font-medium text-foreground">${createUserName}</span> has been created. Give them this temporary password:`,
+        createdUserDescription,
         () => { createUserModalOpen = false; createUserTempPassword = ""; createUserName = ""; createUserEmail = ""; },
       )}
     {:else}
@@ -483,7 +491,7 @@
       <h2 class="text-lg font-semibold mb-4">Password Reset</h2>
       {@render tempPasswordDisplay(
         resetPasswordTempPassword,
-        `New temporary password for <span class="font-medium text-foreground">${resetPasswordTargetUser?.name}</span>:`,
+        resetPasswordDescription,
         () => { resetPasswordModalOpen = false; resetPasswordTempPassword = ""; },
       )}
     {:else}
