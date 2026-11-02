@@ -30,19 +30,26 @@ const WARMUP_DELAY_MS = 2_000;
 const CAPACITY_WARNING_THRESHOLD = 0.8; // 80%
 const MODELHUB_URL = `${config.origin}/modelhub/`;
 
-// ── In-memory state caches ──────────────────────────────────────────
+// ── In-memory state ─────────────────────────────────────────────────
 
-/** Tracks the last known aggregate phase per deployment. */
-const deploymentPhaseCache = new Map<string, DisplayPhase>();
+/** Lives for one scheduler run, so re-enabling notifications starts from a fresh snapshot. */
+type SchedulerState = {
+  deploymentPhases: Map<string, DisplayPhase>;
+  nodeAvailability: Map<string, boolean>;
+  /** False until the first snapshot is taken, which sends no notifications. */
+  initialized: boolean;
+  /** Reset when capacity drops below the threshold. */
+  capacityWarningActive: boolean;
+};
 
-/** Tracks the last known availability per node. */
-const nodeAvailabilityCache = new Map<string, boolean>();
-
-/** Whether the initial snapshot has been taken (skip notifications on first run). */
-let initialized = false;
-
-/** Track if capacity warning was already sent (reset when capacity drops below threshold). */
-let capacityWarningActive = false;
+function createSchedulerState(): SchedulerState {
+  return {
+    deploymentPhases: new Map(),
+    nodeAvailability: new Map(),
+    initialized: false,
+    capacityWarningActive: false,
+  };
+}
 
 function pruneStaleCacheEntries<T>(cache: Map<string, T>, currentIds: Iterable<string>): void {
   const currentIdSet = currentIds instanceof Set ? currentIds : new Set(currentIds);
@@ -188,15 +195,15 @@ function dispatchDeploymentPhaseNotification(
   log.info({ deploymentId, name: info.name }, `Deployment ${label} notification sent`);
 }
 
-async function checkDeploymentStatus() {
+async function checkDeploymentStatus(state: SchedulerState) {
   try {
     const currentPhases = await getDeploymentPhases();
 
     for (const [deploymentId, info] of currentPhases) {
-      const previousPhase = deploymentPhaseCache.get(deploymentId);
-      deploymentPhaseCache.set(deploymentId, info.phase);
+      const previousPhase = state.deploymentPhases.get(deploymentId);
+      state.deploymentPhases.set(deploymentId, info.phase);
 
-      if (!initialized || previousPhase === undefined) continue;
+      if (!state.initialized || previousPhase === undefined) continue;
       if (previousPhase === info.phase) continue;
 
       if (info.phase === "ready") {
@@ -211,7 +218,7 @@ async function checkDeploymentStatus() {
       }
     }
 
-    pruneStaleCacheEntries(deploymentPhaseCache, currentPhases.keys());
+    pruneStaleCacheEntries(state.deploymentPhases, currentPhases.keys());
   } catch (err) {
     log.error({ err }, "Failed to check deployment status");
   }
@@ -219,7 +226,7 @@ async function checkDeploymentStatus() {
 
 // ── Node health check ───────────────────────────────────────────────
 
-async function checkNodeHealth() {
+async function checkNodeHealth(state: SchedulerState) {
   try {
     const nodes = await getDB()
       .select({ id: aiNodeT.id, host: aiNodeT.host, port: aiNodeT.port, available: aiNodeT.available })
@@ -227,10 +234,10 @@ async function checkNodeHealth() {
       .where(sql`${aiNodeT.deletedAt} IS NULL`);
 
     for (const node of nodes) {
-      const previousAvailable = nodeAvailabilityCache.get(node.id);
-      nodeAvailabilityCache.set(node.id, node.available);
+      const previousAvailable = state.nodeAvailability.get(node.id);
+      state.nodeAvailability.set(node.id, node.available);
 
-      if (!initialized || previousAvailable === undefined) continue;
+      if (!state.initialized || previousAvailable === undefined) continue;
       if (previousAvailable === node.available) continue;
 
       const nodeHost = `${node.host}:${node.port}`;
@@ -249,7 +256,7 @@ async function checkNodeHealth() {
       log.info({ nodeId: node.id, host: nodeHost, available: node.available }, "Node status change notification sent");
     }
 
-    pruneStaleCacheEntries(nodeAvailabilityCache, nodes.map(n => n.id));
+    pruneStaleCacheEntries(state.nodeAvailability, nodes.map(n => n.id));
   } catch (err) {
     log.error({ err }, "Failed to check node health");
   }
@@ -257,7 +264,7 @@ async function checkNodeHealth() {
 
 // ── Capacity check ──────────────────────────────────────────────────
 
-async function checkCapacity() {
+async function checkCapacity(state: SchedulerState) {
   try {
     const [nodes, installations] = await Promise.all([
       getDB()
@@ -278,11 +285,12 @@ async function checkCapacity() {
     const usedRatio = usedCapacity / totalCapacity;
 
     if (usedRatio < CAPACITY_WARNING_THRESHOLD) {
-      capacityWarningActive = false;
+      state.capacityWarningActive = false;
       return;
     }
-    if (capacityWarningActive) return;
-    capacityWarningActive = true;
+    if (state.capacityWarningActive) {
+      return;
+    }
 
     const usedPercent = Math.round(usedRatio * 100);
     await notifyAllOrgs(
@@ -295,6 +303,7 @@ async function checkCapacity() {
       },
       "Failed to send capacity warning notification",
     );
+    state.capacityWarningActive = true;
     log.info({ usedPercent, totalCapacity, usedCapacity }, "Capacity warning notification sent");
   } catch (err) {
     log.error({ err }, "Failed to check capacity");
@@ -405,11 +414,11 @@ async function checkWeeklyReport() {
 
 // ── Combined check ──────────────────────────────────────────────────
 
-async function runChecks() {
-  await Promise.all([checkDeploymentStatus(), checkNodeHealth(), checkCapacity()]);
+async function runChecks(state: SchedulerState) {
+  await Promise.all([checkDeploymentStatus(state), checkNodeHealth(state), checkCapacity(state)]);
 
-  if (!initialized) {
-    initialized = true;
+  if (!state.initialized) {
+    state.initialized = true;
     log.info("Notification scheduler initialized (first snapshot taken)");
   }
 }
@@ -424,6 +433,7 @@ export function startNotificationScheduler(): () => void {
 
   log.info("Starting notification scheduler");
 
+  const state = createSchedulerState();
   const handles: Timer[] = [];
   let stopped = false;
 
@@ -432,11 +442,11 @@ export function startNotificationScheduler(): () => void {
     if (stopped) {
       return;
     }
-    await runChecks();
+    await runChecks(state);
     if (stopped) {
       return;
     }
-    handles.push(setInterval(runChecks, CHECK_INTERVAL_MS));
+    handles.push(setInterval(() => runChecks(state), CHECK_INTERVAL_MS));
     // Weekly report check runs hourly; checkWeeklyReport gates on Monday 8 AM UTC.
     handles.push(setInterval(checkWeeklyReport, WEEKLY_CHECK_INTERVAL_MS));
   })();
