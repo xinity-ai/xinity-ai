@@ -21,7 +21,7 @@ mock.module("../../logger", () => ({
   },
 }));
 
-const { downloadModel, hfUrl, largestWeightFileBytes } = await import("./vllm-download");
+const { downloadModel, hfUrl, largestWeightFileBytes, streamResumed } = await import("./vllm-download");
 const { config } = await import("../../config");
 
 describe("hfUrl", () => {
@@ -267,6 +267,13 @@ describe("downloadModel resume edge cases", () => {
     const attempt = downloadFrom({ "model.safetensors": contents }, () => hangingAfter(new Uint8Array(0)), { stallMs: 50 });
     await expect(attempt).rejects.toThrow("Download of model.safetensors stalled: no data for 0.05s, 5 times in a row");
     expect(fs.existsSync(blobPath("model.safetensors"))).toBe(false);
+  });
+
+  test("counts an attempt as stalled when the stall hits before the body is read", async () => {
+    const answeredAfterStall = (_fromByte: number, signal: AbortSignal) =>
+      new Promise<Response>((resolve) => signal.addEventListener("abort", () => resolve(hangingAfter(new Uint8Array(0))), { once: true }));
+
+    expect(await streamResumed(incompletePath("model.safetensors"), 10, async () => {}, answeredAfterStall)).toBe("stalled");
   });
 
   test("counts the bytes already on disk when a download resumes", async () => {

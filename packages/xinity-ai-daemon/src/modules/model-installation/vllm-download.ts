@@ -287,6 +287,9 @@ async function streamToFile(
   const reader = body.getReader();
   const cancel = () => void reader.cancel(signal.reason).catch(() => {});
   signal.addEventListener("abort", cancel, { once: true });
+  if (signal.aborted) {
+    cancel();
+  }
   try {
     for (let read = await reader.read(); !read.done; read = await reader.read()) {
       const buf = read.value instanceof Uint8Array ? read.value : new Uint8Array(read.value);
