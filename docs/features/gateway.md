@@ -47,10 +47,22 @@ Canary deployments are configured through the [dashboard's Model Hub](dashboard.
 
 ## Request Recording
 
-Every API call is recorded in the database with input/output messages, model, duration, token counts, API key, application, and organization. Two controls suppress recording of the call body (usage events are always recorded regardless):
+Usage is recorded for every call: model, duration, token counts, API key, application and organization. The call's content, meaning its input and output messages, is recorded only on the endpoints below.
 
-- **Per-request:** Set `"store": false` in the request body.
-- **Per-key:** Disable the `collectData` flag on the API key (via the dashboard).
+| Endpoint | Content recorded |
+|---|---|
+| `/v1/chat/completions` | Yes |
+| `/v1/completions` | Yes |
+| `/v1/responses` | Yes |
+| `/v1/embeddings` | No |
+| `/v1/rerank` | No |
+| `/v1/audio/transcriptions` | No |
+| `/v1/realtime` | No |
+
+On the endpoints that record content, two controls decide whether a call is recorded:
+
+- Per key: the `collectData` flag on the API key, set in the dashboard, is the default for its calls.
+- Per request: `"store"` in the request body overrides the key's flag for that call. `"store": false` keeps the call out of the record, and `"store": true` records it even when the key's flag is off.
 
 ## Responses API
 
