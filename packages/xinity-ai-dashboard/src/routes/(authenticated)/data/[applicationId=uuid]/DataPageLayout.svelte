@@ -90,6 +90,7 @@
 
   let allCalls = $state<DataViewCall[]>([]);
   let offset = $state(0);
+  let serverPosition = 0;
   let loadingMore = $state(false);
   let hasMore = $state(true);
 
@@ -132,6 +133,7 @@
     if (key !== prevFilterKey) {
       prevFilterKey = key;
       offset = 0;
+      serverPosition = 0;
       allCalls = [];
       deletedCount = 0;
       reactionSummaryRequests = new Map();
@@ -154,6 +156,7 @@
       const newCalls = data.filter((c) => !existingIds.has(c.id));
       allCalls = [...existing, ...newCalls];
     }
+    serverPosition = offset + data.length;
     hasMore = data.length >= PAGE_SIZE;
     loadingMore = false;
   });
@@ -199,6 +202,7 @@
     const removed = new Set(ids);
     allCalls = allCalls.filter((c) => !removed.has(c.id));
     deletedCount += reassigned;
+    serverPosition -= reassigned;
     if (selectedCall && removed.has(selectedCall.id)) {
       selectedCall = null;
     }
@@ -249,7 +253,12 @@
   function loadMoreData() {
     if (loadingMore || !hasMore) return;
     loadingMore = true;
-    offset = allCalls.length;
+    // Deletions can shift the next unseen row back onto the current offset, where assigning would not refetch.
+    if (serverPosition === offset) {
+      void apiCalls.refresh();
+    } else {
+      offset = serverPosition;
+    }
   }
 
   function requestDelete(call: DataViewCall) {
@@ -270,6 +279,7 @@
       if (result?.success) {
         allCalls = allCalls.filter((c) => c.id !== deleteTarget!.id);
         deletedCount++;
+        serverPosition--;
         if (selectedCall?.id === deleteTarget.id) {
           selectedCall = null;
         }
