@@ -207,7 +207,7 @@ export const vllmScheduler: EngineScheduler = {
   charge: (node, request, cards) => {
     const vendor = placeableCards(node.cards)[0]?.vendor ?? "";
     const charge = perCardCharge(request.model, node, request.kvCacheGb, cards, vendor);
-    return charge && asCharge(charge, cards);
+    return charge && { ...asCharge(charge, cards), parts: charge.parts };
   },
   occupiedCards: (cards, gpuIds) => {
     const pinned = cards.filter((card) => card.id !== null && gpuIds.includes(card.id));

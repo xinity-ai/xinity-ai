@@ -459,13 +459,28 @@ export async function chargeUnchargedInstallations(
     if (!model) {
       return install;
     }
-    const cards = Math.max(install.gpuIds.length, 1);
-    const charge = ENGINE_SCHEDULERS[install.driver].charge(resourcesOf(idle, install.nodeId), { model, kvCacheGb: install.kvCacheCapacity }, cards);
+    const charge = rechargeOf(install, idle, model);
     if (!charge) {
-      log.warn({ installationId: install.id, specifier: install.specifier, cards }, "Installation runs on a split its catalog entry no longer allows; keeping its old charge");
+      log.warn({ installationId: install.id, specifier: install.specifier, cards: install.gpuIds.length }, "Installation runs on a split its catalog entry no longer allows; keeping its old charge");
+      return { ...install, hostCapacity: 0 };
     }
-    return { ...install, ...(charge ?? { hostCapacity: 0 }) };
+    return { ...install, estCapacity: charge.estCapacity, hostCapacity: charge.hostCapacity, maxNumSeqs: charge.maxNumSeqs };
   }));
+}
+
+function rechargeOf(install: ModelInstallation, idle: ClusterState, model: SchedulableModel) {
+  return ENGINE_SCHEDULERS[install.driver].charge(resourcesOf(idle, install.nodeId), { model, kvCacheGb: install.kvCacheCapacity }, Math.max(install.gpuIds.length, 1));
+}
+
+// Accounting for the difference between a already running replica and its possibly drifted model info data 
+async function runningParts(install: ModelInstallation, idle: ClusterState): Promise<FootprintPart[]> {
+  if (install.group) {
+    return [];
+  }
+  const model = await lookupSchedulable(install.specifier, install.driver);
+  const charge = model && rechargeOf(install, idle, model);
+  const matches = charge && Math.abs(charge.estCapacity - install.estCapacity) < 0.01 && Math.abs(charge.hostCapacity - (install.hostCapacity ?? 0)) < 0.01;
+  return matches ? charge.parts : [];
 }
 
 async function persistCharges(before: ModelInstallation[], after: ModelInstallation[]): Promise<void> {
@@ -540,9 +555,12 @@ export async function previewPlacement(requirements: ModelRequirementTable, chan
       parts,
     })),
   });
+  const idle = buildClusterState([], servers);
+  const running = await Promise.all(stays.map((replica) =>
+    Promise.all(replica.map(async (installation) => ({ installation, parts: await runningParts(installation, idle) })))));
   return {
     replicas: [
-      ...stays.map((replica) => replicaOf(replica.map((installation) => ({ installation, parts: [] })), true)),
+      ...running.map((members) => replicaOf(members, true)),
       ...replicas.map((members) => replicaOf(members, false)),
     ],
     shortfalls,

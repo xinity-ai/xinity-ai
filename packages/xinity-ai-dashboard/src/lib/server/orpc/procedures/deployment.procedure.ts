@@ -92,7 +92,7 @@ const PlannedMachineDto = z.object({
 
 const PlannedReplicaDto = z.object({
   specifier: z.string(),
-  running: z.boolean().describe("Whether the replica already runs and stays where it is"),
+  running: z.boolean().describe("Whether the replica already runs and stays where it is. Running across machines, or on a catalog entry that changed since, its machines carry no memory breakdown"),
   machines: z.array(PlannedMachineDto).describe("The machines the replica would run on, the one serving it first"),
 });
 
