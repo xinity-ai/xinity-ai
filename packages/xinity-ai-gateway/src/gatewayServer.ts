@@ -14,6 +14,7 @@ import { handleModelsRequest } from "./llm-forward/endpoints/handle-models";
 import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest, handleCancelResponseRequest, handleListInputItemsRequest } from "./llm-forward/endpoints/handle-responses";
 import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
+import { closeRealtimeSessions, handleRealtimeUpgrade, realtimeSocketHandler } from "./llm-forward/endpoints/handle-realtime";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES } from "./serve-config";
 import { activationRefusal, createDbConfigFeed, createDependencyProbe, createHealthHandler, createSecretUnsealer, exitOnHealthFlag, parseMetricsAuth, withoutConnectionTimeout, type RouteHandler } from "common-env";
@@ -131,8 +132,10 @@ const serveOptions = {
     "/openapi.json": await createOpenapiSpec(),
     "/metrics": handleMetrics,
     "/health": handleHealth,
+    "/v1/realtime": handleRealtimeUpgrade,
     ...meteredRoutes,
   },
+  websocket: realtimeSocketHandler,
   fetch: () => errorResponse("Not found", 404),
   idleTimeout: config.server.idleTimeout,
   // One media part base64-encoded, which grows it by a third, plus room for the rest of the request.
@@ -171,6 +174,7 @@ async function gracefulShutdown(signal: string) {
   isShuttingDown = true;
   rootLogger.info({ signal }, "Gateway shutting down, stopping new connection listener...");
 
+  closeRealtimeSessions();
   const stopPromise = server.stop();
 
   try {

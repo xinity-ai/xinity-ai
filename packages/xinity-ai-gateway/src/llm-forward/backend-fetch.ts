@@ -25,6 +25,43 @@ export function backendFetch(url: string | URL | Request, init?: RequestInit & {
 
 type BackendTarget = { host: string; installationId: string; tls: boolean; authToken: string | null };
 
+export type BackendSocketHandlers = {
+  onMessage: (data: string) => void;
+  onClose: (code: number, reason: string) => void;
+};
+
+export type BackendSocket = { send: (data: string) => void; close: () => void };
+
+/** Open a WebSocket to a daemon inference proxy. Frames sent before it connects are queued. */
+export function backendSocket(target: BackendTarget, path: string, handlers: BackendSocketHandlers): BackendSocket {
+  const url = new URL(backendUrl(target.host, target.installationId, path, target.tls));
+  url.protocol = target.tls ? "wss:" : "ws:";
+  const headers = target.authToken
+    ? { authorization: signRequest(target.authToken, { method: "GET", path: `${url.pathname}${url.search}` }) }
+    : undefined;
+  const socket = new WebSocket(url, { headers, ...(tlsOptions ? { tls: tlsOptions } : {}) });
+  const pending: string[] = [];
+
+  socket.addEventListener("open", () => {
+    for (const data of pending.splice(0)) {
+      socket.send(data);
+    }
+  });
+  socket.addEventListener("message", (event) => handlers.onMessage(String(event.data)));
+  socket.addEventListener("close", (event) => handlers.onClose(event.code, event.reason));
+
+  return {
+    send: (data) => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(data);
+      } else if (socket.readyState === WebSocket.CONNECTING) {
+        pending.push(data);
+      }
+    },
+    close: () => socket.close(),
+  };
+}
+
 export function nodeProvider(target: BackendTarget & { driver: string }): OpenAICompatibleProvider {
   const authToken = target.authToken ?? undefined;
   return createOpenAICompatible({
