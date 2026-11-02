@@ -2,7 +2,7 @@
  * Dashboard-specific wrapper around the shared migration check from common-db.
  * Adds logging and a SvelteKit build-phase guard.
  */
-import { building } from "$app/environment";
+import { building } from "$app/env";
 import { rootLogger } from "$lib/server/logging";
 import { checkMigrations, getDB, getMigrationState } from "$lib/server/db";
 import { checkMigrations as queryMigrationState, logMigrationFailureFatal, type MigrationState } from "common-db";

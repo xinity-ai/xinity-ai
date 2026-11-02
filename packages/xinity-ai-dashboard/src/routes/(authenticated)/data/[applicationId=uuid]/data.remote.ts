@@ -330,7 +330,7 @@ export const upsertApiCallResponse = command(z.object({
   await assertPermission(session.activeOrganizationId, { callRating: ["create", "update"] });
 
   if (!await callIsWritable(apiCallId, session.activeOrganizationId)) {
-    error(404, { message: "The call was not found" });
+    error(404, "The call was not found");
   }
 
   const { response, ...rest } = payload;
@@ -357,7 +357,7 @@ export const deleteApiCall = command(z.object({ apiCallId: z.uuid() }), async ({
       throw err;
     });
   if (deleted === 0) {
-    error(404, { message: "The call was not found" });
+    error(404, "The call was not found");
   }
 
   return { success: true };

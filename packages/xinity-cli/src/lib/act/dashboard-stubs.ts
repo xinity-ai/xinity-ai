@@ -82,7 +82,7 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
 // ── $app/* stubs ─────────────────────────────────────────────────────────
 
 export const appStubs: Record<string, Record<string, unknown>> = {
-  "$app/environment": { browser: false, dev: false, building: true },
+  "$app/env": { browser: false, dev: false, building: true },
   "$app/stores": {},
 };
 

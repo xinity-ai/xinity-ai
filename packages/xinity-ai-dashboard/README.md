@@ -10,7 +10,7 @@ SvelteKit admin dashboard for Xinity AI. Built with Vite + Bun, Tailwind CSS, an
 
 ## Stack overview
 
-- SvelteKit app with Bun adapter (`packages/xinity-ai-dashboard/svelte.config.js`)
+- SvelteKit app with Bun adapter (`packages/xinity-ai-dashboard/vite.config.ts`)
 - Vite dev/build pipeline (`packages/xinity-ai-dashboard/vite.config.ts`)
 - Tailwind CSS via the Vite plugin and `src/app.css`
 - shadcn-svelte component registry configuration (`packages/xinity-ai-dashboard/components.json`)

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidateAll } from "$app/navigation";
+  import { refreshAll } from "$app/navigation";
   import { twoFactor } from "$lib/auth";
   import { toastState } from "$lib/state/toast.svelte";
 
@@ -42,7 +42,7 @@
 
     toastState.add("Two-factor authentication disabled", "success");
     reset();
-    invalidateAll();
+    refreshAll();
   }
 
   async function handleRegenerateBackupCodes() {

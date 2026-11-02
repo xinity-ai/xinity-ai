@@ -1,5 +1,5 @@
 /**
- * Svelte store that mirrors URL search params and updates history via pushState
+ * Svelte store that mirrors URL search params and updates history through a shallow goto
  * (no SvelteKit navigation/load cycle).
  *
  * @example
@@ -33,10 +33,10 @@
  * All values are strings (matching URLSearchParams behavior).
  * Empty strings are stripped from the URL automatically.
  */
-import { type Writable, writable } from "svelte/store";
-import { browser } from "$app/environment";
+import { type Writable, get, writable } from "svelte/store";
+import { browser } from "$app/env";
 import { page } from "$app/state";
-import { pushState } from "$app/navigation";
+import { goto } from "$app/navigation";
 
 /**
  * Creates a writable store backed by the current URL search params.
@@ -48,7 +48,7 @@ export function createUrlSearchParamsStore(): Writable<Record<string, string>> {
   const getParamsObject = () =>
     Object.fromEntries(new URLSearchParams(window.location.search).entries());
 
-  const setUrlFromParams = (paramsObj: Record<string, string>) => {
+  const setUrlFromParams = (paramsObj: Record<string, string>): Record<string, string> => {
     const url = new URL(window.location.href);
     url.search = "";
     for (const [key, value] of Object.entries(paramsObj)) {
@@ -56,7 +56,8 @@ export function createUrlSearchParamsStore(): Writable<Record<string, string>> {
         url.searchParams.set(key, value);
       }
     }
-    pushState(url.pathname + url.search + url.hash, {});
+    void goto(url.pathname + url.search + url.hash, { shallow: true });
+    return Object.fromEntries(url.searchParams.entries());
   };
 
   const { subscribe, set } = writable(getParamsObject(), (set) => {
@@ -69,8 +70,8 @@ export function createUrlSearchParamsStore(): Writable<Record<string, string>> {
 
   const flush = () => {
     if (pendingUpdate) {
-      setUrlFromParams(pendingUpdate);
-      set(getParamsObject());
+      // goto updates history asynchronously, so window.location still shows the old query here.
+      set(setUrlFromParams(pendingUpdate));
       pendingUpdate = null;
     }
   };
@@ -83,7 +84,7 @@ export function createUrlSearchParamsStore(): Writable<Record<string, string>> {
       queueMicrotask(flush);
     },
     update: (updater) => {
-      const current = pendingUpdate ?? getParamsObject();
+      const current = pendingUpdate ?? get({ subscribe });
       const updated = updater(current);
       pendingUpdate = updated;
       set(updated);

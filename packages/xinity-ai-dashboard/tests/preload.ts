@@ -6,7 +6,7 @@ import { dashboardConfig, type DashboardConfig } from "../src/lib/server/config-
 
 plugin(SveltePlugin({ forceSide: "server" }));
 
-mock.module("$app/environment", () => ({
+mock.module("$app/env", () => ({
   building: false,
   dev: false,
   browser: false,

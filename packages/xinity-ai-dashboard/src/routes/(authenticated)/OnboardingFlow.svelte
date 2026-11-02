@@ -1,7 +1,7 @@
 <script lang="ts">
   import { orpc } from "$lib/orpc/orpc-client";
   import { organization } from "$lib/auth";
-  import { goto, invalidateAll } from "$app/navigation";
+  import { goto, refreshAll } from "$app/navigation";
   import { copyToClipboard } from "$lib/copy";
   import { slugify } from "$lib/util";
   import type { ModelWithSpecifier } from "common-env/model-catalog";
@@ -80,7 +80,7 @@
     onCompleted();
     // The new organization is active server-side; reload so the sidebar and
     // permissions reflect it without a page refresh.
-    await invalidateAll();
+    await refreshAll();
   }
 
 </script>
@@ -135,7 +135,7 @@
             </p>
           </div>
           <Button onclick={()=> {
-            goto("/docs/quick-start/", {invalidateAll: true})
+            goto("/docs/quick-start/", {refreshAll: true})
           }} class="w-full">Check out the Documentation</Button>
         </Card.Content>
       </Card.Root>

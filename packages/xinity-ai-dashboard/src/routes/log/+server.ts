@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ request }) => {
   const logs = logSchema.safeParse(body);
   if (!logs.success) {
     log.warn({ issues: logs.error.issues }, "Invalid browser log request");
-    error(400, { message: "Invalid log request" });
+    error(400, "Invalid log request");
   }
 
   const { level, messages } = logs.data;

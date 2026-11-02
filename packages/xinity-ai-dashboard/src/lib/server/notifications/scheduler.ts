@@ -16,7 +16,7 @@ import {
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
-import { building } from "$app/environment";
+import { building } from "$app/env";
 import { notifyOrgMembers } from "./notification.service";
 import { NotificationType } from "./events";
 import { type DeploymentPhase, type DisplayPhase, type ReplicaMember, foldDeployment, foldReplicas, toDisplayPhase } from "$lib/server/lib/deployments/deployment-phase";

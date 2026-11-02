@@ -38,7 +38,7 @@
                 </div>
               </div>
             </div>
-            <Button href={acceptInviteLink} data-sveltekit-preload-data="off">
+            <Button href={acceptInviteLink} data-sveltekit-preload-data={false}>
               Accept Invitation
             </Button>
           </Card.Content>

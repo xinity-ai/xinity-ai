@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidateAll } from "$app/navigation";
+  import { refreshAll } from "$app/navigation";
   import { organization } from "$lib/auth";
   import type { PageData } from "./$types";
   import InviteSection from "./InviteSection.svelte";
@@ -20,7 +20,7 @@
   async function switchOrganization(orgId: string) {
     const result = await organization.setActive({ organizationId: orgId });
     if (result.data) {
-      invalidateAll();
+      refreshAll();
     }
   }
 </script>

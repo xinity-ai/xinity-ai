@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidateAll } from "$app/navigation";
+  import { refreshAll } from "$app/navigation";
   import { twoFactor } from "$lib/auth";
   import { copyToClipboard } from "$lib/copy";
   import { toastState } from "$lib/state/toast.svelte";
@@ -67,7 +67,7 @@
 
     toastState.add("Two-factor authentication enabled", "success");
     onComplete();
-    invalidateAll();
+    refreshAll();
   }
 </script>
 

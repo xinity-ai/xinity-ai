@@ -1,4 +1,4 @@
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import type { ModelWithSpecifier } from "common-env/model-catalog";
 import { orpc } from "$lib/orpc/orpc-client";
 

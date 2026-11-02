@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidateAll } from "$app/navigation";
+  import { refreshAll } from "$app/navigation";
   import { permissions } from "$lib/state/permissions.svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
@@ -80,7 +80,7 @@
     if (error) {
       toastState.add(error.message || "Failed to send invitation", "error");
     } else {
-      await invalidateAll();
+      await refreshAll();
       await permissions.refresh();
       toastState.add(
         mailConfigured
@@ -107,7 +107,7 @@
     if (error) {
       toastState.add(error.message || "Failed to remove member", "error");
     } else {
-      await invalidateAll();
+      await refreshAll();
       await permissions.refresh();
       toastState.add("Member removed", "success");
       memberToRemove = null;
@@ -129,7 +129,7 @@
       delete memberRoleOverrides[memberId];
       toastState.add(error.message || "Failed to update role", "error");
     } else {
-      await invalidateAll();
+      await refreshAll();
       await permissions.refresh();
       toastState.add(`Role updated to ${roleLabels[newRole]}`, "success");
       delete memberRoleOverrides[memberId];

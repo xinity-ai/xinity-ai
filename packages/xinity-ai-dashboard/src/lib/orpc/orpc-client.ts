@@ -5,7 +5,7 @@ import type { RouterClient } from "@orpc/server";
 import { createORPCClient, createSafeClient, type SafeClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { router } from "$lib/server/orpc/router";
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 
 /**
  * Creates an RPC link pointing at the local `/rpc` endpoint.

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidateAll } from "$app/navigation";
+  import { refreshAll } from "$app/navigation";
   import { orpc } from "$lib/orpc/orpc-client";
   import { toastState } from "$lib/state/toast.svelte";
 
@@ -38,7 +38,7 @@
       currentPassword = "";
       newPassword = "";
       confirmPassword = "";
-      invalidateAll();
+      refreshAll();
     }
   }
 </script>

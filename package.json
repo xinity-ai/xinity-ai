@@ -50,7 +50,6 @@
   },
   "overrides": {
     "samlify": "2.13.1",
-    "cookie": "^0.7.0",
     "esbuild": "0.28.2"
   }
 }
