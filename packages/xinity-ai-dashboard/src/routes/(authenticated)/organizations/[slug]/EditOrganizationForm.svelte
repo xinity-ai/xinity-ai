@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidateAll } from "$app/navigation";
+  import { refreshAll } from "$app/navigation";
   import { permissions } from "$lib/state/permissions.svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
@@ -43,7 +43,7 @@
     if (error) {
       toastState.add("Failed to update organization", "error");
     } else {
-      await invalidateAll();
+      await refreshAll();
       await permissions.refresh();
       toastState.add("Organization updated", "success");
       onClose();

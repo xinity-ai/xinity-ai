@@ -3,7 +3,7 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { pick } from "$lib/util";
   import { toastState } from "$lib/state/toast.svelte";
-  import { invalidateAll } from "$app/navigation";
+  import { refreshAll } from "$app/navigation";
   import type { User } from "common-db";
 
   // shadcn components
@@ -37,7 +37,7 @@
       toastState.add(error.message, "error");
     } else {
       toastState.add("Settings saved successfully", "success");
-      await invalidateAll();
+      await refreshAll();
     }
 
     isSaving = false;

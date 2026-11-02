@@ -23,7 +23,7 @@ docker compose up -d   # PostgreSQL + Mailhog (UI: localhost:8025)
 
 ## Architecture
 
-This is a **SvelteKit 2 + Svelte 5** dashboard using Bun as runtime and package manager. It lives at `packages/xinity-ai-dashboard` in a monorepo and depends on workspace packages `common-db` (database schema/utilities), `common-env` (shared runtime code) and `common-log`.
+This is a **SvelteKit 3 + Svelte 5** dashboard using Bun as runtime and package manager. It lives at `packages/xinity-ai-dashboard` in a monorepo and depends on workspace packages `common-db` (database schema/utilities), `common-env` (shared runtime code) and `common-log`.
 
 ### API Layer (oRPC)
 
@@ -72,13 +72,10 @@ All server-only modules are in `src/lib/server/`. Its top level holds only the c
 - `metrics.ts`, Prometheus via `common-env` metric primitives (exposed at `/metrics`)
 - `config.ts`, resolves `config-schema.ts`'s grouped declaration into the typed `config`
 
-### Path Aliases
+### Imports
 
-Configured in `svelte.config.js`:
-- `common-db` → `../common-db/src/`
-- `common-env` → `../common-env/src/`
-- `common-log` → `../common-log/src/`
-- `$lib` → `src/lib/` (SvelteKit default)
+- `$lib` → `src/lib/` (`paths` in `tsconfig.json` and `resolve.alias` in `vite.config.ts`)
+- `common-db`, `common-env` and `common-log` resolve through their workspace `exports`, so only the entries listed there can be imported
 
 ## Key Patterns
 

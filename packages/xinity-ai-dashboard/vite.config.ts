@@ -1,10 +1,12 @@
 import tailwindcss from '@tailwindcss/vite';
 import devtoolsJson from 'vite-plugin-devtools-json';
+import adapter from '@sveltejs/adapter-bun';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
 import { defineConfig, type Plugin } from 'vite';
 import { writeFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
-import { dependencies, devDependencies } from "./package.json";
+import packageJson from "./package.json" with { type: "json" };
 
 /**
  * Workaround for @better-auth/sso importing `createAuthorizationURL` (and
@@ -80,10 +82,45 @@ export default defineConfig({
 	plugins: [
 		betterAuthOAuth2Fix(),
 		tailwindcss(),
-		sveltekit(),
+		sveltekit({
+			preprocess: vitePreprocess(),
+			compilerOptions: {
+				experimental: {
+					async: true,
+				},
+			},
+			adapter: adapter(),
+			experimental: {
+				remoteFunctions: true
+			},
+			csp: {
+				mode: 'auto',
+				directives: {
+					'default-src': ['self'],
+					// Pinned to the exact file /api loads, so nothing else on the CDN can run.
+					'script-src': ['self', 'https://cdn.jsdelivr.net/npm/@scalar/api-reference@1.73.1/dist/browser/standalone.min.js'],
+					// Svelte transitions and the API reference set inline styles.
+					'style-src': ['self', 'unsafe-inline'],
+					// Organization logos are arbitrary URLs.
+					'img-src': ['self', 'data:', 'https:'],
+					'font-src': ['self', 'data:'],
+					'connect-src': ['self'],
+					'frame-ancestors': ['self'],
+					'object-src': ['none'],
+					'base-uri': ['self'],
+				},
+			},
+		}),
 		devtoolsJson(),
 		bundledModuleList()
 	],
+	// A plain alias rather than a `#lib` subpath import, which would demand file extensions on every
+	// import. tsconfig.json declares the same mapping for svelte-check and bun test.
+	resolve: {
+		alias: {
+			$lib: resolve(import.meta.dirname, 'src/lib'),
+		},
+	},
 	server: {
 		warmup: {
 			ssrFiles: [
@@ -100,7 +137,7 @@ export default defineConfig({
 		},
 	},
 	ssr: {
-		external: Object.keys(dependencies),
-		noExternal: Object.keys(devDependencies),
+		external: Object.keys(packageJson.dependencies),
+		noExternal: Object.keys(packageJson.devDependencies),
 	}
 });

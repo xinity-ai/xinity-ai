@@ -114,7 +114,7 @@ describe("Data page", () => {
       );
       if (asyncErr) {
         throw new Error(
-          `Data page threw experimental_async_required. This usually means SvelteKit's remote query() is reaching svelte.hydratable() without compilerOptions.experimental.async being set in svelte.config.js. Original error: ${asyncErr.message}`,
+          `Data page threw experimental_async_required. This usually means SvelteKit's remote query() is reaching svelte.hydratable() without compilerOptions.experimental.async being set in the sveltekit() options in vite.config.ts. Original error: ${asyncErr.message}`,
         );
       }
     } finally {

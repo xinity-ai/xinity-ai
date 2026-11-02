@@ -1,13 +1,12 @@
 import "zod/compile";
 
-import type { Handle, HandleServerError } from "@sveltejs/kit";
 import { redirect } from "@sveltejs/kit";
-import { sequence } from "@sveltejs/kit/hooks";
+import { sequence, type Handle, type HandleServerError } from "@sveltejs/kit/hooks";
 import { rootLogger } from "$lib/server/logging";
 import { httpMetrics } from "$lib/server/metrics";
 import { auth } from "$lib/server/auth-server";
 import { svelteKitHandler } from "better-auth/svelte-kit";
-import { building } from "$app/environment";
+import { building } from "$app/env";
 import { startDeploymentSyncService } from "$lib/server/lib/deployments/orchestration";
 import { startNotificationScheduler } from "$lib/server/notifications/scheduler";
 import { config, configStore } from "$lib/server/config";
@@ -115,10 +114,14 @@ export const handle: Handle = sequence(migrationGuard, fillLocals, handleAuth, r
 /**
  * Catch unexpected errors so they don't crash the process.
  */
-export const handleError: HandleServerError = ({ error, event, status, message }) => {
+export const handleError: HandleServerError = ({ kind, error, event }) => {
+  if (kind === "app" || kind === "validation") {
+    return;
+  }
   const traceId = event.locals.traceId;
+  const status = kind === "framework" ? error.status : 500;
   log.error({ err: error, path: event?.url?.pathname, status, traceId }, "Unhandled server error");
-  return { message: message ?? "Internal error", traceId };
+  return { message: kind === "framework" ? error.message : "Internal error", traceId };
 };
 
 /**

@@ -27,7 +27,7 @@
       acceptFailure = { code: error.code, message: error.message, status: error.status };
       return;
     }
-    await goto(`/organizations/${data.invitation.organizationSlug}/`, { invalidateAll: true });
+    await goto(`/organizations/${data.invitation.organizationSlug}/`, { refreshAll: true });
   }
 
   const emailNotVerified = $derived({

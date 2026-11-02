@@ -21,7 +21,7 @@
 
   // Icons
   import { Plus, Pencil, Trash2, Copy, Rocket, Info, MessageSquare, RotateCcw, TriangleAlert } from "@lucide/svelte";
-  import { browser } from "$app/environment";
+  import { browser } from "$app/env";
   import { permissions } from "$lib/state/permissions.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import NoOrganization from "$lib/components/NoOrganization.svelte";

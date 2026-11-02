@@ -1,6 +1,6 @@
 <script lang="ts">
   import { orpc } from "$lib/orpc/orpc-client";
-  import { invalidateAll } from "$app/navigation";
+  import { refreshAll } from "$app/navigation";
   import { toastState } from "$lib/state/toast.svelte";
   import type { DisplaySettings } from "common-db";
   import type { ChecklistData } from "./dashboard.types";
@@ -102,7 +102,7 @@
       toastState.add(error.message, "error");
       isDismissing = false;
     } else {
-      await invalidateAll();
+      await refreshAll();
     }
   }
 </script>

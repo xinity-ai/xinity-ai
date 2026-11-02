@@ -4,7 +4,7 @@ import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
 import { checkNodeCompatibility, type BlockedVersion, type ModelNodeRequirements, type NodeCapability, type Provider } from "common-env/model-catalog";
 import { rootLogger } from "$lib/server/logging";
-import { building } from "$app/environment";
+import { building } from "$app/env";
 import { maxVramGb } from "$lib/server/license";
 import { config } from "$lib/server/config";
 import { buildClusterState, chargeCapacity, chargeOf, freeGbOn, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";

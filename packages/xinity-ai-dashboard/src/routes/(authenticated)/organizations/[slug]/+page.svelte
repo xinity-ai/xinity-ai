@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { PageData } from "./$types";
-  import { invalidateAll } from "$app/navigation";
+  import { refreshAll } from "$app/navigation";
   import { organization } from "$lib/auth";
 
   import OrganizationHeader from "./OrganizationHeader.svelte";
@@ -49,7 +49,7 @@
     activating = true;
     const result = await organization.setActive({ organizationId: data.organization?.id ?? "" });
     if (result.data) {
-      await invalidateAll();
+      await refreshAll();
     }
     activating = false;
   }

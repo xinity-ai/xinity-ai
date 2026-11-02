@@ -4,7 +4,7 @@
   import AnimatedNumber from "./AnimatedNumber.svelte";
   import { formatTokens, formatPercent, formatEnergy, formatRelativeTime, gpuSummary, totalVramGb } from "$lib/compute/format";
   import { Zap, ArrowRightLeft, CircleCheck, Trash2, Cpu, Lock, MemoryStick, Cable, TriangleAlert, Info } from "@lucide/svelte";
-  import { experimentalGpuVendors, GPU_VENDOR_SUPPORT } from "common-env/model-catalog/definitions/model-primitives";
+  import { experimentalGpuVendors, GPU_VENDOR_SUPPORT } from "common-env/model-catalog";
   import { GROUP_MEMBER_FEATURE } from "common-env/node-coupling";
 
   let { node, rangeLabel, metrics = null, interconnect, onRemove }: {

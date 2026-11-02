@@ -9,7 +9,7 @@
  * Client configuration:
  *   { "url": "https://dashboard.example.com/mcp", "headers": { "x-api-key": "sk_..." } }
  */
-import { json, type RequestHandler } from "@sveltejs/kit";
+import type { RequestHandler } from "@sveltejs/kit";
 import { toORPCError } from "@orpc/client";
 import { mcpTools, callMcpTool, type McpTool, type McpCaller } from "$lib/server/mcp";
 import { config } from "$lib/server/config";
@@ -134,5 +134,5 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		await Promise.all(messages.map((m) => handleMessage(m, apiKey, caller)))
 	).filter(Boolean);
 
-	return Array.isArray(body) ? json(responses) : json(responses[0] ?? {});
+	return Array.isArray(body) ? Response.json(responses) : Response.json(responses[0] ?? {});
 };

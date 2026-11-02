@@ -3,7 +3,7 @@
  * falls back to the deprecated one, so deployments created before the per-engine
  * format keep being placed.
  */
-import { building } from "$app/environment";
+import { building } from "$app/env";
 import {
   createCatalogClient,
   createInfoserverClient,

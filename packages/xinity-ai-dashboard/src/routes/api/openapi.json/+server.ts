@@ -3,7 +3,6 @@
  */
 import { OpenAPIGenerator } from '@orpc/openapi'
 import { ZodToJsonSchemaConverter } from '@orpc/zod/zod4'
-import { text } from '@sveltejs/kit'
 import { os, type Procedure } from '@orpc/server'
 import { router } from '$lib/server/orpc/router'
 import { config } from '$lib/server/config'
@@ -40,7 +39,7 @@ and accessing information about recorded LLM calls`
 
 /** Returns the generated OpenAPI JSON. */
 export const GET = async () => {
-  return text(JSON.stringify(spec), {
+  return new Response(JSON.stringify(spec), {
     headers: {
       "content-type": "application/json",
     }

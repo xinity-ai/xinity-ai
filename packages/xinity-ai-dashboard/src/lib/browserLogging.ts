@@ -1,7 +1,7 @@
 /**
  * Browser-side logger that forwards selected events to the server `/log` endpoint.
  */
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { default as pino } from "pino";
 
 /**

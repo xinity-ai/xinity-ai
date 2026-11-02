@@ -1,8 +1,7 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
-  import type { Engine, ModelType, ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
+  import { EngineEnum, type Engine, type ModelType, type ModelWithSpecifier, type NodeCapability } from "common-env/model-catalog";
   import type { PickerIncompatibility } from "./ModelChoiceCard.svelte";
-  import { EngineEnum } from "common-env/model-catalog/definitions/model-primitives";
   import type { ModelCompatibility } from "$lib/server/orpc/procedures/cluster.procedure";
   import { modelCatalog } from "$lib/state/model-catalog.svelte";
   import { formatGb } from "$lib/util";

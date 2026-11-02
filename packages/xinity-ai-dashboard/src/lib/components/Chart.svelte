@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { browser } from "$app/environment";
+  import { browser } from "$app/env";
   import { Chart, type ChartConfiguration, registerables, registry } from "chart.js";
   import { onMount } from "svelte";
 
