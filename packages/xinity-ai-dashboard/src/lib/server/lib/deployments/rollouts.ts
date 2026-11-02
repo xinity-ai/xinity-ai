@@ -47,7 +47,7 @@ async function startCanary(target: CanaryTarget, entry: Deployment): Promise<Rol
     models: [to.specifier],
     mustFit: {
       requirements: requirementsForCanaries([{ replicas, progress, from, to: { id: "rollout-draft", ...to } }]),
-      replacing: [from.id],
+      changing: [from.id],
     },
     apply: async (tx) => {
       const toId = await createManaged(tx, to);
@@ -77,7 +77,7 @@ async function switchModel({ managed }: ManagedTarget, entry: Deployment): Promi
   const to = newMemberOf(from, managed.to);
   return {
     models: [to.specifier],
-    mustFit: { requirements: requirementsForManaged([{ id: "switch-draft", ...to }]), replacing: [from.id] },
+    mustFit: { requirements: requirementsForManaged([{ id: "switch-draft", ...to }]), changing: [from.id] },
     apply: async (tx) => {
       const managedId = await createManaged(tx, to);
       await tx.update(deploymentT).set({ managedId }).where(sql`${deploymentT.id} = ${entry.id}`);
@@ -100,7 +100,7 @@ async function endCanary({ managed }: ManagedTarget, entry: Deployment): Promise
   const dropped = row[OTHER_MEMBER[managed.keep]];
   return {
     models: [],
-    mustFit: { requirements: requirementsForManaged([{ ...kept, replicas: row.canary.replicas }]), replacing: [row.from.id, row.to.id] },
+    mustFit: { requirements: requirementsForManaged([{ ...kept, replicas: row.canary.replicas }]), changing: [row.from.id, row.to.id] },
     apply: async (tx) => {
       await tx.update(deploymentManagedT).set({ replicas: row.canary.replicas }).where(sql`${deploymentManagedT.id} = ${kept.id}`);
       await tx.update(deploymentT).set({ type: "managed", managedId: kept.id, canaryId: null }).where(sql`${deploymentT.id} = ${entry.id}`);

@@ -78,7 +78,7 @@ export const managedDeployment: DashboardDeploymentType = {
     if (!reenabling && !scalingUp) {
       return {};
     }
-    return { mustFit: { requirements: requirementsForManaged([{ ...managed, ...patch }]), replacing: scalingUp ? [managed.id] : undefined } };
+    return { mustFit: { requirements: requirementsForManaged([{ ...managed, ...patch }]) } };
   },
 
   async update(tx, entry, input) {

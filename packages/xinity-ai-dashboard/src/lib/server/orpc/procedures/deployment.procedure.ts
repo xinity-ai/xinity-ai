@@ -52,17 +52,17 @@ export const LegacyDraftDto = z.object({
 const CapacityCheckInput = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("legacy"),
-    deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
+    deploymentId: z.uuid().optional().describe("The deployment this draft changes. Its replicas that the draft keeps stay where they run"),
     legacy: LegacyDraftDto,
   }),
   z.object({
     type: z.literal("managed"),
-    deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
+    deploymentId: z.uuid().optional().describe("The deployment this draft changes. Its replicas that the draft keeps stay where they run"),
     managed: ManagedDeploymentInputDto,
   }),
   z.object({
     type: z.literal("canary"),
-    deploymentId: z.uuid().optional().describe("The deployment this draft changes, which is planned without its own installations"),
+    deploymentId: z.uuid().optional().describe("The deployment this draft changes. Its replicas that the draft keeps stay where they run"),
     canary: z.object({
       replicas: CanaryReplicasDto.default(MIN_CANARY_REPLICAS),
       progress: ProgressDto.default(0),
@@ -91,6 +91,7 @@ const PlannedMachineDto = z.object({
 
 const PlannedReplicaDto = z.object({
   specifier: z.string(),
+  running: z.boolean().describe("Whether the replica already runs and stays where it is"),
   machines: z.array(PlannedMachineDto).describe("The machines the replica would run on, the one serving it first"),
 });
 
@@ -164,19 +165,18 @@ function managedDraftPlan(draft: ManagedDeploymentInput, id = DRAFT_DEPLOYMENT_I
   return { ...memberDraftPlan(draft, id), replicas: draft.replicas };
 }
 
-const DRAFT_REQUIREMENTS: VariantHandlers<z.infer<typeof CapacityCheckInput>, ModelRequirementTable, [string | undefined]> = {
-  legacy: ({ legacy }, id) => requirementsForDeployments([draftPlan(legacy, id)]),
-  managed: ({ managed }, id) => requirementsForManaged([managedDraftPlan(managed, id)]),
-  canary: ({ canary: { from, to, ...rollout } }) => requirementsForCanaries([{
+const DRAFT_REQUIREMENTS: VariantHandlers<z.infer<typeof CapacityCheckInput>, ModelRequirementTable, [string[]]> = {
+  legacy: ({ legacy }, [id]) => requirementsForDeployments([draftPlan(legacy, id)]),
+  managed: ({ managed }, [id]) => requirementsForManaged([managedDraftPlan(managed, id)]),
+  canary: ({ canary: { from, to, ...rollout } }, [fromId = "draft-from", toId = "draft-to"]) => requirementsForCanaries([{
     ...rollout,
-    from: memberDraftPlan(from, "draft-from"),
-    to: memberDraftPlan(to, "draft-to"),
+    from: memberDraftPlan(from, fromId),
+    to: memberDraftPlan(to, toId),
   }]),
 };
 
-// A deployment being changed is planned without its own installations, which the change replaces.
-async function checkDeploymentCapacity(requirements: ModelRequirementTable, replacedOwnerIds: string[] = []): Promise<CapacityCheckResult> {
-  const { replicas, shortfalls } = await previewPlacement(requirements, replacedOwnerIds);
+async function checkDeploymentCapacity(requirements: ModelRequirementTable, changedOwnerIds: string[] = []): Promise<CapacityCheckResult> {
+  const { replicas, shortfalls } = await previewPlacement(requirements, changedOwnerIds);
   const blocking = shortfalls.find((shortfall) => shortfall.reason !== "catalog_unavailable");
   const shortfall = blocking ?? shortfalls[0];
   return {
@@ -267,7 +267,7 @@ const updateDeployment = rootOs
       throw errors.BAD_REQUEST({ message: review.rejected });
     }
     if (review.mustFit) {
-      const result = await checkDeploymentCapacity(review.mustFit.requirements, review.mustFit.replacing);
+      const result = await checkDeploymentCapacity(review.mustFit.requirements, review.mustFit.changing);
       if (!result.deployable) {
         throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
       }
@@ -546,9 +546,9 @@ const checkCapacity = rootOs
   .input(CapacityCheckInput)
   .output(CapacityCheckOutput)
   .handler(async ({ context, input }): Promise<CapacityCheckResult> =>  {
-    const replaced = input.deploymentId ? await findActiveDeploymentInOrg(input.deploymentId, context.activeOrganizationId) : undefined;
-    const replacedOwnerIds = replaced ? await installationOwnersOf(replaced) : [];
-    return checkDeploymentCapacity(handleVariant(DRAFT_REQUIREMENTS, input, replacedOwnerIds[0]), replacedOwnerIds);
+    const changed = input.deploymentId ? await findActiveDeploymentInOrg(input.deploymentId, context.activeOrganizationId) : undefined;
+    const ownerIds = changed ? await installationOwnersOf(changed) : [];
+    return checkDeploymentCapacity(handleVariant(DRAFT_REQUIREMENTS, input, ownerIds), ownerIds);
   });
 
 const CHANGED_MEANWHILE = "The deployment was changed while this was being applied. Load it again and retry";
@@ -597,7 +597,7 @@ const rolloutDeployment = rootOs
     }
     await assertModelsInCatalog(review.models, errors);
     if (entry.enabled) {
-      const result = await checkDeploymentCapacity(review.mustFit.requirements, review.mustFit.replacing);
+      const result = await checkDeploymentCapacity(review.mustFit.requirements, review.mustFit.changing);
       if (!result.deployable) {
         throw errors.INSUFFICIENT_CAPACITY({ message: result.reason });
       }

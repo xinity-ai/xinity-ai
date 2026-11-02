@@ -473,9 +473,30 @@ async function persistCharges(before: ModelInstallation[], after: ModelInstallat
 
 type PlannedMachine = { machineName: string; cards: number; gpuGb: number; hostGb: number; sharedMemory: boolean; parts: FootprintPart[] };
 
-type PlannedReplica = { specifier: string; machines: PlannedMachine[] };
+type PlannedReplica = { specifier: string; running: boolean; machines: PlannedMachine[] };
 
 type PlacementPreview = { replicas: PlannedReplica[]; shortfalls: Shortfall[] };
+
+// As the sync would: a replica of the changed deployment stays where it runs unless the change drops its model,
+// leaves it beyond the replica count, or gives it other settings. Returns the replicas that stay.
+export function releaseChangedReplicas(requirements: ModelRequirementTable, changedOwnerIds: string[], state: ClusterState): ModelInstallation[][] {
+  const stays: ModelInstallation[][] = [];
+  for (const [key, installs] of state.installationsByRequirement) {
+    const replicas = replicasOf(installs);
+    if (!replicas[0] || !changedOwnerIds.includes(ownerOf(replicas[0][0]!))) {
+      continue;
+    }
+    const requirement = requirements[key];
+    const matching = requirement ? replicas.filter((replica) => settingsEqual(replica[0]!.settings, requirement.settings)) : [];
+    const kept = matching.slice(Math.max(0, matching.length - (requirement?.replicas ?? 0)));
+    for (const replica of replicas.filter((replica) => !kept.includes(replica))) {
+      replica.forEach((install) => releaseInstallationFromState(state, install));
+    }
+    state.installationsByRequirement.set(key, kept.flat());
+    stays.push(...kept);
+  }
+  return stays;
+}
 
 const lookupSchedulable: ModelLookup = async (specifier, driver) => {
   const resolution = await resolveSchedulable(specifier, driver);
@@ -489,32 +510,38 @@ async function installationsAndLiveNodes(): Promise<[ModelInstallation[], AiNode
   ]);
 }
 
-export async function currentClusterState(replacedOwnerIds: string[] = []): Promise<{ state: ClusterState; servers: AiNode[] }> {
+export async function currentClusterState(): Promise<{ state: ClusterState; servers: AiNode[] }> {
   const [existing, servers] = await installationsAndLiveNodes();
   const liveIds = new Set(servers.map((server) => server.id));
-  const others = existing.filter((install) => liveIds.has(install.nodeId) && !replacedOwnerIds.includes(ownerOf(install)));
-  return { state: buildClusterState(await chargeUnchargedInstallations(others, servers, lookupSchedulable), servers), servers };
+  const live = existing.filter((install) => liveIds.has(install.nodeId));
+  return { state: buildClusterState(await chargeUnchargedInstallations(live, servers, lookupSchedulable), servers), servers };
 }
 
-export async function previewPlacement(requirements: ModelRequirementTable, replacedOwnerIds: string[] = []): Promise<PlacementPreview> {
-  const { state, servers } = await currentClusterState(replacedOwnerIds);
+export async function previewPlacement(requirements: ModelRequirementTable, changedOwnerIds: string[] = []): Promise<PlacementPreview> {
+  const { state, servers } = await currentClusterState();
+  const stays = releaseChangedReplicas(requirements, changedOwnerIds, state);
   const { replicas, shortfalls } = await planNewInstallations(requirements, state, maxVramGb(), config.compute.deploymentStrategy());
   const machineName = (nodeId: string) => {
     const server = servers.find((candidate) => candidate.id === nodeId);
     return server?.machineName ?? server?.host ?? nodeId;
   };
-  return {
-    replicas: replicas.map((members) => ({
-      specifier: members[0]!.installation.specifier,
-      machines: members.map(({ installation: install, parts }) => ({
-        machineName: machineName(install.nodeId),
-        cards: Math.max(install.gpuIds?.length ?? 0, 1),
-        gpuGb: install.estCapacity,
-        hostGb: install.hostCapacity ?? 0,
-        sharedMemory: resourcesOf(state, install.nodeId).unified,
-        parts,
-      })),
+  const replicaOf = (members: { installation: Omit<NewInstallation, "port">; parts: FootprintPart[] }[], running: boolean): PlannedReplica => ({
+    specifier: members[0]!.installation.specifier,
+    running,
+    machines: members.map(({ installation: install, parts }) => ({
+      machineName: machineName(install.nodeId),
+      cards: Math.max(install.gpuIds?.length ?? 0, 1),
+      gpuGb: install.estCapacity,
+      hostGb: install.hostCapacity ?? 0,
+      sharedMemory: resourcesOf(state, install.nodeId).unified,
+      parts,
     })),
+  });
+  return {
+    replicas: [
+      ...stays.map((replica) => replicaOf(replica.map((installation) => ({ installation, parts: [] })), true)),
+      ...replicas.map((members) => replicaOf(members, false)),
+    ],
     shortfalls,
   };
 }

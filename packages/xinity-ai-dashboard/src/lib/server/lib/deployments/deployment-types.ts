@@ -10,8 +10,8 @@ import type { ModelRequirementTable } from "./requirements";
 
 export type Transaction = Parameters<Parameters<ReturnType<typeof getDB>["transaction"]>[0]>[0];
 
-/** What has to fit on the cluster, planned without the installations of the rows it replaces. */
-export type CapacityNeed = { requirements: ModelRequirementTable; replacing?: string[] };
+/** What has to fit on the cluster. `changing` lists the rows whose installations the change may move or remove. */
+export type CapacityNeed = { requirements: ModelRequirementTable; changing?: string[] };
 
 export type UpdateReview =
   | { rejected: string }

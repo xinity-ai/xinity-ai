@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectIncompleteGroups, collectReassignableOrphans, collectReplicasThatDoNotFit, capacityNeed, findPlacement, findServerForModel } from "../src/lib/server/lib/deployments/orchestration";
+import { chargeUnchargedInstallations, collectDriftedInstallations, collectExcessInstallations, collectIncompleteGroups, collectReassignableOrphans, collectReplicasThatDoNotFit, capacityNeed, findPlacement, findServerForModel, releaseChangedReplicas } from "../src/lib/server/lib/deployments/orchestration";
 import { buildClusterState, freeGbOn, rankServers, resourcesOf } from "../src/lib/server/lib/deployments/cluster-state";
 import { layoutForVllm, vllmScheduler } from "../src/lib/server/lib/deployments/engines/vllm";
 import { canaryReplicas, requirementsForCanaries, requirementsForDeployments, type ModelRequirement, type ModelRequirementTable } from "../src/lib/server/lib/deployments/requirements";
@@ -876,5 +876,38 @@ describe("freeGbOn", () => {
     const node = makeNode({ id: "node-o", estCapacity: 45 });
     const state = buildClusterState([makeInstallation({ id: "ollama-1", nodeId: "node-o", specifier: "small", driver: "ollama", estCapacity: 8 })], [node]);
     expect(freeGbOn(state, "node-o")).toBe(37);
+  });
+});
+
+describe("orchestration: previewing a change to a running deployment", () => {
+  const nodes = [makeNode({ id: "node-1" }), makeNode({ id: "node-2" }), makeNode({ id: "node-3" })];
+  const running = [
+    makeInstallation({ id: "a1", nodeId: "node-1", specifier: "model-a" }),
+    makeInstallation({ id: "a2", nodeId: "node-2", specifier: "model-a" }),
+    makeInstallation({ id: "other", nodeId: "node-3", specifier: "model-a", legacyId: "dep-2" }),
+  ];
+  const wants = (specifier: string, replicas: number, settings: ModelRequirement["settings"] = { version: 1 }): ModelRequirementTable => ({
+    [`dep-1:${specifier}`]: { legacyId: "dep-1", specifier, replicas, kvCacheSize: null, preferredDriver: null, settings },
+  });
+  const idsOf = (replicas: ModelInstallation[][]) => replicas.flat().map(({ id }) => id).sort();
+
+  test("keeps the replicas a change leaves alone where they run", () => {
+    const state = buildClusterState(running, nodes);
+    expect(idsOf(releaseChangedReplicas(wants("model-a", 3), ["dep-1"], state))).toEqual(["a1", "a2"]);
+    expect(state.serverCapacity.get("node-1")!.used).toBe(8);
+  });
+
+  test("frees the replicas beyond a lower count, and every replica of a model the change drops", () => {
+    const fewer = buildClusterState(running, nodes);
+    expect(releaseChangedReplicas(wants("model-a", 1), ["dep-1"], fewer)).toHaveLength(1);
+    const dropped = buildClusterState(running, nodes);
+    expect(releaseChangedReplicas(wants("model-b", 1), ["dep-1"], dropped)).toEqual([]);
+    expect(dropped.serverCapacity.get("node-1")!.used).toBe(0);
+    expect(dropped.serverCapacity.get("node-3")!.used).toBe(8);
+  });
+
+  test("frees the replicas whose settings the change alters", () => {
+    const state = buildClusterState(running, nodes);
+    expect(releaseChangedReplicas(wants("model-a", 2, { version: 1, maxAudioInputDurationS: 600 }), ["dep-1"], state)).toEqual([]);
   });
 });

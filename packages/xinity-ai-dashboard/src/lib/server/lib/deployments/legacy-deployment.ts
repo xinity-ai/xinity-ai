@@ -142,7 +142,7 @@ export const legacyDeployment: DashboardDeploymentType = {
       return {};
     }
     const merged = { ...legacy, ...patch };
-    return { mustFit: { requirements: requirementsForDeployments([merged]), replacing: scalingUp ? [legacy.id] : undefined } };
+    return { mustFit: { requirements: requirementsForDeployments([merged]) } };
   },
 
   async update(tx, entry, input) {

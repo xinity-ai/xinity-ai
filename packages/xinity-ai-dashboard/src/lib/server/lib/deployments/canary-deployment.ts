@@ -134,7 +134,7 @@ export const canaryDeployment: DashboardDeploymentType = {
     if (!reenabling && !scalingUp) {
       return {};
     }
-    return { mustFit: { requirements: requirementsForCanaries([merged]), replacing: scalingUp ? [row.from.id, row.to.id] : undefined } };
+    return { mustFit: { requirements: requirementsForCanaries([merged]) } };
   },
 
   async update(tx, entry, input) {
