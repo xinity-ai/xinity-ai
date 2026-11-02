@@ -1,24 +1,44 @@
 import type { lifecycleStateEnum } from "common-db";
-import { couplingDocsUrl, deriveInterconnectOverview, describeCouplingIssue, describePortIssue, type InstallationGroup, type InterconnectPort, type IssueDescription, type PortIssue } from "common-env";
-import type { DeploymentOutput, ReplicaStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
+import { couplingDocsUrl, deriveInterconnectOverview, describeCouplingIssue, describePortIssue, sharesHostMemory, type GpuInfo, type InstallationGroup, type InterconnectPort, type IssueDescription, type PortIssue } from "common-env";
+import type { DeploymentOutput, DeploymentStatus, ReplicaStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
+import { handleVariant, type VariantHandlers } from "$lib/util";
 import { foldDeployment, foldReplicas, isProgressBearingPhase, toDisplayPhase, type ReplicaMember } from "./deployment-phase";
+import { canaryReplicas } from "./requirements";
 
 type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
 
 /** One row of the deployment status join, narrowed to the columns the fold reads. */
 export type DeploymentStatusRow = {
   deployment: DeploymentOutput;
-  model_installation: { id: string; group: InstallationGroup | null; gpuIds: string[]; estCapacity: number; hostCapacity: number | null } | null;
+  model_installation: { id: string; specifier: string; group: InstallationGroup | null; gpuIds: string[]; estCapacity: number; hostCapacity: number | null } | null;
   model_installation_state: {
     lifecycleState: LifecycleState;
     progress: number | null;
     errorMessage: string | null;
     failureLogs: string | null;
   } | null;
-  ai_node: { id: string; machineName: string | null; host: string; interconnect: InterconnectPort[] } | null;
+  ai_node: { id: string; machineName: string | null; host: string; interconnect: InterconnectPort[]; gpus?: Pick<GpuInfo, "vramMb">[] } | null;
 };
 
-type Member = ReplicaMember & { nodeId: string; node: string; interconnect: InterconnectPort[]; rank: number; cards: number; gpuGb: number; hostGb: number };
+type Member = ReplicaMember & { specifier: string; nodeId: string; node: string; interconnect: InterconnectPort[]; rank: number; cards: number; gpuGb: number; hostGb: number; sharedMemory: boolean };
+
+type Wanted = DeploymentStatus["wanted"];
+
+const splitWanted = (replicas: number, progress: number, from: string, to: string): Wanted => {
+  const split = canaryReplicas(replicas, progress);
+  return [{ specifier: to, replicas: split.to }, { specifier: from, replicas: split.from }].filter((side) => side.replicas > 0);
+};
+
+// What the scheduler places, by the same rule its requirements follow.
+const WANTED: VariantHandlers<DeploymentOutput, Wanted> = {
+  legacy: ({ legacy }) => legacy.earlySpecifier && legacy.earlySpecifier !== legacy.specifier
+    ? splitWanted(legacy.replicas, legacy.progress, legacy.earlySpecifier, legacy.specifier)
+    : [{ specifier: legacy.specifier, replicas: legacy.replicas }],
+  managed: ({ managed }) => [{ specifier: managed.specifier, replicas: managed.replicas }],
+  canary: ({ canary }) => splitWanted(canary.replicas, canary.progress, canary.from.specifier, canary.to.specifier),
+};
+
+export const wantedOf = (deployment: DeploymentOutput) => handleVariant(WANTED, deployment);
 
 /**
  * Folds the status join into one deployment per id, with a replica per installation, or per group
@@ -47,6 +67,7 @@ export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): Deploymen
     const phase = state?.lifecycleState ?? "scheduling";
     entry.members.push({
       installationId: installation.id,
+      specifier: installation.specifier,
       group: installation.group,
       rank: installation.group?.rank ?? 0,
       nodeId: liveNode.id,
@@ -55,6 +76,7 @@ export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): Deploymen
       cards: Math.max(installation.gpuIds.length, 1),
       gpuGb: installation.estCapacity,
       hostGb: installation.hostCapacity ?? 0,
+      sharedMemory: sharesHostMemory(liveNode.gpus ?? []),
       phase,
       progress: isProgressBearingPhase(phase) ? (state?.progress ?? null) : null,
       error: state?.errorMessage ?? null,
@@ -66,10 +88,15 @@ export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): Deploymen
     const replicas = foldReplicas(members);
     const phaseInfo = foldDeployment(replicas.map(({ info }) => info));
     if (!phaseInfo) return deployment;
+    const wanted = wantedOf(deployment);
+    const ofModel = (specifier: string) => replicas.filter(({ members }) => members[0]!.specifier === specifier);
+    const phase = toDisplayPhase(phaseInfo) as StatusPhase;
+    const short = wanted.some(({ specifier, replicas: count }) => ofModel(specifier).length < count);
     return {
       ...deployment,
       status: {
-        phase: toDisplayPhase(phaseInfo) as StatusPhase,
+        phase: phase === "ready" && short ? "partial" : phase,
+        wanted,
         progress: phaseInfo.progress,
         error: phaseInfo.error,
         failureLogs: phaseInfo.failureLogs,
@@ -85,10 +112,11 @@ function replicaStatus(phase: ReplicaMember["phase"], error: string | null, memb
   const sharedError = byRank.length > 1 && byRank.every((member) => member.error !== null && member.error === byRank[0]!.error);
   return {
     phase: phase as ReplicaStatus["phase"],
+    specifier: byRank[0]!.specifier,
     node: byRank[0]!.node,
     error: sharedError ? byRank[0]!.error : error,
     ...(byRank[0]!.group && {
-      members: byRank.map(({ node, phase, error, cards, gpuGb, hostGb }) => ({ node, phase: phase as ReplicaStatus["phase"], error: sharedError ? null : error, cards, gpuGb, hostGb })),
+      members: byRank.map(({ node, phase, error, cards, gpuGb, hostGb, sharedMemory }) => ({ node, phase: phase as ReplicaStatus["phase"], error: sharedError ? null : error, cards, gpuGb, hostGb, sharedMemory })),
       couplingIssues: couplingIssuesOf(byRank),
     }),
   };

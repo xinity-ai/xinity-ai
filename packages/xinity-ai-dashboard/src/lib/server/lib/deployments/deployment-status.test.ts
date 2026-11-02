@@ -12,7 +12,7 @@ const DEPLOYMENT: DeploymentStatusRow["deployment"] = {
   legacy: {
     specifier: "qwen3.6-27b",
     earlySpecifier: null,
-    replicas: 4,
+    replicas: 1,
     canaryProgressUntil: null,
     canaryProgressFrom: null,
     canaryProgressWithFeedback: false,
@@ -30,7 +30,7 @@ type State = NonNullable<DeploymentStatusRow["model_installation_state"]>;
 type Installation = NonNullable<DeploymentStatusRow["model_installation"]>;
 
 function installation(id: string, group: Installation["group"]): Installation {
-  return { id, group, gpuIds: ["gpu-0"], estCapacity: 60, hostCapacity: 8 };
+  return { id, specifier: "qwen3.6-27b", group, gpuIds: ["gpu-0"], estCapacity: 60, hostCapacity: 8 };
 }
 
 function row(overrides: Partial<DeploymentStatusRow> = {}): DeploymentStatusRow {
@@ -60,6 +60,13 @@ describe("foldDeploymentStatusRows", () => {
     const [deployment] = foldDeploymentStatusRows(replicas(3));
     expect(deployment!.status!.replicas).toHaveLength(3);
     expect(deployment!.status!.phase).toBe("ready");
+  });
+
+  test("reads as partly serving while the scheduler has not placed every wanted replica", () => {
+    const short = { ...DEPLOYMENT, legacy: { ...DEPLOYMENT.legacy, replicas: 3 } };
+    const [deployment] = foldDeploymentStatusRows(replicas(2).map((each) => ({ ...each, deployment: short })));
+    expect(deployment!.status!.wanted).toEqual([{ specifier: "qwen3.6-27b", replicas: 3 }]);
+    expect(deployment!.status!.phase).toBe("partial");
   });
 
   test("ignores a replica whose node left the cluster, even while its state still reads ready", () => {
@@ -100,7 +107,7 @@ describe("foldDeploymentStatusRows", () => {
       row({ model_installation_state: null }),
     ]);
     expect(deployment!.status!.phase).toBe("scheduling");
-    expect(deployment!.status!.replicas).toEqual([{ phase: "scheduling", node: "gx10-a", error: null }]);
+    expect(deployment!.status!.replicas).toEqual([{ phase: "scheduling", specifier: "qwen3.6-27b", node: "gx10-a", error: null }]);
   });
 
   test("aggregates the worst phase across replicas", () => {
@@ -144,10 +151,10 @@ describe("a replica served across machines", () => {
   test("is one replica, named after rank 0, with each machine's detail by rank", () => {
     const [deployment] = foldDeploymentStatusRows([member(1, { lifecycleState: "installing" }), member(0)]);
     expect(deployment!.status!.replicas).toEqual([{
-      phase: "installing", node: "gx10-0", error: null,
+      phase: "installing", specifier: "qwen3.6-27b", node: "gx10-0", error: null,
       members: [
-        { node: "gx10-0", phase: "ready", error: null, cards: 1, gpuGb: 60, hostGb: 8 },
-        { node: "gx10-1", phase: "installing", error: null, cards: 1, gpuGb: 60, hostGb: 8 },
+        { node: "gx10-0", phase: "ready", error: null, cards: 1, gpuGb: 60, hostGb: 8, sharedMemory: true },
+        { node: "gx10-1", phase: "installing", error: null, cards: 1, gpuGb: 60, hostGb: 8, sharedMemory: true },
       ],
       couplingIssues: [expect.objectContaining({ text: "its machines are no longer coupled" })],
     }]);

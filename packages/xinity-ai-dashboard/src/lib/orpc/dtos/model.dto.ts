@@ -17,6 +17,7 @@ const ReplicaPhaseDto = z.enum(["ready", "downloading", "installing", "failed", 
 
 export const ReplicaStatusDto = z.object({
   phase: ReplicaPhaseDto,
+  specifier: z.string().describe("The model the replica serves"),
   node: z.string().nullable(),
   error: z.string().nullable(),
   /** Each machine of a replica served across several, by rank. */
@@ -27,6 +28,7 @@ export const ReplicaStatusDto = z.object({
     cards: z.number().describe("Cards the member uses on its machine"),
     gpuGb: z.number().describe("GPU memory in GB the member occupies on its machine, over all its cards"),
     hostGb: z.number().describe("Host memory in GB the member occupies on its machine"),
+    sharedMemory: z.boolean().describe("Whether host and GPU memory are one pool on its machine"),
   })).optional(),
   couplingIssues: z.array(z.object({ text: z.string(), docsUrl: z.string() }))
     .describe("What is wrong with the coupling the replica runs across, each with a link to how to fix it")
@@ -40,8 +42,11 @@ export const DeploymentStatusDto = z.object({
   error: z.string().nullable().optional(),
   failureLogs: z.string().nullable().optional(),
   replicas: ReplicaStatusDto.array().optional(),
+  wanted: z.array(z.object({ specifier: z.string(), replicas: z.number() }))
+    .describe("Replicas the scheduler places per model. During a rollout the two shares add up to the deployment's replicas"),
 });
-export type StatusPhase = z.infer<typeof DeploymentStatusDto>["phase"];
+export type DeploymentStatus = z.infer<typeof DeploymentStatusDto>;
+export type StatusPhase = DeploymentStatus["phase"];
 
 export const ReplicasDto = z.number().int().min(1);
 export const MIN_CANARY_REPLICAS = 2;

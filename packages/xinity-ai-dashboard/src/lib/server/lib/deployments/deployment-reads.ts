@@ -17,7 +17,7 @@ import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import type { DeploymentPhaseRow } from "$lib/server/notifications/scheduler";
-import { foldDeploymentStatusRows } from "./deployment-status";
+import { foldDeploymentStatusRows, wantedOf } from "./deployment-status";
 import type { Transaction } from "./deployment-types";
 
 const idsOf = (entries: { id: string }[]) => entries.map(({ id }) => id);
@@ -84,7 +84,7 @@ export async function markMissingFromCatalog(deployments: DeploymentOutput[], sp
   await Promise.all(candidates.map(async (deployment) => {
     const missing = await Promise.all(specifiersOf(deployment).map(isMissingFromCatalog));
     if (missing.some(Boolean)) {
-      deployment.status = { phase: "not_in_catalog", progress: null, error: null };
+      deployment.status = { phase: "not_in_catalog", progress: null, error: null, wanted: wantedOf(deployment) };
     }
   }));
 }
