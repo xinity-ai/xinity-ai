@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+#
+# Mistral's streaming speech-to-text model: a causal audio encoder feeding a Ministral-sized
+# decoder, both on sliding-window attention so a stream can run for the whole context.
+
+models:
+  voxtral-mini-4b-realtime-vllm:
+    name: Voxtral Mini 4B Realtime
+    description: |
+      Mistral's live transcription model. It writes the transcript while someone is still
+      speaking, about half a second behind them, instead of waiting for the recording to
+      end. That makes it the model for live captions, voice input and notes taken while a
+      meeting happens.
+
+      It covers 13 languages: English, French, Spanish, German, Russian, Chinese, Japanese,
+      Italian, Portuguese, Dutch, Arabic, Hindi and Korean. It transcribes only. It does
+      not translate and does not answer questions about the audio.
+
+      One uninterrupted stretch of speech can run for close to three hours. Longer
+      sessions are split into consecutive parts automatically.
+
+      Recorded files work too and come back as plain text, without timestamps. The model
+      is built for live audio, though, and works through a file step by step just as it
+      would through a stream.
+    url: https://huggingface.co/mistralai/Voxtral-Mini-4B-Realtime-2602
+    license: apache-2.0
+    createdAt: 2026-01-21
+    registeredAt: 2026-11-02
+    engine: vllm
+    engineSpecifier: mistralai/Voxtral-Mini-4B-Realtime-2602
+    sizing:
+      # Decoder: 26 layers, 8 kv heads, head_dim 128 -> 2 * 26 * 8 * 128 * 2, over its
+      # 8192-token sliding window, so a stream stops growing after about 11 minutes.
+      kvBytesPerToken: 106496
+      attentionHeads: 32
+      kvHeads: 8
+      attentionWindow: 8192
+      # The causal audio encoder caches too: 32 layers of 32 kv heads at head_dim 64, over
+      # a 750-step window -> 32 * 2 * 32 * 64 * 2 * 750.
+      stateBytesPerSequence: 196608000
+      # Bracketed on 0.32 at the native context: 1.92 aborts (1.78 GiB needed), 1.93
+      # starts at 1.00x. vLLM reserves both windows plus two batches of in-flight tokens,
+      # with the decoder padded to the encoder's 32 layers, so the floor follows
+      # --max-num-batched-tokens: at vLLM's 2048 default it is 6.16.
+      minKvCacheGb: 1.93
+      # One position per 80 ms of audio, so the native window holds about 2.9 hours.
+      maxContextLength: 131072
+      audioPositionsPerSecond: 12.5
+      weightGb: 9.05  # measured resident, 8.43 GiB
+      largestFileGb: 8.86
+      layers: 26
+      attentionLayers: 26
+      nonLayerWeightGb: 2.8
+      weightBits: 16
+    type: transcription
+    family: Voxtral Realtime
+    tags: [realtime]
+    engineArgs:
+      # A stream schedules a few tokens per step, so a small batch costs file transcription
+      # nothing (measured) and keeps the reserved in-flight window small. vLLM's default
+      # depends on the card and on a large one would triple the floor.
+      - --max-num-batched-tokens
+      - "256"
+      # Mistral's recommendation. Full CUDA graphs serve no faster here and take about a
+      # minute per graph to capture at startup.
+      - --compilation_config
+      - '{"cudagraph_mode": "PIECEWISE"}'
+    engineVersions:
+      # 0.31 keeps an abandoned stream's request and cache after a WebSocket disconnect.
+      # 0.32 releases it (vllm#45022, which also stops a stream before the context limit).
+      min: "0.32.0"
