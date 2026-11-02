@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { EngineVersions, RelayedEngineVersions, ModelSizing, Placement, RelayedPlacement } from "./model-definition";
+import { EngineVersions, RelayedEngineVersions, ModelSchema, ModelSizing, Placement, RelayedPlacement } from "./model-definition";
 
 const base = { weightGb: 14, maxContextLength: 32768, kvBytesPerToken: 131072 };
 
@@ -125,5 +125,33 @@ describe("placement limits", () => {
       expect.objectContaining({ limit: "cards", max: 1 }),
       expect.objectContaining({ limit: "cards", max: 1 }),
     ]);
+  });
+});
+
+describe("realtime tag", () => {
+  const transcriber = {
+    name: "x",
+    description: "x",
+    url: "https://example.com",
+    license: "apache-2.0",
+    createdAt: "2026-01-01",
+    registeredAt: "2026-01-01",
+    engine: "vllm",
+    engineSpecifier: "x/y",
+    type: "transcription",
+    tags: ["realtime"],
+    sizing: { ...base, audioPositionsPerSecond: 12.5 },
+  };
+
+  it("accepts a transcription model that states its audio position rate", () => {
+    expect(ModelSchema.safeParse(transcriber).success).toBe(true);
+  });
+
+  it("rejects a realtime model without an audio position rate, which leaves its stream length unknown", () => {
+    expect(ModelSchema.safeParse({ ...transcriber, sizing: base }).success).toBe(false);
+  });
+
+  it("rejects the tag on a model that is not a transcription model", () => {
+    expect(ModelSchema.safeParse({ ...transcriber, type: "chat" }).success).toBe(false);
   });
 });
