@@ -34,7 +34,7 @@ COPY . .
 
 WORKDIR /usr/src/app/packages/xinity-ai-dashboard
 ENV NODE_ENV=production
-RUN mv example.env .env \
+RUN cp example.env .env \
  && bun run build
 
 
