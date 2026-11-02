@@ -7,13 +7,14 @@ import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/env";
 import { maxVramGb } from "$lib/server/license";
 import { config } from "$lib/server/config";
-import { buildClusterState, chargeCapacity, chargeOf, freeGbOn, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";
+import { buildClusterState, chargeCapacity, chargeOf, freeGbOn, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, totalVramUsed, type ClusterState, type NewInstallation } from "./cluster-state";
 import { ENGINE_SCHEDULERS } from "./engines";
 import type { MemberSlot, NodeSlot, PlacementRequest } from "./engines/engine";
 import { firstFreePort, ownerOf, type Placement } from "./placement";
 import { advanceRollouts } from "./canary-deployment";
 import { byType, enabledDeployments } from "./deployment-types";
 import type { ModelRequirementTable } from "./requirements";
+import type { ShortfallReason } from "./shortfall-reasons";
 import type { Capacity, DeploymentStrategy } from "./strategy";
 
 const log = rootLogger.child({ name: "orchestration.mod" })
@@ -238,27 +239,35 @@ function allocatePort(driver: Provider, nodeId: string, state: ClusterState, pen
   return ENGINE_SCHEDULERS[driver].port(new Set(installationsOn(nodeId, state, pending).map((i) => i.port)));
 }
 
-// The license counts GPU memory, so a unified node's host part stays out of it.
-function totalVramUsed(state: ClusterState): number {
-  let used = 0;
-  for (const installs of state.installationsByServer.values()) {
-    for (const install of installs) {
-      used += install.estCapacity;
-    }
-  }
-  return used;
-}
 
-export type ShortfallReason = "catalog_unavailable" | "not_found" | "no_compatible_node" | "no_capacity" | "license_limit";
-
-export type Shortfall = { specifier: string; missing: number; reason: ShortfallReason; constraints?: PlacementConstraints & { driver: Provider }; need?: CapacityNeed };
+export type Shortfall = {
+  specifier: string;
+  /** Replicas of it that are placed, already running or planned. */
+  placed: number;
+  missing: number;
+  reason: ShortfallReason;
+  constraints?: PlacementConstraints & { driver: Provider };
+  need?: CapacityNeed;
+  /** Machines that could run the model at all. */
+  machines?: number;
+  /** VRAM the cluster uses, what the license allows, and what the next replica would add. */
+  license?: { usedGb: number; limitGb: number; neededGb: number };
+};
 
 type PlannedMember = { installation: NewInstallation; parts: FootprintPart[] };
 
 type InstallationPlan = { toInstall: NewInstallation[]; replicas: PlannedMember[][]; shortfalls: Shortfall[] };
 
-function anyNodeCouldServe(state: ClusterState, driver: Provider, constraints: PlacementConstraints): boolean {
-  return state.availableServers.some((server) => nodeCouldServe(server, driver, constraints));
+function whyNotPlaced(query: PlacementQuery, state: ClusterState, pending: NewInstallation[]): Pick<Shortfall, "reason" | "machines" | "need"> {
+  const { placement, driver, constraints = {} } = query;
+  const compatible = state.availableServers.filter((server) => nodeCouldServe(server, driver, constraints));
+  if (compatible.length === 0) {
+    return { reason: "no_compatible_node" };
+  }
+  if (compatible.every((server) => nodeExcludesPlacement(server.id, driver, placement, state, pending))) {
+    return { reason: "no_machine_left", machines: compatible.length };
+  }
+  return { reason: "no_capacity", need: capacityNeed(query, state) };
 }
 
 type MachineNeed = { machine: string; neededGb: number; freeGb: number; sharedMemory: boolean; parts: FootprintPart[] };
@@ -327,14 +336,14 @@ async function planNewInstallations(
     if (resolution.status === "unavailable") {
       log.warn({ specifier: requirement.specifier, error: resolution.error },
         "Info server unreachable; skipping installation planning for this sync cycle");
-      shortfalls.push({ specifier, missing: requirement.replicas - current, reason: "catalog_unavailable" });
+      shortfalls.push({ specifier, placed: current, missing: requirement.replicas - current, reason: "catalog_unavailable" });
       continue;
     }
     if (resolution.status === "not_found") {
       log.warn({ specifier: requirement.specifier },
         "Model not found in catalog; installations cannot be scheduled. " +
         "If this model has been intentionally removed, disable or delete the deployment.");
-      shortfalls.push({ specifier, missing: requirement.replicas - current, reason: "not_found" });
+      shortfalls.push({ specifier, placed: current, missing: requirement.replicas - current, reason: "not_found" });
       continue;
     }
     const modelInfo = resolution.model;
@@ -352,11 +361,7 @@ async function planNewInstallations(
       const groups = replica?.coupling ? memberGroups(replica.coupling, replica.members, state, toInstall) : undefined;
       if (!replica || (replica.coupling && !groups)) {
         log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
-        const reason = anyNodeCouldServe(state, driver, constraints) ? "no_capacity" : "no_compatible_node";
-        shortfalls.push({
-          specifier, missing: needed - i, reason, constraints: { ...constraints, driver },
-          need: reason === "no_capacity" ? capacityNeed(query, state) : undefined,
-        });
+        shortfalls.push({ specifier, placed: current + i, missing: needed - i, constraints: { ...constraints, driver }, ...whyNotPlaced(query, state, toInstall) });
         break;
       }
 
@@ -366,7 +371,7 @@ async function planNewInstallations(
           { specifier: requirement.specifier, usedVram, licenseVramLimit, additional: gpuGb },
           "License VRAM limit reached; skipping additional replica",
         );
-        shortfalls.push({ specifier, missing: needed - i, reason: "license_limit" });
+        shortfalls.push({ specifier, placed: current + i, missing: needed - i, reason: "license_limit", license: { usedGb: usedVram, limitGb: licenseVramLimit, neededGb: gpuGb } });
         break;
       }
 
@@ -477,8 +482,6 @@ type PlannedReplica = { specifier: string; running: boolean; machines: PlannedMa
 
 type PlacementPreview = { replicas: PlannedReplica[]; shortfalls: Shortfall[] };
 
-// As the sync would: a replica of the changed deployment stays where it runs unless the change drops its model,
-// leaves it beyond the replica count, or gives it other settings. Returns the replicas that stay.
 export function releaseChangedReplicas(requirements: ModelRequirementTable, changedOwnerIds: string[], state: ClusterState): ModelInstallation[][] {
   const stays: ModelInstallation[][] = [];
   for (const [key, installs] of state.installationsByRequirement) {

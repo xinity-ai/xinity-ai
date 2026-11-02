@@ -1,11 +1,12 @@
 import { rootOs, withOrganization, requirePermission } from "../root";
 import { currentClusterState } from "$lib/server/lib/deployments/orchestration";
-import { freeGbOn } from "$lib/server/lib/deployments/cluster-state";
+import { freeGbOn, totalVramUsed } from "$lib/server/lib/deployments/cluster-state";
+import { maxVramGb } from "$lib/server/license";
 import { rootLogger } from "$lib/server/logging";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
 import z from "zod";
 import { gpuSchema } from "common-env";
-import { blockedVersionNotes, explainClusterIncompatibility, IncompatibilityReasonEnum, type NodeCapability } from "common-env/model-catalog";
+import { blockedVersionNotes, checkNodeCompatibility, explainClusterIncompatibility, IncompatibilityReasonEnum, modelRequirements, type NodeCapability } from "common-env/model-catalog";
 
 const log = rootLogger.child({ name: "cluster" });
 
@@ -25,6 +26,10 @@ const ClusterCapacityOutput = z.object({
   availableDrivers: z.array(z.string()),
   nodeFreeCapacities: z.array(z.number()),
   nodeCapabilities: z.array(NodeCapabilitySchema),
+  licensedVram: z.object({
+    usedGb: z.number().describe("VRAM in GB the installed replicas take, as the license counts it"),
+    limitGb: z.number().describe("VRAM in GB the license allows"),
+  }).nullable().describe("Null when the license sets no VRAM limit"),
 });
 export type ClusterCapacity = z.infer<typeof ClusterCapacityOutput>;
 
@@ -32,6 +37,7 @@ const ClusterOverviewOutput = ClusterCapacityOutput.extend({
   modelCompatibility: z.record(z.string(), z.object({
     incompatibility: IncompatibilityReasonEnum.nullable(),
     blockedReleaseNote: z.string().optional(),
+    machines: z.number().describe("Live machines that could run the model, whatever they have free"),
   })).describe("Per catalog model, keyed by public specifier. Empty when no node is live or the catalog is unavailable"),
 });
 export type ClusterOverview = z.infer<typeof ClusterOverviewOutput>;
@@ -53,6 +59,7 @@ async function buildModelCompatibility(nodes: NodeCapability[]): Promise<ModelCo
     return [model.publicSpecifier, {
       incompatibility: explainClusterIncompatibility(nodes, model),
       blockedReleaseNote: notes.length > 0 ? notes.join(" ") : undefined,
+      machines: nodes.filter((node) => checkNodeCompatibility(node, { ...modelRequirements(model), capacityGb: 0 }) === null).length,
     }];
   }));
 }
@@ -74,7 +81,10 @@ export async function buildClusterCapacity(): Promise<ClusterCapacity> {
   )];
   const nodeFreeCapacities = nodesWithFreeCapacity.map(n => n.free).sort((a, b) => b - a);
 
-  return { maxNodeFreeCapacity, availableDrivers, nodeFreeCapacities, nodeCapabilities };
+  const limitGb = maxVramGb();
+  const licensedVram = Number.isFinite(limitGb) ? { usedGb: totalVramUsed(state), limitGb } : null;
+
+  return { maxNodeFreeCapacity, availableDrivers, nodeFreeCapacities, nodeCapabilities, licensedVram };
 }
 
 export async function buildClusterOverview(): Promise<ClusterOverview> {

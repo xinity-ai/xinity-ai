@@ -3,7 +3,8 @@ import { inArray, sql, deploymentT, deploymentCanaryT, modelInstallationT, model
 import z from "zod";
 import { CanaryMemberInputDto, CanaryReplicasDto, DeploymentDto, MIN_CANARY_REPLICAS, RolloutDto, DeploymentInputDto, DeploymentUpdateDto, KvCacheSizeDto, ManagedDeploymentInputDto, ProgressDto, ReplicasDto, type CanaryMemberInput, type DeploymentUpdate, type ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
-import { previewPlacement, syncDeployedModels, type Shortfall, type ShortfallReason } from "$lib/server/lib/deployments/orchestration";
+import { previewPlacement, syncDeployedModels, type Shortfall } from "$lib/server/lib/deployments/orchestration";
+import { SHORTFALL_REASON_CODES, type ShortfallReason } from "$lib/server/lib/deployments/shortfall-reasons";
 import { requirementsForCanaries, requirementsForDeployments, requirementsForManaged, type CanaryMemberPlan, type DeploymentPlan, type ManagedPlan, type ModelRequirementTable } from "$lib/server/lib/deployments/requirements";
 import { byType, DASHBOARD_DEPLOYMENT_TYPES, type Transaction } from "$lib/server/lib/deployments/deployment-types";
 import { createLegacy, migrateLegacy } from "$lib/server/lib/deployments/legacy-deployment";
@@ -18,7 +19,7 @@ import { findOrgName } from "$lib/server/lib/org-queries";
 import { notifyOrgMembers } from "$lib/server/notifications/notification.service";
 import { NotificationType } from "$lib/server/notifications/events";
 import { config } from "$lib/server/config";
-import { handleVariant, type VariantHandlers } from "$lib/util";
+import { formatGb, handleVariant, type VariantHandlers } from "$lib/util";
 const log = rootLogger.child({ name: "deployment.orpc" });
 
 const tags = ["Deployment"];
@@ -110,6 +111,8 @@ const CapacityShortfallDto = z.object({
 export const CapacityCheckOutput = z.object({
   deployable: z.boolean(),
   reason: z.string().optional(),
+  reasonCode: z.enum(SHORTFALL_REASON_CODES).optional().describe("What keeps replicas from being placed, as `reason` says in words"),
+  waiting: z.number().describe("Replicas that would not be placed now and wait for room"),
   replicas: z.array(PlannedReplicaDto).describe("Where each replica would be placed now, as the scheduler would place it"),
   shortfall: CapacityShortfallDto.optional().describe("What a model that does not fit needs, against what is free"),
 });
@@ -127,10 +130,17 @@ const SHORTFALL_REASONS: Record<ShortfallReason, (shortfall: Shortfall) => strin
     const platformRequirement = platforms.length ? `, platform: ${platforms.join("/")}` : "";
     return `No compatible node for "${specifier}" (requires ${constraints?.driver}${versionRequirement}${platformRequirement})`;
   },
+  no_machine_left: ({ specifier, missing, machines }) =>
+    `"${specifier}" already runs on every machine that can run it (${machines}), so ${missing} more ${missing === 1 ? "replica has" : "replicas have"} nowhere to go`,
   no_capacity: ({ specifier, need }) => need
     ? `"${specifier}" does not fit in the free memory`
     : `"${specifier}" needs more capacity than is currently available`,
-  license_limit: ({ specifier }) => `"${specifier}" would exceed the VRAM your license allows`,
+  // The license caps the whole cluster, so the model that happened to be planned last is not the one to blame.
+  license_limit: ({ license }) => !license
+    ? "This would take the cluster past the VRAM your license allows"
+    : license.usedGb >= license.limitGb
+      ? `The cluster already uses ${formatGb(license.usedGb)} of VRAM, and your license allows ${formatGb(license.limitGb)}, so no more replicas can start`
+      : `A replica needs ${formatGb(license.neededGb)} of VRAM, and only ${formatGb(license.limitGb - license.usedGb)} of the ${formatGb(license.limitGb)} your license allows is left`,
 };
 
 const DRAFT_DEPLOYMENT_ID = "draft";
@@ -177,11 +187,14 @@ const DRAFT_REQUIREMENTS: VariantHandlers<z.infer<typeof CapacityCheckInput>, Mo
 
 async function checkDeploymentCapacity(requirements: ModelRequirementTable, changedOwnerIds: string[] = []): Promise<CapacityCheckResult> {
   const { replicas, shortfalls } = await previewPlacement(requirements, changedOwnerIds);
-  const blocking = shortfalls.find((shortfall) => shortfall.reason !== "catalog_unavailable");
-  const shortfall = blocking ?? shortfalls[0];
+  // A model with at least one replica placed serves, and the rest wait for room.
+  const blocking = shortfalls.find((shortfall) => shortfall.reason !== "catalog_unavailable" && shortfall.placed === 0);
+  const shortfall = blocking ?? shortfalls.find((candidate) => candidate.reason !== "catalog_unavailable") ?? shortfalls[0];
   return {
     deployable: !blocking,
     reason: shortfall && SHORTFALL_REASONS[shortfall.reason](shortfall),
+    reasonCode: shortfall?.reason,
+    waiting: shortfalls.reduce((sum, { missing }) => sum + missing, 0),
     replicas: replicas.map((replica) => ({
       ...replica,
       machines: replica.machines.map((machine) => ({ ...machine, parts: withMemory(machine.parts) })),
@@ -251,7 +264,7 @@ const updateDeployment = rootOs
   })
   .input(DeploymentUpdateDto)
   .output(DeploymentDto)
-  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
+  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: { status: 409 }, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
     const current = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
@@ -284,7 +297,7 @@ const updateDeployment = rootOs
       return entry;
     }).catch((err: unknown) => {
       rlog.error(err);
-      throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" });
+      throw errors.CONFLICT({ message: "Another deployment in this organization already uses this public name" });
     });
     const deployment = updated && await readDeployment(updated);
     if (!deployment) {
@@ -305,7 +318,7 @@ export const toggleEnabled = rootOs
   })
   .input(z.object({ id: z.uuid(), enabled: z.boolean() }))
   .output(SuccessDto)
-  .errors({ NOT_FOUND: {}, INSUFFICIENT_CAPACITY: {} })
+  .errors({ NOT_FOUND: {}, INSUFFICIENT_CAPACITY: { status: 409 } })
   .handler(async ({ context, input, errors }) => {
     if (input.enabled) {
       const current = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
@@ -476,7 +489,7 @@ export const createDeployment = rootOs
   })
   .input(DeploymentInputDto)
   .output(DeploymentDto)
-  .errors({ CONFLICT: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {} })
+  .errors({ CONFLICT: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: { status: 409 } })
   .handler(async ({ context, input, errors }) => {
     const creation = handleVariant(CREATIONS, input);
     if (!creation.specifiers[0]) {
@@ -531,7 +544,7 @@ export const createDeployment = rootOs
       return deployment;
     } catch (err) {
       rlog.error(err);
-      throw errors.CONFLICT({ message: "A deployment with this specifier already exists in your organization" })
+      throw errors.CONFLICT({ message: "Another deployment in this organization already uses this public name" })
     }
   });
 
@@ -541,7 +554,7 @@ const checkCapacity = rootOs
   .route({
     path: "/check-capacity", method: "POST", tags,
     summary: "Check Deployment Capacity",
-    description: "Checks whether the cluster has enough free capacity to host a deployment with the given configuration",
+    description: "Plans where a deployment with the given configuration would run. It is deployable when every model it serves gets at least one replica placed, and replicas without room wait until there is some",
   })
   .input(CapacityCheckInput)
   .output(CapacityCheckOutput)
@@ -587,7 +600,7 @@ const rolloutDeployment = rootOs
   })
   .input(RolloutDto)
   .output(DeploymentDto)
-  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: {}, CONFLICT: {} })
+  .errors({ NOT_FOUND: {}, BAD_REQUEST: {}, INSUFFICIENT_CAPACITY: { status: 409 }, CONFLICT: {} })
   .handler(async ({ context, input, errors }) => {
     const entry = await findActiveDeploymentInOrg(input.id, context.activeOrganizationId);
     if (!entry) throw errors.NOT_FOUND();

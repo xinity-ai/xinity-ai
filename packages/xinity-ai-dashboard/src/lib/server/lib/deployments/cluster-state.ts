@@ -141,3 +141,14 @@ export function releaseInstallationFromState(state: ClusterState, installation: 
     if (idx !== -1) serverInstalls.splice(idx, 1);
   }
 }
+
+// The license counts GPU memory, so a unified node's host part stays out of it.
+export function totalVramUsed(state: ClusterState): number {
+  let used = 0;
+  for (const installs of state.installationsByServer.values()) {
+    for (const install of installs) {
+      used += install.estCapacity;
+    }
+  }
+  return used;
+}

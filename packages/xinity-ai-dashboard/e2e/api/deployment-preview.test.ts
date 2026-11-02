@@ -75,13 +75,16 @@ describe("deployment placement preview", () => {
     expect(machine!.hostGb).toBeCloseTo(5.5 * GB_PER_GIB);
   });
 
-  test("names why a replica does not fit, and still shows the ones that do", async () => {
+  test("deploys the replicas that fit, and names why the rest wait", async () => {
     const liveNodes = await db.select({ driverVersions: aiNodeT.driverVersions }).from(aiNodeT)
       .where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
     const vllmNodes = liveNodes.filter((node) => node.driverVersions.vllm !== undefined).length;
     const body = await preview({ specifier: MODEL, replicas: vllmNodes + 1 });
-    expect(body.deployable).toBe(false);
-    expect(body.reason).toBe(`"${MODEL}" does not fit in the free memory`);
+    expect(body.deployable).toBe(true);
+    // Which reason depends on whether every other vLLM machine in the test cluster has room for one more.
+    expect(body.reason).toMatch(new RegExp(
+      `^"${MODEL}" (already runs on every machine that can run it \\(\\d+\\), so \\d+ more replicas? (has|have) nowhere to go|does not fit in the free memory)$`,
+    ));
     expect(body.replicas.some((replica) => replica.machines.some((candidate) => candidate.machineName === machineName))).toBe(true);
   });
 

@@ -7,6 +7,7 @@ const emptyCluster: ClusterOverview = {
   nodeFreeCapacities: [],
   nodeCapabilities: [],
   modelCompatibility: {},
+  licensedVram: null,
 };
 
 export const load: LayoutServerLoad = async ({ parent, depends }) => {
