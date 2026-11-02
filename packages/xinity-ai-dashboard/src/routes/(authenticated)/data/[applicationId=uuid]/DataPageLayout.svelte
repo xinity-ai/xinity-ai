@@ -136,8 +136,6 @@
       serverPosition = 0;
       allCalls = [];
       deletedCount = 0;
-      reactionSummaryRequests = new Map();
-      responseRequests = new Map();
       hasMore = true;
       clearSelection();
     }
@@ -161,19 +159,10 @@
     loadingMore = false;
   });
 
-  let reactionSummaryRequests = $state(new Map<string, ReturnType<typeof getApiCallReactionSummary>>());
-  let responseRequests = $state(new Map<string, ReturnType<typeof getAPICallResponse>>());
-
-  $effect(() => {
-    for (const call of allCalls) {
-      if (!reactionSummaryRequests.has(call.id)) {
-        reactionSummaryRequests.set(call.id, getApiCallReactionSummary(call.id));
-      }
-      if (!responseRequests.has(call.id)) {
-        responseRequests.set(call.id, getAPICallResponse(call.id));
-      }
-    }
-  });
+  const reactionSummaryRequests = $derived(
+    new Map(allCalls.map((call) => [call.id, getApiCallReactionSummary(call.id)])),
+  );
+  const responseRequests = $derived(new Map(allCalls.map((call) => [call.id, getAPICallResponse(call.id)])));
   // The remote query cache outlives this component, so arriving here would otherwise show whatever
   // was true on the last visit.
   onMount(() => {
