@@ -6,7 +6,7 @@ import { router } from "../../rpc/router";
 import { config } from "../../config";
 import { rootLogger } from "../../logger";
 import { createOpenapiSpec, createScalarPage } from "./openai";
-import { handleProxyRequest } from "./proxy";
+import { createProxySocketHandler, handleProxyRequest, handleProxyUpgrade, type ProxySocketData } from "./proxy";
 import { handleDaemonMetrics, httpMetrics } from "./metrics";
 import { tetherConnection } from "../tether-client";
 import { lastInterconnectCheck } from "../statekeeper";
@@ -35,10 +35,14 @@ export async function startServer() {
       "/openapi.json": httpMetrics.route("/openapi.json", () => Response.json(spec)),
       "/health": httpMetrics.route("/health", handleHealth),
     },
-    async fetch(req: Request, server: Server<unknown>) {
+    websocket: createProxySocketHandler(),
+    async fetch(req: Request, server: Server<ProxySocketData>) {
       const url = new URL(req.url);
       if (url.pathname === "/metrics") {
         return handleDaemonMetrics(req);
+      }
+      if (url.pathname.startsWith("/proxy/") && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+        return handleProxyUpgrade(req, url, server);
       }
       // The proxy path carries a model name, so it is labelled by pattern.
       if (url.pathname.startsWith("/proxy/")) {
