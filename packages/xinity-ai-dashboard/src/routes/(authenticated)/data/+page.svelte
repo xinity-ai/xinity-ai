@@ -49,6 +49,7 @@
 
     const appBefore = applications.find((a) => a.id === app.id);
     const updatedApp = { ...app };
+    let failed = false;
 
     await updateOptimistically({
       apiPromise: () =>
@@ -72,12 +73,15 @@
               : a,
           );
         }
+        failed = true;
         toastState.add("Failed to update application", "error");
       },
     });
 
     editingApp = null;
-    toastState.add("Application updated successfully", "success");
+    if (!failed) {
+      toastState.add("Application updated successfully", "success");
+    }
   }
 
   // --- Delete state ---
