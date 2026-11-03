@@ -1,7 +1,8 @@
 import { command, getRequestEvent, query } from '$app/server';
 import { requireSession } from '$lib/server/lib/auth/session';
 import { getDB } from '$lib/server/db';
-import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages, searchPattern } from "$lib/server/lib/calls/call-messages";
+import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages } from "$lib/server/lib/calls/call-messages";
+import { searchPattern } from "$lib/server/lib/search-pattern";
 import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/lib/calls/call-ratings";
 import { apiCallRouter } from '$lib/server/orpc/procedures/api-call.procedure';
 import { assertOrgPermission, type PermissionSpec } from '$lib/server/lib/auth/permissions';

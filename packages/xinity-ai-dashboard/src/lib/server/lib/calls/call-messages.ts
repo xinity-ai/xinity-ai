@@ -18,14 +18,6 @@ export type CallMessages = {
   outputMessage: ApiCallInputMessage | null;
 };
 
-export function escapeLikePattern(s: string): string {
-  return s.replace(/[%_\\]/g, "\\$&");
-}
-
-export function searchPattern(query: string): string {
-  return `%${escapeLikePattern(query.trim())}%`;
-}
-
 /** A legacy call matches on the copies it carries. */
 export function legacyMatchesSearch(pattern: string): SQL {
   return sql`(${apiCallT.inputMessages}::text ILIKE ${pattern} OR ${apiCallT.outputMessage}::text ILIKE ${pattern})`;

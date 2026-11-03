@@ -10,6 +10,7 @@ import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/calls/leg
 import { countDatabaseBackedMedia, moveMediaToS3 } from "$lib/server/lib/calls/media-migration";
 import { mediaS3Client } from "$lib/server/lib/calls/media-store";
 import { hasFeature } from "$lib/server/license";
+import { searchPattern } from "$lib/server/lib/search-pattern";
 
 const log = rootLogger.child({ name: "instance-admin.procedure" });
 const tags = ["Instance Admin"];
@@ -67,7 +68,7 @@ const listUsers = rootOs
     const db = getDB();
     const offset = (input.page - 1) * input.limit;
     const searchFilter = input.search
-      ? sql`(${userT.name} ILIKE ${`%${input.search}%`} OR ${userT.email} ILIKE ${`%${input.search}%`})`
+      ? sql`(${userT.name} ILIKE ${searchPattern(input.search)} OR ${userT.email} ILIKE ${searchPattern(input.search)})`
       : undefined;
 
     const [users, userCountRows] = await Promise.all([
@@ -361,7 +362,7 @@ const listOrganizations = rootOs
     const db = getDB();
     const offset = (input.page - 1) * input.limit;
     const searchFilter = input.search
-      ? sql`(${organizationT.name} ILIKE ${`%${input.search}%`} OR ${organizationT.slug} ILIKE ${`%${input.search}%`})`
+      ? sql`(${organizationT.name} ILIKE ${searchPattern(input.search)} OR ${organizationT.slug} ILIKE ${searchPattern(input.search)})`
       : undefined;
 
     const [orgs, orgCountRows] = await Promise.all([
