@@ -102,6 +102,7 @@ The gateway is the data-plane entry point for all inference traffic. It exposes 
 - `POST /v1/embeddings`: Embedding generation
 - `POST /v1/rerank`: Reranking
 - `POST /v1/audio/transcriptions`: Audio transcription
+- `GET /v1/realtime`: Realtime transcription sessions over WebSocket
 - `GET /v1/models`: List available models
 - `POST /v1/responses`: Responses API (with response caching)
 

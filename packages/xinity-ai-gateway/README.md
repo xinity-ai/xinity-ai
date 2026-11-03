@@ -25,6 +25,7 @@ bun run dev
 - `src/llm-forward/load-balancer.ts` implements three strategies: `random`, `round-robin`, and `least-connections` (default), with prefix-cache affinity for KV cache hit optimization.
 - `src/llm-forward/model-data.ts` handles canary deployment traffic splitting.
 - `src/llm-forward/endpoints/handle-responses.ts` implements the OpenAI Responses API with built-in web search and web fetch tools.
+- `src/llm-forward/endpoints/handle-realtime.ts` serves `/v1/realtime` over WebSocket, limited to transcription sessions. `src/llm-forward/realtime/session.ts` translates the OpenAI events to the engine's, with one engine connection per turn.
 
 `callLogger` and `usageRecorder` both buffer in memory, flushing at 50 rows or after 200ms. A hard
 crash drops whatever is still queued, so neither table is an audit record.

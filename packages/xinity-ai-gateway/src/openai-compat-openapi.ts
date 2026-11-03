@@ -428,6 +428,34 @@ export const openaiCompatPaths = {
       },
     },
   },
+  "/v1/realtime": {
+    get: {
+      tags: [TAG],
+      summary: "Realtime transcription session (WebSocket)",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/guides/realtime-transcription",
+        "",
+        "A WebSocket upgrade. Events flow as JSON text frames in both directions, as in OpenAI's Realtime API.",
+        "",
+        "Xinity notes:",
+        "- Only transcription sessions are supported. `session.update` must set `session.type: \"transcription\"` and a model whose deployment is a transcription model with the `realtime` tag.",
+        "- Authenticate with the `Authorization: Bearer <key>` header on the upgrade request. The `openai-insecure-api-key` subprotocol used by browsers is not supported.",
+        `- ${APP_HEADER_NOTE}`,
+        "- Turn detection is not supported. Set `turn_detection` to null and send `input_audio_buffer.commit` to end each turn.",
+        "- Input audio is `audio/pcm` (16-bit mono little-endian) at 24 kHz, or at 16 kHz as an extension. `audio/pcmu` and `audio/pcma` are rejected.",
+        "- `prompt`, `language` and other transcription settings are accepted and ignored.",
+        "- A turn that reaches the model's maximum length is committed automatically, and the audio after it continues in a new turn.",
+        "- Client events other than `session.update` and the `input_audio_buffer` events are answered with an `error` event.",
+        "- Call content is not stored. Usage is recorded per turn.",
+      ].join("\n"),
+      security: SECURITY,
+      responses: {
+        "101": { description: "Switching to the WebSocket protocol" },
+        "426": { description: "The request was not a WebSocket upgrade", content: errorJsonContent },
+        ...errorResponses,
+      },
+    },
+  },
   "/v1/responses": {
     post: {
       tags: [TAG],
