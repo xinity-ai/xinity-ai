@@ -6,6 +6,9 @@
 
   let dismissed = $state(false);
   let vramDismissed = $state(false);
+
+  const showExpiry = $derived(!dismissed && license.expired && license.inGracePeriod);
+  const showVram = $derived(!vramDismissed && totalVramGb > license.maxVramGb);
 </script>
 
 {#if license.originMismatch || license.instanceMismatch}
@@ -29,41 +32,44 @@
   </div>
 {/if}
 
-<div class="fixed right-4 top-4 z-40 flex flex-col gap-2">
-  {#if !dismissed && license.expired && license.inGracePeriod}
-    <div
-      class="flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 shadow-sm"
-      aria-live="polite"
-    >
-      <span class="h-2 w-2 rounded-full bg-amber-500"></span>
-      <span>License expired: enterprise features will be disabled soon</span>
-      <button
-        class="ml-1 cursor-pointer rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-        type="button"
-        onclick={() => { dismissed = true; }}
+<!-- In the page flow, so the notices never cover the controls at the top of a page. -->
+{#if showExpiry || showVram}
+  <div class="mx-4 mt-4 flex flex-col items-start gap-2">
+    {#if showExpiry}
+      <div
+        class="flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 shadow-sm"
+        aria-live="polite"
       >
-        Dismiss
-      </button>
-    </div>
-  {/if}
-
-  {#if !vramDismissed && totalVramGb > license.maxVramGb}
-    <div
-      class="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 shadow-sm max-w-md"
-      aria-live="polite"
-    >
-      <span class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span>
-      <span>
-        {formatGb(totalVramGb)} of VRAM detected across your instances but your license allows {formatGb(license.maxVramGb)}. Additional replicas will not be scheduled until you upgrade. Existing deployments are unaffected.
-        <a href="https://xinity.ai/xinity-pricing" target="_blank" rel="noopener noreferrer" class="underline hover:text-amber-900">Upgrade</a> to use all capacity.
-      </span>
-      <button
-        class="ml-1 shrink-0 cursor-pointer rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-        type="button"
-        onclick={() => { vramDismissed = true; }}
+        <span class="h-2 w-2 rounded-full bg-amber-500"></span>
+        <span>License expired: enterprise features will be disabled soon</span>
+        <button
+          class="ml-1 cursor-pointer rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+          type="button"
+          onclick={() => { dismissed = true; }}
+        >
+          Dismiss
+        </button>
+      </div>
+    {/if}
+  
+    {#if showVram}
+      <div
+        class="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800"
+        aria-live="polite"
       >
-        Dismiss
-      </button>
-    </div>
-  {/if}
-</div>
+        <span class="h-2 w-2 shrink-0 rounded-full bg-amber-500"></span>
+        <span>
+          {formatGb(totalVramGb)} of VRAM detected across your instances but your license allows {formatGb(license.maxVramGb)}. Additional replicas will not be scheduled until you upgrade. Existing deployments are unaffected.
+          <a href="https://xinity.ai/xinity-pricing" target="_blank" rel="noopener noreferrer" class="underline hover:text-amber-900">Upgrade</a> to use all capacity.
+        </span>
+        <button
+          class="ml-1 shrink-0 cursor-pointer rounded-full border border-amber-300 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+          type="button"
+          onclick={() => { vramDismissed = true; }}
+        >
+          Dismiss
+        </button>
+      </div>
+    {/if}
+  </div>
+{/if}
