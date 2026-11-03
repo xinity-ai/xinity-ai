@@ -247,6 +247,7 @@ async function loadTables(db: DB, orgId: string, includeDeployments: boolean): P
     includeDeployments
       ? db.select({
         name: deploymentT.name,
+        enabled: deploymentT.enabled,
       })
         .from(deploymentT)
         .where(sql`
@@ -264,7 +265,7 @@ async function loadTables(db: DB, orgId: string, includeDeployments: boolean): P
       ...rest,
       timestamp: timestamp.toISOString(),
     })),
-    recentModels: recentModels.map(m => ({ name: m.name, status: "deployed" as const })),
+    recentModels: recentModels.map(m => ({ name: m.name, status: m.enabled ? "enabled" as const : "disabled" as const })),
   };
 }
 

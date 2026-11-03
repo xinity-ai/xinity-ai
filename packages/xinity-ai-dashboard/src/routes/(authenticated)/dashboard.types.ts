@@ -63,7 +63,7 @@ export type RecentActivity = {
 
 export type RecentModel = {
   name: string;
-  status: "deployed";
+  status: "enabled" | "disabled";
 };
 
 export type KeyMetrics = {
