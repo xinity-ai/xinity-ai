@@ -6,13 +6,15 @@ Configurations for both nginx and Caddy live in [`deployment/reverse-proxy/`](..
 
 ## Defaults that break the gateway
 
-Three common proxy defaults break features rather than degrade them. If you take nothing else from this page, take these.
+Four common proxy defaults break features rather than degrade them. If you take nothing else from this page, take these.
 
 **Response buffering breaks streaming.** Every `"stream": true` completion is served as `text/event-stream`. A proxy that buffers proxied responses holds the tokens until the generation finishes, so clients see nothing and then everything. nginx buffers by default; set `proxy_buffering off`.
 
 **A 1 MB body limit rejects images and audio.** Multimodal requests carry images inline as base64 data URLs, and `/v1/audio/transcriptions` takes a multipart upload. The gateway accepts images and audio up to `MAX_MEDIA_SIZE_MB` (default 40 MB), which base64 encoding grows by a third, and it allows 8 MB on top for the rest of the request. nginx defaults `client_max_body_size` to 1 MB; allow at least 64 MB at the default. If you raise `MAX_MEDIA_SIZE_MB`, raise the proxy limit to about a third more than it plus 8 MB.
 
 **A 60 second read timeout truncates long non-streaming generations.** Reasoning and deep-research requests legitimately run for minutes. A streamed response is safe behind any read timeout above 15 seconds, because the gateway sends a keepalive comment whenever the backend has been quiet that long. A non-streaming request sends nothing until it is done, so set the proxy's read timeout just above `BACKEND_TIMEOUT_MS` (default 300s), which lets the gateway produce the error rather than the proxy cutting the connection.
+
+**Dropping the upgrade headers breaks realtime transcription.** `/v1/realtime` is a WebSocket, so the proxy has to forward `Upgrade` and `Connection` on that path. nginx forwards neither unless told, and the `Connection ""` that keeps its upstream pool reusable clears it as well, so the nginx template gives `/v1/realtime` a location of its own. A session stays open between turns while the speaker pauses, so its read timeout is longer too. Caddy forwards upgrades without configuration.
 
 ## Forwarded headers
 
