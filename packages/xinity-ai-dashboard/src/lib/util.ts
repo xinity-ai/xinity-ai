@@ -83,6 +83,13 @@ export function formatGb(value: number): string {
   return `${parseFloat(value.toFixed(2))} GB`;
 }
 
+export function formatMemory(gpuGb: number, hostGb: number, sharedMemory: boolean): string {
+  if (sharedMemory) {
+    return `${formatGb(gpuGb + hostGb)} unified memory`;
+  }
+  return [gpuGb > 0 ? `${formatGb(gpuGb)} VRAM` : "", hostGb > 0 ? `${formatGb(hostGb)} RAM` : ""].filter(Boolean).join(" + ");
+}
+
 export function humanDate(d: Date | string | undefined) {
   if (!d) return "Unknown date";
   const date = typeof d === "string" ? new Date(d) : d;
@@ -99,6 +106,11 @@ export function humanDate(d: Date | string | undefined) {
 export function humanDateShort(d: Date | undefined) {
   if (!d || !d.toLocaleDateString) return "Unknown date";
   return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+/** Minute precision */
+export function humanDateTime(d: Date | string) {
+  return (typeof d === "string" ? new Date(d) : d).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 /** Month precision, since the day a model was released is noise when comparing models. */

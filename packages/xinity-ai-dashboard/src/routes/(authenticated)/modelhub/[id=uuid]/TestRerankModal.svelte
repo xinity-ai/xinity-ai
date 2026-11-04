@@ -4,7 +4,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import { Send, Plus, Trash2, RotateCcw } from "@lucide/svelte";
 
-  import type { DeploymentDefinition } from "../+page.server";
+  import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
   import { browserLogger } from "$lib/browserLogging";
   import TestModal from "./TestModal.svelte";
   import { formatErrorBody } from "./testHelpers";
@@ -34,7 +34,7 @@
     close,
   }: {
     open: boolean;
-    deployment: DeploymentDefinition | null;
+    deployment: DeploymentOutput | null;
     close: () => void;
   } = $props();
 

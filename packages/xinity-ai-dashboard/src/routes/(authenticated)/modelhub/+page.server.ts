@@ -28,4 +28,3 @@ export const load: PageServerLoad = async ({ parent, locals }) => {
 };
 
 export type { DeploymentOutput as DeploymentDefinition };
-export type DeploymentOf<T extends DeploymentOutput["type"]> = Extract<DeploymentOutput, { type: T }>;

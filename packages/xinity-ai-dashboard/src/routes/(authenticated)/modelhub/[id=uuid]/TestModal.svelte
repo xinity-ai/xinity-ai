@@ -5,7 +5,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import { X } from "@lucide/svelte";
 
-  import type { DeploymentDefinition } from "../+page.server";
+  import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
   import TestApiKeySection from "./TestApiKeySection.svelte";
 
   let {
@@ -21,7 +21,7 @@
     extraHeader,
   }: {
     open: boolean;
-    deployment: DeploymentDefinition | null;
+    deployment: DeploymentOutput | null;
     title: string;
     apiKey: string;
     apiKeyHint: string;

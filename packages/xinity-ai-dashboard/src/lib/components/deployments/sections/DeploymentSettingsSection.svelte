@@ -30,7 +30,7 @@
 
 {#if isVllm}
   <div class="space-y-2">
-    <Label for="optimize-for{idSuffix}">Optimize For</Label>
+    <Label for="optimize-for{idSuffix}">Optimize for</Label>
     <Select.Root
       type="single"
       value={optimizeFor}

@@ -1,4 +1,5 @@
 import type { DeploymentOutput, StatusPhase } from "$lib/orpc/dtos/model.dto";
+import type { ShortfallReason } from "$lib/server/lib/deployments/shortfall-reasons";
 import type { ClusterOverview } from "$lib/server/orpc/procedures/cluster.procedure";
 
 export type PhaseDisplay = { dot: string; chip: string; pulse: boolean; label: string; description: string };
@@ -90,3 +91,29 @@ export function needsAttention(deployment: DeploymentOutput): boolean {
 }
 
 export type LicensedVram = ClusterOverview["licensedVram"];
+
+export type ShortfallFix = {
+  text: string;
+  /** How long a replica that cannot be placed waits, as the end of "waits ..." */
+  waitsUntil: string;
+  link?: { href: string; label: string };
+  fewerReplicasHelp: boolean;
+  resolvesOnItsOwn: boolean;
+};
+
+const SHORTFALL_FIXES: Record<ShortfallReason, ShortfallFix> = {
+  catalog_unavailable: { text: "This clears on its own once the model catalog is back.", waitsUntil: "until the catalog is back", fewerReplicasHelp: false, resolvesOnItsOwn: true },
+  not_found: { text: "Change the deployment to a model the catalog has.", waitsUntil: "until the model is in the catalog", fewerReplicasHelp: false, resolvesOnItsOwn: false },
+  no_compatible_node: { text: "It is placed on its own once a machine with the engine this model needs joins.", waitsUntil: "until a machine can run the model", fewerReplicasHelp: false, resolvesOnItsOwn: true },
+  no_machine_left: { text: "Each machine runs one replica, so lower the replica count or add a machine.", waitsUntil: "until a machine is added", fewerReplicasHelp: true, resolvesOnItsOwn: false },
+  no_capacity: { text: "It is placed on its own once a machine has room, from a new machine or memory another deployment frees.", waitsUntil: "until memory is free", fewerReplicasHelp: false, resolvesOnItsOwn: true },
+  license_limit: {
+    text: "It is placed on its own once the license allows more VRAM, or other deployments free some.",
+    waitsUntil: "until the license allows it",
+    link: { href: "https://xinity.ai/xinity-pricing", label: "Upgrade the license" },
+    fewerReplicasHelp: false,
+    resolvesOnItsOwn: true,
+  },
+};
+
+export const shortfallFix = (reason: ShortfallReason) => SHORTFALL_FIXES[reason];

@@ -7,7 +7,7 @@
   import { Send, RotateCcw } from "@lucide/svelte";
 
   import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
-  import type { DeploymentDefinition } from "../+page.server";
+  import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
   import { browserLogger } from "$lib/browserLogging";
   import TestModal from "./TestModal.svelte";
   import { formatErrorBody } from "./testHelpers";
@@ -24,7 +24,7 @@
     close,
   }: {
     open: boolean;
-    deployment: DeploymentDefinition | null;
+    deployment: DeploymentOutput | null;
     applications?: ApplicationDto[];
     close: () => void;
   } = $props();

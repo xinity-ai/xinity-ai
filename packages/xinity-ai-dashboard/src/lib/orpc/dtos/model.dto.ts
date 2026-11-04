@@ -115,11 +115,12 @@ export const DeploymentDto = z.discriminatedUnion("type", [
   DeploymentBaseDto.extend({ type: z.literal("canary"), canary: CanaryDeploymentDto }),
 ]);
 export type DeploymentOutput = z.infer<typeof DeploymentDto>;
+export type DeploymentOf<T extends DeploymentOutput["type"]> = Extract<DeploymentOutput, { type: T }>;
 
 // Stored rows are read back through DeploymentDto, so the stricter rules apply to what is written only.
 export const DeploymentBaseInputDto = DeploymentBaseDto.omit({ id: true, status: true, ...commonInputFilter }).extend({
   publicSpecifier: PublicSpecifierDto
-    .pipe(z.string().min(5).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, {
+    .pipe(z.string().min(5, { message: "Use at least 5 characters" }).max(128, { message: "Use at most 128 characters" }).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, {
       message: "Use letters, digits and . _ -, starting with a letter or digit",
     })),
 });
