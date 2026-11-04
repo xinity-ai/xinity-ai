@@ -1,0 +1,462 @@
+name: Release build
+
+# Called by release.yml. Attestations are created in this file so verifiers can
+# pin it (SLSA Build Level 3). Cosign stays in release.yml: installed CLIs only
+# accept that workflow's signing identity. This file cannot wait on a job in
+# the caller, so the test call lives here and image pushes wait on it, while
+# binary builds still start beside the suite.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Release version without a leading v
+        required: true
+        type: string
+      tag:
+        description: Release tag, v plus the version
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  BUN_VERSION: "1.4.2"
+
+jobs:
+  tests:
+    name: Tests
+    uses: ./.github/workflows/tests.yml
+    permissions:
+      contents: read
+
+  # Standalone binaries via `bun build --compile`.
+  # Linux x64/x64-baseline/arm64 for all packages; the CLI also gets macOS and Windows.
+  build-binaries:
+    name: "Binary: ${{ matrix.package }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: xinity-ai-gateway
+            entry: src/gatewayServer.ts
+            workdir: packages/xinity-ai-gateway
+          - package: xinity-ai-daemon
+            entry: src/index.ts
+            workdir: packages/xinity-ai-daemon
+          - package: xinity-infoserver
+            entry: server.ts
+            workdir: packages/xinity-infoserver
+          - package: xinity-tether
+            entry: src/index.ts
+            workdir: packages/xinity-tether
+          - package: xinity-cli
+            binary_name: xinity
+            workdir: packages/xinity-cli
+            custom_build: true
+            targets: "bun-linux-x64 bun-linux-x64-baseline bun-linux-arm64 bun-darwin-x64 bun-darwin-arm64 bun-windows-x64"
+          - package: xinity-ai-dashboard
+            workdir: packages/xinity-ai-dashboard
+            custom_build: true
+            pre_build: true
+            build_flags: "--no-vite"
+            vite_module_lists: ".svelte-kit/output/sbom-modules-*.json"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - &set-release-version
+        name: Set release version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: bun --bun bumpp --release "$VERSION" --no-commit --no-tag --no-push --yes --quiet
+
+      - name: Pre-build (platform-independent step)
+        if: ${{ matrix.pre_build }}
+        working-directory: ${{ matrix.workdir }}
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          bun run build
+
+      - name: Compile all targets and package
+        working-directory: ${{ matrix.workdir }}
+        run: |
+          if [ -f example.env ] && [ ! -f .env ]; then cp example.env .env; fi
+          BASE_BINARY_NAME="${{ matrix.binary_name || matrix.package }}"
+          TARGETS="${{ matrix.targets || 'bun-linux-x64 bun-linux-x64-baseline bun-linux-arm64' }}"
+
+          for target in ${TARGETS}; do
+            suffix="${target#bun-}"
+            echo "::group::Compiling ${{ matrix.package }} for ${suffix}"
+
+            BINARY_NAME="${BASE_BINARY_NAME}"
+            if [[ "$target" == *windows* ]]; then
+              BINARY_NAME="${BASE_BINARY_NAME}.exe"
+            fi
+
+            if [ "${{ matrix.custom_build || 'false' }}" = "true" ]; then
+              bun run build.ts --target "$target" --outfile "${BINARY_NAME}" \
+                --metafile "sbom-modules-${suffix}.json" ${{ matrix.build_flags }}
+            else
+              bun build --compile --minify \
+                --sourcemap=external \
+                --metafile="sbom-modules-${suffix}.json" \
+                --target="${target}" \
+                ${{ matrix.entry }} \
+                --outfile "${BINARY_NAME}"
+            fi
+
+            tar -czf "${{ matrix.package }}-${suffix}.tar.gz" "${BINARY_NAME}" *.map 2>/dev/null || \
+              tar -czf "${{ matrix.package }}-${suffix}.tar.gz" "${BINARY_NAME}"
+            rm -f "${BINARY_NAME}" *.map
+
+            echo "::endgroup::"
+          done
+
+      - name: Generate SBOM
+        working-directory: ${{ matrix.workdir }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          bun ../../scripts/generate-sbom.ts \
+            --name "${{ matrix.package }}" \
+            --version "$VERSION" \
+            --out "${{ matrix.package }}.cdx.json" \
+            sbom-modules-*.json ${{ matrix.vite_module_lists }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-${{ matrix.package }}
+          path: |
+            ${{ matrix.workdir }}/*.tar.gz
+          retention-days: 1
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v5
+        with:
+          name: sbom-${{ matrix.package }}
+          path: ${{ matrix.workdir }}/${{ matrix.package }}.cdx.json
+          retention-days: 1
+
+  build-bundles:
+    name: JS bundles
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - *set-release-version
+
+      - name: Build gateway bundle
+        working-directory: packages/xinity-ai-gateway
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          bun build --production --target=bun \
+            --outfile xinity-ai-gateway.js \
+            ./src/gatewayServer.ts
+
+      - name: Build daemon bundle
+        working-directory: packages/xinity-ai-daemon
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          bun build --production --target=bun \
+            --outfile xinity-ai-daemon.js \
+            ./src/index.ts
+
+      - name: Build infoserver bundle
+        working-directory: packages/xinity-infoserver
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          bun build --production --target=bun \
+            --outfile xinity-infoserver.js \
+            ./server.ts
+
+      - name: Build tether bundle
+        working-directory: packages/xinity-tether
+        run: |
+          if [ -f example.env ]; then cp example.env .env; fi
+          bun build --production --target=bun \
+            --outfile xinity-tether.js \
+            ./src/index.ts
+
+      - name: Package database migrations
+        run: tar czf db-migrations.tar.gz -C packages/common-db/db-migration .
+
+      - name: Stage all bundles
+        run: |
+          mkdir staging
+          cp packages/xinity-ai-gateway/xinity-ai-gateway.js staging/
+          cp packages/xinity-ai-daemon/xinity-ai-daemon.js staging/
+          cp packages/xinity-infoserver/xinity-infoserver.js staging/
+          cp packages/xinity-tether/xinity-tether.js staging/
+          cp db-migrations.tar.gz staging/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-bundles
+          path: staging/
+          retention-days: 1
+
+  build-images:
+    name: "Image: ${{ matrix.image }}"
+    needs: [tests, build-binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAMESPACE: ghcr.io/${{ github.repository_owner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: xinity-ai-gateway
+            dockerfile: ci/dockerfiles/Dockerfile.gateway
+          - image: xinity-ai-dashboard
+            dockerfile: ci/dockerfiles/Dockerfile.dashboard
+          - image: xinity-infoserver
+            dockerfile: ci/dockerfiles/Dockerfile.infoserver
+          - image: xinity-tether
+            dockerfile: ci/dockerfiles/Dockerfile.tether
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: ci/dockerfiles
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: release-${{ matrix.image }}
+          path: .artifacts
+
+      - name: Download binary SBOM
+        uses: actions/download-artifact@v5
+        with:
+          name: sbom-${{ matrix.image }}
+          path: .sbom
+
+      - name: Organize binaries by arch
+        run: |
+          mkdir -p build-context/linux/amd64 build-context/linux/arm64
+          for f in .artifacts/*.tar.gz; do
+            name=$(basename "$f" .tar.gz)
+            # Skip x64-baseline tarball; it's for standalone installs, not containers
+            case "$name" in
+              *baseline*) continue ;;
+            esac
+            case "$name" in
+              *arm64) tar -xzf "$f" -C build-context/linux/arm64/ ;;
+              *x64)   tar -xzf "$f" -C build-context/linux/amd64/ ;;
+            esac
+          done
+          find build-context -type f
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ inputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag }}
+            type=semver,pattern={{major}},value=${{ inputs.tag }}
+            type=raw,latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.vendor=Xinity AI
+            org.opencontainers.image.documentation=${{ github.server_url }}/${{ github.repository }}#readme
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./build-context
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false  # Disable attestation manifests; GHCR rejects cross-blob HEAD requests they trigger on multi-arch pushes (403)
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The manifest-list digest is what release.yml will sign. A matrix job
+      # cannot return one output per image, so each digest is its own artifact.
+      - name: Record image digest
+        id: digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if [[ ! "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Image digest is missing or not a sha256 manifest list."
+            exit 1
+          fi
+          printf '%s\n' "$DIGEST" > digest.txt
+          echo "value=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Attest image
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
+          subject-digest: ${{ steps.digest.outputs.value }}
+          push-to-registry: false
+
+      - name: Upload image digest
+        uses: actions/upload-artifact@v5
+        with:
+          name: image-digest-${{ matrix.image }}
+          path: digest.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0.24.3
+
+      - name: Generate image SBOM
+        env:
+          DIGEST: ${{ steps.digest.outputs.value }}
+          IMAGE: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          docker buildx imagetools inspect --raw "${IMAGE}@${DIGEST}" \
+            | jq -r '.manifests[] | select(.platform.os == "linux") | .digest' \
+            | while read -r platform_digest; do
+                syft scan "registry:${IMAGE}@${platform_digest}" \
+                  -o "cyclonedx-json=platform-${platform_digest#sha256:}.cdx.json"
+              done
+          mkdir image-sbom
+          jq -s \
+            --arg name "${IMAGE}" \
+            --arg version "$VERSION" \
+            --arg purl "pkg:oci/${{ matrix.image }}@${DIGEST/:/%3A}?repository_url=${IMAGE}" '
+              ([.[:-1][].components[] | select(.type != "file")] | unique_by(."bom-ref")) as $packages
+              | {
+                  metadata: {component: {type: "container", "bom-ref": $purl, name: $name, version: $version, purl: $purl, licenses: .[-1].metadata.component.licenses}},
+                  components: $packages,
+                  dependencies: [{ref: $purl, dependsOn: ([$packages[]."bom-ref"] + [.[-1].metadata.component."bom-ref"])}]
+                }' platform-*.cdx.json ".sbom/${{ matrix.image }}.cdx.json" > "image-sbom/${{ matrix.image }}-image.cdx.json"
+
+      - name: Upload image SBOM
+        uses: actions/upload-artifact@v5
+        with:
+          name: sbom-${{ matrix.image }}-image
+          path: image-sbom/
+          retention-days: 1
+
+  # SHASUMS256.txt is attested here and signed later by release.yml. Nothing
+  # after the attest step may rewrite it: the signature has to cover these bytes.
+  assemble:
+    name: Assemble release files
+    needs: [build-binaries, build-bundles, build-images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout install scripts
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: |
+            scripts/install.sh
+            scripts/install.ps1
+            scripts/combine-sbom.ts
+          sparse-checkout-cone-mode: false
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Download binary and image SBOMs
+        uses: actions/download-artifact@v5
+        with:
+          path: sbom-parts
+          pattern: sbom-*
+          merge-multiple: true
+
+      - name: Add install scripts to release
+        run: |
+          cp scripts/install.sh release/install.sh
+          cp scripts/install.ps1 release/install.ps1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Combine release SBOM
+        env:
+          VERSION: ${{ inputs.version }}
+        run: bun scripts/combine-sbom.ts --version "$VERSION" --out release/sbom.cdx.json sbom-parts/*.cdx.json
+
+      - name: Generate SHASUMS256.txt
+        working-directory: release
+        run: sha256sum * | sort > SHASUMS256.txt
+
+      - name: Check SHASUMS256.txt
+        working-directory: release
+        run: sha256sum -c SHASUMS256.txt
+
+      - name: Attest release files
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-checksums: release/SHASUMS256.txt
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v5
+        with:
+          name: shasums
+          path: release/SHASUMS256.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload release SBOM
+        uses: actions/upload-artifact@v5
+        with:
+          name: release-sbom
+          path: release/sbom.cdx.json
+          retention-days: 1
