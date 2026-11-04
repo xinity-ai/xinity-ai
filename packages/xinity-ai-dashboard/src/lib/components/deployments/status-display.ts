@@ -1,4 +1,5 @@
 import type { DeploymentOutput, StatusPhase } from "$lib/orpc/dtos/model.dto";
+import type { ClusterOverview } from "$lib/server/orpc/procedures/cluster.procedure";
 
 export type PhaseDisplay = { dot: string; chip: string; pulse: boolean; label: string };
 
@@ -56,3 +57,5 @@ export function needsAttention(deployment: DeploymentOutput): boolean {
   }
   return !deployment.status || ["failed", "partial", "not_in_catalog"].includes(deployment.status.phase);
 }
+
+export type LicensedVram = ClusterOverview["licensedVram"];
