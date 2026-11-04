@@ -1,7 +1,9 @@
+import { isDeepStrictEqual } from "node:util";
 import { deploymentCanaryT, deploymentManagedT, deploymentT, sql, type Deployment, type DeploymentManaged } from "common-db";
 import type { DeploymentType } from "common-env";
 import { MIN_CANARY_REPLICAS, type CanaryMemberInput, type RolloutTarget } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
+import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import type { VariantHandlers } from "$lib/util";
 import { modelTypeMismatch, storedAdvance, withCanaryRows } from "./canary-deployment";
 import { uninstallOwnedBy } from "./deployment-reads";
@@ -26,6 +28,25 @@ const newMemberOf = (from: DeploymentManaged, to: CanaryMemberInput) => ({
   settings: to.settings ?? from.settings,
 });
 
+async function engineOf({ specifier, preferredDriver }: Pick<DeploymentManaged, "specifier" | "preferredDriver">) {
+  const resolution = await resolveSchedulable(specifier, preferredDriver);
+  return resolution.status === "found" ? resolution.model.driver : preferredDriver;
+}
+
+async function sameModelIssue(from: DeploymentManaged, to: ReturnType<typeof newMemberOf>): Promise<string | null> {
+  if (from.specifier !== to.specifier) {
+    return null;
+  }
+  const [fromEngine, toEngine] = await Promise.all([engineOf(from), engineOf(to)]);
+  if (fromEngine === "ollama" && toEngine === "ollama") {
+    return "Ollama sizes a model's cache itself and serves one copy of it per machine, so a rollout to the same model on Ollama has nothing to change";
+  }
+  if (fromEngine === toEngine && from.kvCacheSize === to.kvCacheSize && isDeepStrictEqual(from.settings, to.settings)) {
+    return "The rollout changes nothing: it names the model the deployment serves, with the same engine, KV cache and settings";
+  }
+  return null;
+}
+
 async function managedRowOf(entry: Deployment) {
   const [row] = await getDB().select().from(deploymentManagedT).where(sql`${deploymentManagedT.id} = ${entry.managedId}`).limit(1);
   return row;
@@ -42,6 +63,10 @@ async function startCanary(target: CanaryTarget, entry: Deployment): Promise<Rol
   }
   const { progress, advance } = target.canary;
   const to = newMemberOf(from, target.canary.to);
+  const sameModel = await sameModelIssue(from, to);
+  if (sameModel) {
+    return { rejected: sameModel };
+  }
   const replicas = Math.max(MIN_CANARY_REPLICAS, from.replicas);
   return {
     models: [to.specifier],
