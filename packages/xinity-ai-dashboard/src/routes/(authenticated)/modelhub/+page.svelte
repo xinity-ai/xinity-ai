@@ -4,9 +4,9 @@
   import { invalidate } from "$app/navigation";
   import DeploymentModal from "./DeploymentModal.svelte";
   import { viewOf } from "./deployment-types";
-  import { isSettling, needsAttention } from "./status-display";
-  import StatusChip from "./StatusChip.svelte";
-  import TrafficSplit from "./TrafficSplit.svelte";
+  import { isSettling, needsAttention } from "$lib/components/deployments/status-display";
+  import StatusChip from "$lib/components/deployments/StatusChip.svelte";
+  import TrafficSplit from "$lib/components/deployments/TrafficSplit.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { browserLogger } from "$lib/browserLogging";
   import { Button } from "$lib/components/ui/button";

@@ -3,9 +3,9 @@
   import { ExternalLink, EyeOff } from "@lucide/svelte";
   import type { ModelWithSpecifier } from "common-env/model-catalog";
   import { formatGb, humanMonthYear } from "$lib/util";
-  import { isRecentlyAdded } from "./model-recency";
-  import LicenseBadge from "./LicenseBadge.svelte";
-  import NewModelBadge from "./NewModelBadge.svelte";
+  import { isRecentlyAdded } from "$lib/components/deployments/picker/model-recency";
+  import LicenseBadge from "$lib/components/deployments/picker/LicenseBadge.svelte";
+  import NewModelBadge from "$lib/components/deployments/picker/NewModelBadge.svelte";
 
   let {
     model,

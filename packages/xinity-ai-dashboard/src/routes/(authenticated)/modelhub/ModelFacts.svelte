@@ -3,7 +3,7 @@
   import { Copy } from "@lucide/svelte";
   import { Button } from "$lib/components/ui/button";
   import { copyToClipboard } from "$lib/copy";
-  import { OPTIMIZATION_GOAL_DISPLAY } from "./optimization-goals";
+  import { OPTIMIZATION_GOAL_DISPLAY } from "$lib/components/deployments/sections/optimization-goals";
 
   let {
     model,

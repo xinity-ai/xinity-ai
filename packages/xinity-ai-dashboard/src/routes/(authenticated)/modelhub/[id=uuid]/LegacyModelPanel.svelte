@@ -1,9 +1,9 @@
 <script lang="ts">
   import { Info } from "@lucide/svelte";
   import { humanDate } from "$lib/util";
-  import type { DeploymentOf } from "./+page.server";
-  import ModelFacts from "./ModelFacts.svelte";
-  import TrafficSplit from "./TrafficSplit.svelte";
+  import type { DeploymentOf } from "../+page.server";
+  import ModelFacts from "../ModelFacts.svelte";
+  import TrafficSplit from "$lib/components/deployments/TrafficSplit.svelte";
 
   let { deployment }: { deployment: DeploymentOf<"legacy"> } = $props();
 </script>

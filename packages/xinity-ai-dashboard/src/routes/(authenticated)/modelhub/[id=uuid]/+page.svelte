@@ -16,12 +16,12 @@
   import NoOrganization from "$lib/components/NoOrganization.svelte";
   import type { PageData } from "./$types";
   import { viewOf } from "../deployment-types";
-  import { isServing, isSettling } from "../status-display";
-  import ReplicaStatus from "../ReplicaStatus.svelte";
-  import StatusChip from "../StatusChip.svelte";
-  import TestChatModal from "../TestChatModal.svelte";
-  import TestEmbeddingModal from "../TestEmbeddingModal.svelte";
-  import TestRerankModal from "../TestRerankModal.svelte";
+  import { isServing, isSettling } from "$lib/components/deployments/status-display";
+  import ReplicaStatus from "./ReplicaStatus.svelte";
+  import StatusChip from "$lib/components/deployments/StatusChip.svelte";
+  import TestChatModal from "./TestChatModal.svelte";
+  import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
+  import TestRerankModal from "./TestRerankModal.svelte";
 
   let { data }: { data: PageData } = $props();
 

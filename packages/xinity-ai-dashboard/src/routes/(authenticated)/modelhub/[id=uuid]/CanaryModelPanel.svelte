@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { RolloutAdvance } from "common-env/rollout-advance";
   import { handleVariant, humanDate, type VariantHandlers } from "$lib/util";
-  import type { DeploymentOf } from "./+page.server";
-  import ModelFacts from "./ModelFacts.svelte";
-  import TrafficSplit from "./TrafficSplit.svelte";
+  import type { DeploymentOf } from "../+page.server";
+  import ModelFacts from "../ModelFacts.svelte";
+  import TrafficSplit from "$lib/components/deployments/TrafficSplit.svelte";
 
   let { deployment }: { deployment: DeploymentOf<"canary"> } = $props();
 

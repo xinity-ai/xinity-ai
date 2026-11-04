@@ -6,7 +6,7 @@
   import { copyToClipboard } from "$lib/copy";
   import { formatGb } from "$lib/util";
   import { replicaSlots, replicaSlotCounts, type ReplicaSlots } from "./replica-slots";
-  import { PHASE_DISPLAY, SLOT_DISPLAY, UNSCHEDULED_DISPLAY } from "./status-display";
+  import { PHASE_DISPLAY, SLOT_DISPLAY, UNSCHEDULED_DISPLAY } from "$lib/components/deployments/status-display";
 
   let { deployment, replicas }: { deployment: DeploymentOutput; replicas: number } = $props();
 

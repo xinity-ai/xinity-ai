@@ -7,7 +7,7 @@
   import { Send, RotateCcw } from "@lucide/svelte";
 
   import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
-  import type { DeploymentDefinition } from "./+page.server";
+  import type { DeploymentDefinition } from "../+page.server";
   import { browserLogger } from "$lib/browserLogging";
   import TestModal from "./TestModal.svelte";
   import { formatErrorBody } from "./testHelpers";

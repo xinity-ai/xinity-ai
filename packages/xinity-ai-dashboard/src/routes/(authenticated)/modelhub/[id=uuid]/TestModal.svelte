@@ -5,7 +5,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import { X } from "@lucide/svelte";
 
-  import type { DeploymentDefinition } from "./+page.server";
+  import type { DeploymentDefinition } from "../+page.server";
   import TestApiKeySection from "./TestApiKeySection.svelte";
 
   let {

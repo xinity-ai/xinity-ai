@@ -1,10 +1,10 @@
 import type { Component, ComponentProps } from "svelte";
 import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
 import type { DeploymentOf } from "./+page.server";
-import CanaryModelPanel from "./CanaryModelPanel.svelte";
+import CanaryModelPanel from "./[id=uuid]/CanaryModelPanel.svelte";
 import DeploymentModal from "./DeploymentModal.svelte";
-import LegacyModelPanel from "./LegacyModelPanel.svelte";
-import ManagedModelPanel from "./ManagedModelPanel.svelte";
+import LegacyModelPanel from "./[id=uuid]/LegacyModelPanel.svelte";
+import ManagedModelPanel from "./[id=uuid]/ManagedModelPanel.svelte";
 
 type DeploymentTypeView<D extends DeploymentOutput> = {
   /** Marks the deployment in the overview, or null for the ordinary case. */

@@ -4,7 +4,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import { Send, Plus, Trash2, RotateCcw } from "@lucide/svelte";
 
-  import type { DeploymentDefinition } from "./+page.server";
+  import type { DeploymentDefinition } from "../+page.server";
   import { browserLogger } from "$lib/browserLogging";
   import TestModal from "./TestModal.svelte";
   import { formatErrorBody } from "./testHelpers";

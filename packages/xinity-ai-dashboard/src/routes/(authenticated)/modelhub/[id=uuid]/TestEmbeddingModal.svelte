@@ -4,7 +4,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import { Send, Copy, RotateCcw } from "@lucide/svelte";
 
-  import type { DeploymentDefinition } from "./+page.server";
+  import type { DeploymentDefinition } from "../+page.server";
   import { browserLogger } from "$lib/browserLogging";
   import { copyToClipboard } from "$lib/copy";
   import TestModal from "./TestModal.svelte";

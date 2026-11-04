@@ -7,12 +7,12 @@
 
   import { toastState } from "$lib/state/toast.svelte";
   import { browserLogger } from "$lib/browserLogging";
-  import CustomCodeConsent from "./CustomCodeConsent.svelte";
-  import LicenseNotice from "./LicenseNotice.svelte";
+  import CustomCodeConsent from "$lib/components/deployments/picker/CustomCodeConsent.svelte";
+  import LicenseNotice from "$lib/components/deployments/picker/LicenseNotice.svelte";
   import type { DeploymentOf } from "./+page.server";
   import { settingsEqual, type DeploymentSettings } from "common-env/deployment-settings";
   import { DeploymentSettingsDto } from "$lib/orpc/dtos/model.dto";
-  import type { CapacityPreview } from "./DeploymentCapacitySummary.svelte";
+  import type { CapacityPreview } from "$lib/components/deployments/sections/DeploymentCapacitySummary.svelte";
 
   import { Button } from "$lib/components/ui/button";
   import { Checkbox } from "$lib/components/ui/checkbox";

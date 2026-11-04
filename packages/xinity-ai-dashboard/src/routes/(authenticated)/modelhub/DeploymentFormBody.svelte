@@ -2,9 +2,9 @@
   import { slide } from "svelte/transition";
   import type { ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
   import type { ModelCompatibility } from "$lib/server/orpc/procedures/cluster.procedure";
-  import ModelSelectorModal from "./ModelSelectorModal.svelte";
+  import ModelSelectorModal from "$lib/components/deployments/picker/ModelSelectorModal.svelte";
   import DeploymentModelTile from "./DeploymentModelTile.svelte";
-  import DeploymentCapacitySummary, { type CapacityPreview } from "./DeploymentCapacitySummary.svelte";
+  import DeploymentCapacitySummary, { type CapacityPreview } from "$lib/components/deployments/sections/DeploymentCapacitySummary.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
@@ -13,7 +13,7 @@
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { ChevronDown } from "@lucide/svelte";
   import type { DeploymentSettings } from "common-env/deployment-settings";
-  import DeploymentSettingsSection from "./DeploymentSettingsSection.svelte";
+  import DeploymentSettingsSection from "$lib/components/deployments/sections/DeploymentSettingsSection.svelte";
 
   let {
     selectedPrimaryModel,
