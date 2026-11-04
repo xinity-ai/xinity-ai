@@ -10,10 +10,11 @@
   import * as Select from "$lib/components/ui/select";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight, MailCheck, MailX, KeyRound, Copy, Ellipsis } from "@lucide/svelte";
+  import { Search, Ban, ShieldCheck, UserPlus, X, MailCheck, MailX, KeyRound, Copy, Ellipsis } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { copyToClipboard } from "$lib/copy";
-  import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
+  import { createUrlPagedList } from "$lib/state/url-paged-list.svelte";
+  import PaginationFooter from "$lib/components/PaginationFooter.svelte";
   import { humanDateShort } from "$lib/util";
 
   type ListUsersData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.listUsers>>["data"]>;
@@ -23,30 +24,11 @@
 
   let { data } = $props();
 
-  const searchParams = createUrlSearchParamsStore();
-  const LIMIT = 25;
-
-  let users = $state<AdminUser[]>([]);
-  let total = $state(0);
+  const users = createUrlPagedList<AdminUser>(25, async (query) => {
+    const { data } = await orpc.instanceAdmin.listUsers(query);
+    return data ? { items: data.users, total: data.total } : null;
+  });
   let organizations = $state<AdminOrganization[]>([]);
-
-  const currentPage = $derived(Number($searchParams.page) || 1);
-  const searchValue = $derived($searchParams.search ?? "");
-
-  let searchInputValue = $state($searchParams.search ?? "");
-  let searchTimeout: ReturnType<typeof setTimeout> | undefined;
-
-  async function fetchUsers() {
-    const result = await orpc.instanceAdmin.listUsers({
-      page: currentPage,
-      limit: LIMIT,
-      search: searchValue || undefined,
-    });
-    if (result.data) {
-      users = result.data.users;
-      total = result.data.total;
-    }
-  }
 
   async function fetchOrganizations() {
     const result = await orpc.instanceAdmin.listOrganizations({ page: 1, limit: 100 });
@@ -56,25 +38,8 @@
   }
 
   onMount(() => {
-    void fetchUsers();
     void fetchOrganizations();
-    return () => clearTimeout(searchTimeout);
   });
-
-  function onSearchInput(e: Event) {
-    searchInputValue = (e.target as HTMLInputElement).value;
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      $searchParams.search = searchInputValue || "";
-      delete $searchParams.page;
-      void fetchUsers();
-    }, 300);
-  }
-
-  function goToPage(p: number) {
-    $searchParams.page = String(p);
-    void fetchUsers();
-  }
 
   // Ban modal state
   let banModalOpen = $state(false);
@@ -120,7 +85,7 @@
       banModalOpen = false;
       banReason = "";
       banTargetUser = null;
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -130,7 +95,7 @@
       toastState.add("Failed to unban user", "error");
     } else {
       toastState.add(`Unbanned ${name}`, "success");
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -149,7 +114,7 @@
       addOrgTargetUser = null;
       addOrgSelectedOrg = "";
       addOrgSelectedRole = "pending";
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -159,7 +124,7 @@
       toastState.add(result.error.message || "Failed to remove user from organization", "error");
     } else {
       toastState.add(`Removed ${userName} from organization`, "success");
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -173,7 +138,7 @@
       toastState.add(result.error.message || "Failed to update role", "error");
     } else {
       toastState.add("Role updated", "success");
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -186,7 +151,7 @@
       toastState.add(result.error.message || "Failed to update verification status", "error");
     } else {
       toastState.add(`${!currentlyVerified ? "Verified" : "Unverified"} email for ${name}`, "success");
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -202,7 +167,7 @@
       toastState.add(result.error.message || "Failed to create user", "error");
     } else {
       createUserTempPassword = result.data.temporaryPassword;
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -219,8 +184,6 @@
       resetPasswordTempPassword = result.data.temporaryPassword;
     }
   }
-
-  const totalPages = $derived(Math.ceil(total / LIMIT));
 </script>
 
 <Card.Root>
@@ -228,7 +191,7 @@
     <div class="flex items-center justify-between">
       <div>
         <Card.Title>Users</Card.Title>
-        <Card.Description>{total} total users</Card.Description>
+        <Card.Description>{users.total} total users</Card.Description>
       </div>
       {#if data.internalSigninEnabled}
         <Button onclick={() => { createUserModalOpen = true; }}>
@@ -241,14 +204,13 @@
       <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
       <Input
         placeholder="Search by name or email..."
-        value={searchInputValue}
-        oninput={onSearchInput}
+        bind:value={users.searchInput}
         class="pl-9"
       />
     </div>
   </Card.Header>
   <Card.Content>
-    {#if users.length === 0}
+    {#if users.items.length === 0}
       <p class="text-center text-muted-foreground py-8">No users found.</p>
     {:else}
       <div class="overflow-x-auto">
@@ -264,7 +226,7 @@
             </tr>
           </thead>
           <tbody>
-            {#each users as user (user.id)}
+            {#each users.items as user (user.id)}
               <tr class="border-b last:border-0">
                 <td class="py-3 pr-4 font-medium">{user.name}</td>
                 <td class="py-3 pr-4 text-muted-foreground">{user.email}</td>
@@ -371,32 +333,14 @@
       </div>
 
       <!-- Pagination -->
-      {#if totalPages > 1}
-        <div class="flex items-center justify-between mt-4 pt-4 border-t">
-          <span class="text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages}
-          </span>
-          <div class="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage <= 1}
-              onclick={() => goToPage(currentPage - 1)}
-            >
-              <ChevronLeft class="w-4 h-4" />
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage >= totalPages}
-              onclick={() => goToPage(currentPage + 1)}
-            >
-              Next
-              <ChevronRight class="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
+      {#if users.totalPages > 1}
+        <PaginationFooter
+          label="Page {users.currentPage} of {users.totalPages}"
+          canPrev={users.currentPage > 1}
+          canNext={users.currentPage < users.totalPages}
+          onPrev={() => users.goToPage(users.currentPage - 1)}
+          onNext={() => users.goToPage(users.currentPage + 1)}
+        />
       {/if}
     {/if}
   </Card.Content>
