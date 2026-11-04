@@ -16,7 +16,7 @@
   import NoOrganization from "$lib/components/NoOrganization.svelte";
   import type { PageData } from "./$types";
   import { viewOf } from "../deployment-types";
-  import { isServing, isSettling } from "$lib/components/deployments/status-display";
+  import { isServing, isSettling, statusDisplayOf } from "$lib/components/deployments/status-display";
   import ReplicaStatus from "./ReplicaStatus.svelte";
   import StatusChip from "$lib/components/deployments/StatusChip.svelte";
   import TestChatModal from "./TestChatModal.svelte";
@@ -130,7 +130,7 @@
       <div class="space-y-1.5 min-w-0">
         <div class="flex flex-wrap items-center gap-3">
           <h1 class="text-2xl font-bold truncate">{deployment.name}</h1>
-          <StatusChip {deployment} />
+          <StatusChip display={statusDisplayOf(deployment)} />
           {#if badge}
             <Badge variant="outline">{badge}</Badge>
           {/if}

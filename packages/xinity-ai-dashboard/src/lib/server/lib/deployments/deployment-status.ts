@@ -1,15 +1,17 @@
 import type { lifecycleStateEnum } from "common-db";
 import { couplingDocsUrl, deriveInterconnectOverview, describeCouplingIssue, describePortIssue, sharesHostMemory, type GpuInfo, type InstallationGroup, type InterconnectPort, type IssueDescription, type PortIssue } from "common-env";
-import type { DeploymentOutput, DeploymentStatus, ReplicaStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
+import type { CANARY_MEMBERS, DeploymentOutput, DeploymentStatus, ReplicaStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
 import { handleVariant, type VariantHandlers } from "$lib/util";
 import { foldDeployment, foldReplicas, isProgressBearingPhase, toDisplayPhase, type ReplicaMember } from "./deployment-phase";
 import { canaryReplicas } from "./requirements";
 
 type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
+type RolloutSide = (typeof CANARY_MEMBERS)[number];
 
 /** One row of the deployment status join, narrowed to the columns the fold reads. */
 export type DeploymentStatusRow = {
   deployment: DeploymentOutput;
+  side?: RolloutSide;
   model_installation: { id: string; specifier: string; group: InstallationGroup | null; gpuIds: string[]; estCapacity: number; hostCapacity: number | null } | null;
   model_installation_state: {
     lifecycleState: LifecycleState;
@@ -20,22 +22,23 @@ export type DeploymentStatusRow = {
   ai_node: { id: string; machineName: string | null; host: string; interconnect: InterconnectPort[]; gpus?: Pick<GpuInfo, "vramMb">[] } | null;
 };
 
-type Member = ReplicaMember & { specifier: string; nodeId: string; node: string; interconnect: InterconnectPort[]; rank: number; cards: number; gpuGb: number; hostGb: number; sharedMemory: boolean };
+type Member = ReplicaMember & { specifier: string; side?: RolloutSide; nodeId: string; node: string; interconnect: InterconnectPort[]; rank: number; cards: number; gpuGb: number; hostGb: number; sharedMemory: boolean };
 
 type Wanted = DeploymentStatus["wanted"];
+type WantedModel = Omit<Wanted[number], "replicas">;
 
-const splitWanted = (replicas: number, progress: number, from: string, to: string): Wanted => {
+const splitWanted = (replicas: number, progress: number, from: WantedModel, to: WantedModel): Wanted => {
   const split = canaryReplicas(replicas, progress);
-  return [{ specifier: to, replicas: split.to }, { specifier: from, replicas: split.from }].filter((side) => side.replicas > 0);
+  return [{ ...to, replicas: split.to }, { ...from, replicas: split.from }].filter((side) => side.replicas > 0);
 };
 
 // What the scheduler places, by the same rule its requirements follow.
 const WANTED: VariantHandlers<DeploymentOutput, Wanted> = {
   legacy: ({ legacy }) => legacy.earlySpecifier && legacy.earlySpecifier !== legacy.specifier
-    ? splitWanted(legacy.replicas, legacy.progress, legacy.earlySpecifier, legacy.specifier)
+    ? splitWanted(legacy.replicas, legacy.progress, { specifier: legacy.earlySpecifier }, { specifier: legacy.specifier })
     : [{ specifier: legacy.specifier, replicas: legacy.replicas }],
   managed: ({ managed }) => [{ specifier: managed.specifier, replicas: managed.replicas }],
-  canary: ({ canary }) => splitWanted(canary.replicas, canary.progress, canary.from.specifier, canary.to.specifier),
+  canary: ({ canary }) => splitWanted(canary.replicas, canary.progress, { specifier: canary.from.specifier, side: "from" }, { specifier: canary.to.specifier, side: "to" }),
 };
 
 export const wantedOf = (deployment: DeploymentOutput) => handleVariant(WANTED, deployment);
@@ -48,13 +51,13 @@ export const wantedOf = (deployment: DeploymentOutput) => handleVariant(WANTED, 
  * no replica at all: its state row stopped updating when the daemon went away.
  */
 export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): DeploymentOutput[] {
-  const deploymentMap = new Map<string, { deployment: DeploymentOutput; members: Member[] }>();
+  const deploymentMap = new Map<string, { deployment: DeploymentOutput; members: Member[]; stranded: boolean }>();
 
   for (const row of rows) {
     const deployment = row.deployment;
     let entry = deploymentMap.get(deployment.id);
     if (!entry) {
-      entry = { deployment, members: [] };
+      entry = { deployment, members: [], stranded: false };
       deploymentMap.set(deployment.id, entry);
     }
 
@@ -62,12 +65,16 @@ export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): Deploymen
     const state = row.model_installation_state;
     const liveNode = row.ai_node;
 
+    if (installation && !liveNode) {
+      entry.stranded = true;
+    }
     if (!installation || !liveNode) continue;
 
     const phase = state?.lifecycleState ?? "scheduling";
     entry.members.push({
       installationId: installation.id,
       specifier: installation.specifier,
+      side: row.side,
       group: installation.group,
       rank: installation.group?.rank ?? 0,
       nodeId: liveNode.id,
@@ -84,18 +91,26 @@ export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): Deploymen
     });
   }
 
-  return Array.from(deploymentMap.values()).map(({ deployment, members }) => {
+  return Array.from(deploymentMap.values()).map(({ deployment, members, stranded }) => {
     const replicas = foldReplicas(members);
     const phaseInfo = foldDeployment(replicas.map(({ info }) => info));
-    if (!phaseInfo) return deployment;
     const wanted = wantedOf(deployment);
-    const ofModel = (specifier: string) => replicas.filter(({ members }) => members[0]!.specifier === specifier);
+    // The sync keeps an installation it could not move off a machine that went offline, so one left
+    // means the deployment ran there and nothing has taken its place.
+    if (!phaseInfo && stranded) {
+      return { ...deployment, status: { phase: "down" as const, wanted, progress: null, error: null, failureLogs: null } };
+    }
+    if (!phaseInfo) return deployment;
+    const ofWanted = ({ specifier, side }: WantedModel) =>
+      replicas.filter(({ members }) => (side ? members[0]!.side === side : members[0]!.specifier === specifier));
     const phase = toDisplayPhase(phaseInfo) as StatusPhase;
-    const short = wanted.some(({ specifier, replicas: count }) => ofModel(specifier).length < count);
+    const short = wanted.some(({ replicas: count, ...model }) => ofWanted(model).length < count);
+    // A rollout with one side not serving sends all traffic to the other, whatever its share says.
+    const sideDown = wanted.some((model) => !ofWanted(model).some(({ info }) => info.phase === "ready"));
     return {
       ...deployment,
       status: {
-        phase: phase === "ready" && short ? "partial" : phase,
+        phase: (phase === "ready" || phase === "partial") && sideDown ? "degraded" : phase === "ready" && short ? "partial" : phase,
         wanted,
         progress: phaseInfo.progress,
         error: phaseInfo.error,
@@ -113,6 +128,7 @@ function replicaStatus(phase: ReplicaMember["phase"], error: string | null, memb
   return {
     phase: phase as ReplicaStatus["phase"],
     specifier: byRank[0]!.specifier,
+    side: byRank[0]!.side,
     node: byRank[0]!.node,
     error: sharedError ? byRank[0]!.error : error,
     ...(byRank[0]!.group && {

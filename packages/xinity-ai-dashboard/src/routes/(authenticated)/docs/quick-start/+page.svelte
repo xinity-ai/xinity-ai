@@ -191,9 +191,9 @@ const completion = await openai.chat.completions.create({
         </ol>
         <div class="mt-4 p-4 bg-xinity-purple/10 border-l-4 border-xinity-purple rounded">
           <p class="text-sm text-xinity-pink">
-            <strong>Tip:</strong> Once the deployment is in the "Ready" state,
-            click the <strong>Test</strong> button on its card to try it out
-            directly from the Model Hub. Chat, embedding, and rerank models all
+            <strong>Tip:</strong> Once the deployment serves, which its status shows
+            as Healthy, Reduced or Degraded, open it in the Model Hub and click
+            <strong>Test</strong> to try it out directly. Chat, embedding, and rerank models all
             get a tailored input/output panel. You can paste an existing API
             key or generate a temporary one that is cleaned up automatically
             when you close the dialog.

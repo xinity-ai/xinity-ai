@@ -13,7 +13,7 @@ import {
   stateOfInstallation,
   type Deployment,
 } from "common-db";
-import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
+import { CANARY_MEMBERS, type DeploymentOutput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
 import type { DeploymentPhaseRow } from "$lib/server/notifications/scheduler";
@@ -29,6 +29,8 @@ export async function withInstallationStatus(deployments: DeploymentOutput[]): P
   const rows = await getDB()
     .select({
       deploymentId: deploymentT.id,
+      fromId: deploymentCanaryT.fromId,
+      toId: deploymentCanaryT.toId,
       model_installation: modelInstallationT,
       model_installation_state: modelInstallationStateT,
       ai_node: aiNodeT,
@@ -39,9 +41,11 @@ export async function withInstallationStatus(deployments: DeploymentOutput[]): P
     .leftJoin(modelInstallationStateT, stateOfInstallation)
     .leftJoin(aiNodeT, installationOnLiveNode)
     .where(inArray(deploymentT.id, idsOf(deployments)));
-  return foldDeploymentStatusRows(rows.flatMap(({ deploymentId, ...installation }) => {
+  return foldDeploymentStatusRows(rows.flatMap(({ deploymentId, fromId, toId, ...installation }) => {
     const deployment = byId.get(deploymentId);
-    return deployment ? [{ ...installation, deployment }] : [];
+    const ownerId = installation.model_installation?.managedId;
+    const side = CANARY_MEMBERS.find((member) => ownerId && ownerId === { from: fromId, to: toId }[member]);
+    return deployment ? [{ ...installation, deployment, side }] : [];
   }));
 }
 

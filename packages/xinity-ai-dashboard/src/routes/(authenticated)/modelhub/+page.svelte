@@ -4,7 +4,7 @@
   import { invalidate } from "$app/navigation";
   import DeploymentModal from "./DeploymentModal.svelte";
   import { viewOf } from "./deployment-types";
-  import { isSettling, needsAttention } from "$lib/components/deployments/status-display";
+  import { isSettling, needsAttention, statusDisplayOf } from "$lib/components/deployments/status-display";
   import StatusChip from "$lib/components/deployments/StatusChip.svelte";
   import TrafficSplit from "$lib/components/deployments/TrafficSplit.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
@@ -156,7 +156,7 @@
                   {/if}
                   {models.to}
                 </div>
-                <div><StatusChip {deployment} /></div>
+                <div><StatusChip display={statusDisplayOf(deployment)} /></div>
                 <div class="text-sm text-muted-foreground" title="Ready of requested replicas">
                   {deployment.enabled ? `${readyReplicas(deployment)}/${view.replicas(deployment)}` : view.replicas(deployment)}
                 </div>

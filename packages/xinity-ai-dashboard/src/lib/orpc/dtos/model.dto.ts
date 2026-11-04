@@ -15,9 +15,13 @@ export const DeploymentSettingsDto = z.object({
 
 const ReplicaPhaseDto = z.enum(["ready", "downloading", "installing", "failed", "scheduling"]);
 
+export const CANARY_MEMBERS = ["from", "to"] as const;
+const RolloutSideDto = z.enum(CANARY_MEMBERS).optional().describe("The rollout side it belongs to, absent outside a rollout. Both sides may serve the same model");
+
 export const ReplicaStatusDto = z.object({
   phase: ReplicaPhaseDto,
   specifier: z.string().describe("The model the replica serves"),
+  side: RolloutSideDto,
   node: z.string().nullable(),
   error: z.string().nullable(),
   /** Each machine of a replica served across several, by rank. */
@@ -37,13 +41,13 @@ export const ReplicaStatusDto = z.object({
 export type ReplicaStatus = z.infer<typeof ReplicaStatusDto>;
 
 export const DeploymentStatusDto = z.object({
-  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling", "not_in_catalog", "partial"]),
+  phase: z.enum(["ready", "downloading", "installing", "failed", "scheduling", "not_in_catalog", "partial", "degraded", "down"]),
   progress: z.number().nullable(),
   error: z.string().nullable().optional(),
   failureLogs: z.string().nullable().optional(),
   replicas: ReplicaStatusDto.array().optional(),
-  wanted: z.array(z.object({ specifier: z.string(), replicas: z.number() }))
-    .describe("Replicas the scheduler places per model. During a rollout the two shares add up to the deployment's replicas"),
+  wanted: z.array(z.object({ specifier: z.string(), side: RolloutSideDto, replicas: z.number() }))
+    .describe("Replicas the scheduler places per model, and during a rollout per side. The two shares add up to the deployment's replicas"),
 });
 export type DeploymentStatus = z.infer<typeof DeploymentStatusDto>;
 export type StatusPhase = DeploymentStatus["phase"];
@@ -163,8 +167,6 @@ export const RolloutAdvanceInputDto = z.discriminatedUnion("type", [
   }),
 ]);
 export type RolloutAdvanceInput = z.infer<typeof RolloutAdvanceInputDto>;
-
-export const CANARY_MEMBERS = ["from", "to"] as const;
 
 /** What a deployment becomes, keyed by its new type. */
 export const RolloutDto = z.discriminatedUnion("type", [

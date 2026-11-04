@@ -1,6 +1,19 @@
 <script lang="ts">
   import * as Collapsible from "$lib/components/ui/collapsible";
   import { ChevronRight } from "@lucide/svelte";
+  import { DISABLED_DISPLAY, PHASE_DISPLAY, UNPLACED_DISPLAY, type PhaseDisplay } from "$lib/components/deployments/status-display";
+  import StatusChip from "$lib/components/deployments/StatusChip.svelte";
+
+  const STATUSES: { display: PhaseDisplay[]; more?: string; needsYou: boolean }[] = [
+    { display: [PHASE_DISPLAY.ready], needsYou: false },
+    { display: [PHASE_DISPLAY.partial], needsYou: false },
+    { display: [PHASE_DISPLAY.degraded], needsYou: true },
+    { display: [PHASE_DISPLAY.down], needsYou: true },
+    { display: [PHASE_DISPLAY.failed], more: "The patterns below explain the common errors.", needsYou: true },
+    { display: [UNPLACED_DISPLAY], needsYou: true },
+    { display: [PHASE_DISPLAY.not_in_catalog], needsYou: true },
+    { display: [PHASE_DISPLAY.scheduling, PHASE_DISPLAY.downloading, PHASE_DISPLAY.installing], needsYou: false },
+  ];
 </script>
 
 <svelte:head>
@@ -33,6 +46,37 @@
   <p class="mb-8 text-lg text-gray-600">
     Find the error message from your failed deployment below and follow the suggested fix.
   </p>
+
+  <section id="status" class="mb-8 p-6 bg-white rounded-lg shadow-md">
+    <h2 class="text-2xl font-semibold mb-2">What a deployment's status means</h2>
+    <p class="text-gray-600 mb-4">
+      The status runs from fine to broken, so the <a href="/modelhub/" class="text-xinity-magenta hover:text-xinity-pink underline">Model Hub</a>
+      shows at a glance which deployments need you. Those marked below count towards "need attention" there.
+    </p>
+    <table class="w-full text-sm">
+      <thead class="sr-only">
+        <tr><th>Status</th><th>Meaning</th><th>Needs you</th></tr>
+      </thead>
+      <tbody class="divide-y">
+        {#each STATUSES as status (status.display[0]!.label)}
+          <tr>
+            <td class="py-2 pr-4 align-top">
+              <div class="flex flex-col items-start gap-1">
+                {#each status.display as display (display.label)}
+                  <StatusChip {display} />
+                {/each}
+              </div>
+            </td>
+            <td class="py-2 pr-4 align-top text-gray-600">{status.display[0]!.description} {status.more ?? ""}</td>
+            <td class="py-2 align-top whitespace-nowrap text-gray-600">{status.needsYou ? "Needs you" : ""}</td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+    <p class="text-gray-600 mt-4 text-sm">
+      A disabled deployment shows <strong>Disabled</strong> instead. {DISABLED_DISPLAY.description}
+    </p>
+  </section>
 
   <!-- Quick reference -->
   <section class="mb-8 p-6 bg-white rounded-lg shadow-md">

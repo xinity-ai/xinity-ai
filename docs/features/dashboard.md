@@ -20,9 +20,27 @@ Historical usage events older than 30 days are automatically rolled up into dail
 
 The Model Hub manages model deployments across the cluster.
 
-### Deployment cards
+### Deployment list
 
-Each card shows status (Ready, Partial, Failed, Scheduling, Downloading, Installing, Not in Catalog), public specifier, replica count, deployment type (Static or Canary with mode), and failure logs. Multi-replica deployments show per-replica status dots. Canary deployments display a traffic distribution bar. Deployments in transient states auto-refresh every 10 seconds.
+The Model Hub lists every deployment of the organization with its public name, model, status and how many of its replicas serve. A canary deployment also shows its traffic split. Each deployment opens on a page of its own with its replicas, its model or rollout, and its settings. Deployments that are still changing refresh often, the rest every two minutes.
+
+### Deployment status
+
+The status runs from fine to broken, so an operator sees at a glance which deployments need them. Those that need them count towards "need attention" in the list.
+
+| Status | Meaning | Needs you |
+|---|---|---|
+| Healthy | Every replica the deployment asks for runs and answers requests. | |
+| Reduced | Answers requests correctly, with fewer replicas than it asks for, because some have no machine or failed. It handles less traffic at once. | |
+| Degraded | Answers requests, but not as configured. During a rollout one model has no serving replica, so all traffic goes to the other one whatever the split says, and the rollout cannot be promoted. | Yes |
+| Down | It ran, but the machines its replicas ran on went offline and no other machine can take them. Requests to it fail. | Yes |
+| Failed | Its replicas failed to start or stopped with an error. Its page shows the error and the logs, and Retry starts them again. | Yes |
+| Not placed | Enabled, but no machine has taken it yet, for lack of free memory, of room under the license, or of a machine with the engine the model needs. It is placed on its own once that changes. | Yes |
+| Not in Catalog | The model catalog no longer lists its model, so it cannot be placed. Change it to a model the catalog has. | Yes |
+| Scheduling, Downloading, Installing | On its way to serving. | |
+| Disabled | Runs nowhere, and requests to it fail. | |
+
+A single replica shows Serving, Failed, Scheduling, Downloading or Installing, or Not scheduled when it has no machine.
 
 ### Creating a deployment
 

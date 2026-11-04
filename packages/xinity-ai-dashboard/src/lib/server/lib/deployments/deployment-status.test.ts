@@ -69,6 +69,46 @@ describe("foldDeploymentStatusRows", () => {
     expect(deployment!.status!.phase).toBe("partial");
   });
 
+  describe("during a rollout", () => {
+    const rollout = { ...DEPLOYMENT, legacy: { ...DEPLOYMENT.legacy, earlySpecifier: "qwen3.6-35b", replicas: 2, progress: 30 } };
+    const side = (id: string, specifier: string, lifecycleState: State["lifecycleState"] = "ready") => row({
+      deployment: rollout,
+      model_installation: { ...installation(id, null), specifier },
+      model_installation_state: state({ lifecycleState }),
+    });
+
+    test("is degraded while one side has no machine, since its share of traffic cannot be kept", () => {
+      const [deployment] = foldDeploymentStatusRows([side("inst-0", "qwen3.6-35b")]);
+      expect(deployment!.status!.phase).toBe("degraded");
+    });
+
+    test("is degraded while one side's only replica failed", () => {
+      const [deployment] = foldDeploymentStatusRows([side("inst-0", "qwen3.6-35b"), side("inst-1", "qwen3.6-27b", "failed")]);
+      expect(deployment!.status!.phase).toBe("degraded");
+    });
+
+    test("serves while both sides do", () => {
+      const [deployment] = foldDeploymentStatusRows([side("inst-0", "qwen3.6-35b"), side("inst-1", "qwen3.6-27b")]);
+      expect(deployment!.status!.phase).toBe("ready");
+    });
+
+    test("tells the sides apart by owner when both serve the same model", () => {
+      const member = { specifier: "qwen3.6-27b", kvCacheSize: null, preferredDriver: null, settings: { version: 1 as const } };
+      const sameModel: DeploymentStatusRow["deployment"] = {
+        ...DEPLOYMENT,
+        type: "canary",
+        canary: { replicas: 2, progress: 50, advance: { type: "manual", version: 1 }, from: member, to: { ...member, kvCacheSize: 64 } },
+      };
+      const [deployment] = foldDeploymentStatusRows([{ ...row({ deployment: sameModel }), side: "from" }]);
+      expect(deployment!.status!.wanted).toEqual([
+        { specifier: "qwen3.6-27b", side: "to", replicas: 1 },
+        { specifier: "qwen3.6-27b", side: "from", replicas: 1 },
+      ]);
+      expect(deployment!.status!.replicas!.map(({ side }) => side)).toEqual(["from"]);
+      expect(deployment!.status!.phase).toBe("degraded");
+    });
+  });
+
   test("ignores a replica whose node left the cluster, even while its state still reads ready", () => {
     const [deployment] = foldDeploymentStatusRows([
       ...replicas(2),
@@ -78,12 +118,13 @@ describe("foldDeploymentStatusRows", () => {
     expect(deployment!.status!.phase).toBe("ready");
   });
 
-  test("reports no status when every installation sits on a node that left the cluster", () => {
+  test("is down when every installation sits on a node that left the cluster", () => {
     const [deployment] = foldDeploymentStatusRows([
       row({ model_installation: installation("inst-0", null), ai_node: null }),
       row({ model_installation: installation("inst-1", null), ai_node: null }),
     ]);
-    expect(deployment!.status).toBeUndefined();
+    expect(deployment!.status!.phase).toBe("down");
+    expect(deployment!.status!.replicas).toBeUndefined();
     expect(deployment!.id).toBe("dep-1");
   });
 

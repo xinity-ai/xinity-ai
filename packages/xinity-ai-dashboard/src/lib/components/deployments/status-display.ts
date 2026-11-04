@@ -1,33 +1,65 @@
 import type { DeploymentOutput, StatusPhase } from "$lib/orpc/dtos/model.dto";
 import type { ClusterOverview } from "$lib/server/orpc/procedures/cluster.procedure";
 
-export type PhaseDisplay = { dot: string; chip: string; pulse: boolean; label: string };
+export type PhaseDisplay = { dot: string; chip: string; pulse: boolean; label: string; description: string };
 
+const ON_ITS_WAY = "On its way to serving.";
+
+// A ladder from fine to broken, so an operator sees at a glance how much a deployment needs them.
 export const PHASE_DISPLAY: Record<StatusPhase, PhaseDisplay> = {
-  ready:          { dot: "bg-[#4ade80]",  chip: "bg-[#4ade80]/15 text-[#16a34a]",      pulse: false, label: "Ready" },
-  partial:        { dot: "bg-[#f59e0b]",  chip: "bg-[#f59e0b]/15 text-[#d97706]",      pulse: false, label: "Partial" },
-  failed:         { dot: "bg-destructive", chip: "bg-destructive/15 text-destructive", pulse: false, label: "Failed" },
-  scheduling:     { dot: "bg-[#98B9FD]",  chip: "bg-[#98B9FD]/15 text-[#5b8ae6]",      pulse: true,  label: "Scheduling" },
-  downloading:    { dot: "bg-primary",     chip: "bg-primary/15 text-primary",          pulse: true,  label: "Downloading" },
-  installing:     { dot: "bg-primary",     chip: "bg-primary/15 text-primary",          pulse: true,  label: "Installing" },
-  not_in_catalog: { dot: "bg-[#f59e0b]",  chip: "bg-[#f59e0b]/15 text-[#d97706]",      pulse: false, label: "Not in Catalog" },
+  ready: {
+    dot: "bg-[#4ade80]", chip: "bg-[#4ade80]/15 text-[#16a34a]", pulse: false, label: "Healthy",
+    description: "Every replica the deployment asks for runs and answers requests.",
+  },
+  partial: {
+    dot: "bg-[#4ade80]/50", chip: "bg-[#4ade80]/10 text-[#16a34a]", pulse: false, label: "Reduced",
+    description: "Answers requests correctly, with fewer replicas than it asks for, because some have no machine or failed. It handles less traffic at once.",
+  },
+  degraded: {
+    dot: "bg-amber-400", chip: "bg-amber-100 text-amber-700", pulse: false, label: "Degraded",
+    description: "Answers requests, but not as configured. During a rollout one model has no serving replica, so all traffic goes to the other one whatever the split says, and the rollout cannot be promoted.",
+  },
+  down: {
+    dot: "bg-destructive", chip: "bg-destructive/15 text-destructive", pulse: false, label: "Down",
+    description: "It ran, but the machines its replicas ran on went offline and no other machine can take them. Requests to it fail.",
+  },
+  failed: {
+    dot: "bg-destructive", chip: "bg-destructive/15 text-destructive", pulse: false, label: "Failed",
+    description: "Its replicas failed to start or stopped with an error. Its page shows the error and the logs, and Retry starts them again.",
+  },
+  scheduling: { dot: "bg-[#98B9FD]", chip: "bg-[#98B9FD]/15 text-[#5b8ae6]", pulse: true, label: "Scheduling", description: ON_ITS_WAY },
+  downloading: { dot: "bg-primary", chip: "bg-primary/15 text-primary", pulse: true, label: "Downloading", description: ON_ITS_WAY },
+  installing: { dot: "bg-primary", chip: "bg-primary/15 text-primary", pulse: true, label: "Installing", description: ON_ITS_WAY },
+  not_in_catalog: {
+    dot: "bg-[#f59e0b]", chip: "bg-[#f59e0b]/15 text-[#d97706]", pulse: false, label: "Not in Catalog",
+    description: "The model catalog no longer lists its model, so it cannot be placed. Change it to a model the catalog has.",
+  },
 };
 
-/** A desired replica the orchestrator has not placed, rendered hollow so it reads as an empty slot. */
 export const UNSCHEDULED_DISPLAY: PhaseDisplay = {
   dot: "border border-muted-foreground/50",
   chip: "bg-muted text-muted-foreground",
   pulse: false,
   label: "Not scheduled",
+  description: "No machine has taken this replica yet.",
 };
 
-export const SLOT_DISPLAY = { ...PHASE_DISPLAY, unscheduled: UNSCHEDULED_DISPLAY };
+// A single replica either serves or does not, so it has no health of its own.
+export const SLOT_DISPLAY = {
+  ...PHASE_DISPLAY,
+  ready: { ...PHASE_DISPLAY.ready, label: "Serving", description: "Answers requests." },
+  unscheduled: UNSCHEDULED_DISPLAY,
+};
 
-export const DISABLED_DISPLAY: PhaseDisplay = { dot: "bg-muted-foreground/50", chip: "bg-muted text-muted-foreground", pulse: false, label: "Disabled" };
+export const DISABLED_DISPLAY: PhaseDisplay = {
+  dot: "bg-muted-foreground/50", chip: "bg-muted text-muted-foreground", pulse: false, label: "Disabled",
+  description: "Runs nowhere, and requests to it fail.",
+};
 
-export const UNPLACED_DISPLAY: PhaseDisplay = { dot: "bg-amber-400", chip: "bg-amber-100 text-amber-700", pulse: false, label: "No node available" };
-
-export const UNPLACED_EXPLANATION = "The orchestrator could not place this model on any node. Common causes: no node has enough free VRAM for the model weight, or no available node has the required driver. A node that was removed or is powered off no longer counts.";
+export const UNPLACED_DISPLAY: PhaseDisplay = {
+  dot: "bg-amber-400", chip: "bg-amber-100 text-amber-700", pulse: false, label: "Not placed",
+  description: "Enabled, but no machine has taken it yet, for lack of free memory, of room under the license, or of a machine with the engine the model needs. It is placed on its own once that changes.",
+};
 
 export function statusDisplayOf(deployment: DeploymentOutput): PhaseDisplay {
   if (!deployment.enabled) {
@@ -36,7 +68,6 @@ export function statusDisplayOf(deployment: DeploymentOutput): PhaseDisplay {
   return deployment.status ? PHASE_DISPLAY[deployment.status.phase] : UNPLACED_DISPLAY;
 }
 
-/** Still on its way to a settled state, so worth polling. Enabled without a status means not scheduled yet. */
 export function isSettling(deployment: DeploymentOutput): boolean {
   if (!deployment.enabled) {
     return false;
@@ -44,18 +75,18 @@ export function isSettling(deployment: DeploymentOutput): boolean {
   if (!deployment.status) {
     return true;
   }
-  return !["ready", "failed", "partial"].includes(deployment.status.phase);
+  return !["ready", "failed", "partial", "degraded", "down"].includes(deployment.status.phase);
 }
 
 export const isServing = (deployment: DeploymentOutput) =>
-  deployment.status?.phase === "ready" || deployment.status?.phase === "partial";
+  ["ready", "partial", "degraded"].includes(deployment.status?.phase ?? "");
 
-/** Enabled but failing, partly placed, gone from the catalog, or placed nowhere. */
+// Short of replicas still serves, so "partial" does not count.
 export function needsAttention(deployment: DeploymentOutput): boolean {
   if (!deployment.enabled) {
     return false;
   }
-  return !deployment.status || ["failed", "partial", "not_in_catalog"].includes(deployment.status.phase);
+  return !deployment.status || ["failed", "down", "not_in_catalog", "degraded"].includes(deployment.status.phase);
 }
 
 export type LicensedVram = ClusterOverview["licensedVram"];
