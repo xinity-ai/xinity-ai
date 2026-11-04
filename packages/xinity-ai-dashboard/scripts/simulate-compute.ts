@@ -9,6 +9,7 @@
  *   - One node permanently offline throughout
  *   - One node starts offline and toggles every 3 minutes
  *   - One node removed from the cluster while its installations survive
+ *   - Two coupled nodes serving one replica of a model too large for either
  *
  * Deployments are managed, except one legacy and one canary rolling out over
  * a day, so every deployment type shows in the model hub.
@@ -17,8 +18,8 @@
  *
  * Usage: bun run simulate:compute [small|large] [minutes]   (default: small 30)
  *
- *   small  6 machines, 4 models (quick iteration)
- *   large  55 machines, 8 models with 4-25 replicas each (stress-test UI)
+ *   small  9 machines, 4 models (quick iteration)
+ *   large  57 machines, 8 models with 4-25 replicas each (stress-test UI)
  */
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -37,19 +38,37 @@ import {
   sql,
   inArray,
 } from "common-db";
-import type { GpuInfo } from "common-env";
+import type { GpuInfo, InstallationGroup, InterconnectPort } from "common-env";
 
-const SIM_DEPLOYMENT_PREFIX = "demo:";
+// Named the way a team names what it runs: by purpose, with a public name of its own, neither one the model's.
+const DEMO_NAMES: Record<string, { name: string; publicSpecifier: string }> = {
+  "bge-m3-ollama": { name: "Document search", publicSpecifier: "demo-docs-embed" },
+  "gemma-4-26b-a4b-nvfp4-vllm": { name: "Drafting assistant", publicSpecifier: "demo-drafting" },
+  "mimo-v2.6-flash-vllm": { name: "Coding agent", publicSpecifier: "demo-coding-agent" },
+  "phi-4-14b-vllm": { name: "Reasoning sandbox", publicSpecifier: "demo-reasoning" },
+  "phi-4-mini-vllm": { name: "Ticket triage", publicSpecifier: "demo-triage" },
+  "qwen3-30b-a3b-instruct-fp8-vllm": { name: "Support assistant", publicSpecifier: "demo-support-assistant" },
+  "qwen3.6-35b-a3b-fp8-vllm": { name: "Internal chat", publicSpecifier: "demo-internal-chat" },
+  "qwen3.6-35b-a3b-ollama": { name: "Edge assistant", publicSpecifier: "demo-edge-assistant" },
+  "qwen3-asr-1.7b-vllm": { name: "Meeting transcripts", publicSpecifier: "demo-transcribe" },
+};
+// Marks what the simulator created, so cleanup leaves real deployments alone.
+const SIM_DEPLOYMENT_PREFIX = "demo-";
+const namesOf = (specifier: string) => DEMO_NAMES[specifier] ?? { name: specifier, publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${specifier}` };
 const TICK_MS = 10_000;
 const TOGGLE_INTERVAL_MS = 3 * 60 * 1000;
 const BACKFILL_HOURS = 1;
 const BACKFILL_BUCKET_MS = 10 * 60 * 1000;
+// The highest minimum any catalog entry names, so no model is ruled out for an old engine. Raise them as the catalog does.
+const VLLM_VERSION = "0.33.0";
+const OLLAMA_VERSION = "0.33.1";
 
 type ModelSpec = {
   publicSpecifier: string;
   driver: "ollama" | "vllm";
   estCapacity: number;
   lifecycleState?: "ready" | "downloading" | "installing" | "failed";
+  group?: InstallationGroup;
 };
 
 type DemoMachine = {
@@ -62,6 +81,7 @@ type DemoMachine = {
   available: boolean;
   togglesOnOff?: true;
   removed?: true;
+  interconnect?: InterconnectPort[];
 };
 
 const ASCENT_GPUS = [{ vendor: "nvidia", name: "NVIDIA GB10", vramMb: 0 }];
@@ -78,6 +98,46 @@ const ASCENT_MODELS: ModelSpec[] = [
 
 const CANARY_FROM: ModelSpec = { publicSpecifier: "qwen3.6-27b-fp8-vllm", driver: "vllm", estCapacity: 48 };
 const CANARY_TO: ModelSpec = { publicSpecifier: "qwen3.6-35b-a3b-fp8-vllm", driver: "vllm", estCapacity: 48 };
+
+// Two GX10s cabled port to port, one subnet per PCIe path, serving tensor parallel across both.
+function coupledPair(hosts: [string, string], spec: Omit<ModelSpec, "group">): DemoMachine[] {
+  const groupId = crypto.randomUUID();
+  const macs = hosts.map((_, index) => [`02:00:00:00:0${index}:01`, `02:00:00:00:0${index}:02`]);
+  const subnets = ["198.51.100", "198.51.101"];
+  return hosts.map((host, rank): DemoMachine => ({
+    host,
+    machineName: "Ascent GX10",
+    gpus: ASCENT_GPUS,
+    estCapacity: 110,
+    baseUtilization: 70 + rank * 4,
+    available: true,
+    interconnect: [{
+      networkCard: "ConnectX-7",
+      port: "p0",
+      paths: subnets.map((subnet, path) => ({
+        interface: `enp1s0f0np${path}`,
+        mac: macs[rank]![path]!,
+        carrier: true,
+        mtu: 9000,
+        speedMbps: 200000,
+        linkLayer: "Ethernet",
+        ipv4: [`${subnet}.${rank + 1}/24`],
+        roceV2Ipv4: [`${subnet}.${rank + 1}`],
+        addressLosses: 0,
+      })),
+      neighbours: macs[1 - rank]!,
+    }],
+    models: [{
+      ...spec,
+      group: {
+        id: groupId, rank, size: 2, parallelism: "tensor", rendezvousPort: 29500, generation: 1,
+        addresses: subnets.map((subnet) => ({ subnet: `${subnet}.0/24`, address: `${subnet}.${rank + 1}` })),
+      },
+    }],
+  }));
+}
+
+const COUPLED_MODEL: Omit<ModelSpec, "group"> = { publicSpecifier: "mimo-v2.6-flash-vllm", driver: "vllm", estCapacity: 98 };
 
 type DemoDeployment =
   | { type: "managed" | "legacy"; specifier: string }
@@ -97,6 +157,7 @@ const SMALL_MACHINES: DemoMachine[] = [
   { host: "192.0.2.11", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 65, models: [CANARY_FROM], available: true },
   { host: "192.0.2.12", machineName: "RTX PRO 6000 Workstation", gpus: RTX_GPUS, estCapacity: 95, baseUtilization: 75, models: [CANARY_TO], available: false, togglesOnOff: true },
   { host: "192.0.2.21", machineName: "H100 Inference Server", gpus: H100_GPUS, estCapacity: 79, baseUtilization: 28, models: [{ publicSpecifier: "qwen3-30b-a3b-instruct-fp8-vllm", driver: "vllm", estCapacity: 70 }], available: true },
+  ...coupledPair(["192.0.2.31", "192.0.2.32"], COUPLED_MODEL),
 ];
 
 function generateLargeMachines(): DemoMachine[] {
@@ -205,6 +266,8 @@ function generateLargeMachines(): DemoMachine[] {
     });
   }
 
+  machines.push(...coupledPair([`192.0.2.${ip++}`, `192.0.2.${ip++}`], COUPLED_MODEL));
+
   return machines;
 }
 
@@ -284,8 +347,11 @@ async function main() {
   await deleteDemoDeployments();
 
   // Create deployments: those DEMO_DEPLOYMENTS names, and a managed one for every other model installed.
+  // A coupled group is one replica however many machines it spans.
   const replicasOf = (...specifiers: string[]) =>
-    machines.filter((m) => m.models.some((model) => specifiers.includes(model.publicSpecifier))).length;
+    new Set(machines.flatMap((m) => m.models
+      .filter((model) => specifiers.includes(model.publicSpecifier))
+      .map((model) => model.group?.id ?? m.host))).size;
   const installed = new Set(machines.flatMap((m) => m.models.map((model) => model.publicSpecifier)));
   const named = new Set(DEMO_DEPLOYMENTS.flatMap((d) => d.type === "canary" ? [d.from, d.to] : [d.specifier]));
   const deployments: DemoDeployment[] = [
@@ -317,7 +383,7 @@ async function main() {
         },
       }).returning();
       await db.insert(deploymentT).values({
-        ...shared, name: deployment.to, publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${deployment.to}`, type: "canary", canaryId: canary!.id,
+        ...shared, ...namesOf(deployment.to), type: "canary", canaryId: canary!.id,
       });
     } else if (deployment.type === "legacy") {
       const [legacy] = await db.insert(deploymentLegacyT).values({
@@ -325,12 +391,12 @@ async function main() {
       }).returning();
       ownerBySpecifier.set(deployment.specifier, { legacyId: legacy!.id });
       await db.insert(deploymentT).values({
-        ...shared, name: deployment.specifier, publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${deployment.specifier}`, type: "legacy", legacyId: legacy!.id,
+        ...shared, ...namesOf(deployment.specifier), type: "legacy", legacyId: legacy!.id,
       });
     } else {
       const managedId = await insertManaged(deployment.specifier, replicasOf(deployment.specifier));
       await db.insert(deploymentT).values({
-        ...shared, name: deployment.specifier, publicSpecifier: `${SIM_DEPLOYMENT_PREFIX}${deployment.specifier}`, type: "managed", managedId,
+        ...shared, ...namesOf(deployment.specifier), type: "managed", managedId,
       });
     }
   }
@@ -347,8 +413,9 @@ async function main() {
       available: machine.available,
       gpuCount: machine.gpus.length,
       gpus: machine.gpus,
-      driverVersions: machine.models.some((m) => m.driver === "vllm") ? { vllm: "0.20.2" } : { ollama: "0.33.1" },
+      driverVersions: machine.models.some((m) => m.driver === "vllm") ? { vllm: VLLM_VERSION } : { ollama: OLLAMA_VERSION },
       machineName: machine.machineName,
+      interconnect: machine.interconnect ?? [],
       deletedAt: machine.removed ? new Date() : null,
     }).returning();
 
@@ -364,6 +431,7 @@ async function main() {
         kvCacheCapacity: 0,
         port: model.driver === "ollama" ? 11434 : 8000,
         driver: model.driver,
+        group: model.group ?? null,
       }).returning();
       await db.insert(modelInstallationStateT).values({
         id: installation!.id,
