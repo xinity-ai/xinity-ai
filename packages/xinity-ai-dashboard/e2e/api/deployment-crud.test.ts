@@ -195,6 +195,12 @@ describe("Rollout", () => {
       expect(canary.advance.startProgress).toBe(30);
     }));
 
+  test("refuses a time-based advance that ends in the past, which would move all traffic at once", () =>
+    withManaged({}, async ({ id }) => {
+      const until = new Date(Date.now() - 60 * 1000).toISOString();
+      expect((await startCanary(id, { advance: { type: "time", until } })).status).toBe(400);
+    }));
+
   test("a partial update of a canary leaves the fields it does not name untouched", () =>
     withManaged({ replicas: 3, kvCacheSize: 4 }, async ({ id }) => {
       expect((await startCanary(id)).status).toBe(200);

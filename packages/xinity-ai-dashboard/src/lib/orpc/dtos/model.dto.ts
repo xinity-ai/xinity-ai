@@ -163,7 +163,7 @@ export const RolloutAdvanceInputDto = z.discriminatedUnion("type", [
   z.object({ type: z.literal("manual") }),
   z.object({
     type: z.literal("time"),
-    until: z.coerce.date().describe("When progress reaches 100, moving there evenly from the current progress and time"),
+    until: z.coerce.date().refine((until) => until.getTime() > Date.now(), "A rollout must end in the future").describe("When progress reaches 100, moving there evenly from the current progress and time"),
   }),
 ]);
 export type RolloutAdvanceInput = z.infer<typeof RolloutAdvanceInputDto>;
