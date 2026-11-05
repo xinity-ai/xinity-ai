@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { page } from "$app/state";
   import type { Snippet } from "svelte";
-  import * as Card from "$lib/components/ui/card";
-  import { Button } from "$lib/components/ui/button";
+  import SettingsNav from "$lib/components/SettingsNav.svelte";
   import { Users, Building2, Shield, KeyRound, Cpu, Wrench, SlidersHorizontal } from "@lucide/svelte";
 
   const { children }: { children: Snippet } = $props();
@@ -16,8 +14,6 @@
     { href: "/instance-settings/configuration/", label: "Configuration", icon: SlidersHorizontal },
     { href: "/instance-settings/maintenance/", label: "Maintenance", icon: Wrench },
   ];
-
-  const currentPath = $derived(page.url.pathname);
 </script>
 
 <svelte:head>
@@ -33,26 +29,7 @@
   </div>
 
   <div class="flex flex-col md:flex-row gap-8 compact:gap-4">
-    <!-- Navigation -->
-    <div class="w-full md:w-56 shrink-0">
-      <Card.Root class="sticky top-8">
-        <Card.Content class="p-2">
-          <nav class="flex flex-col gap-1">
-            {#each navItems as item (item.href)}
-              {@const isActive = currentPath.startsWith(item.href)}
-              <Button
-                variant={isActive ? "secondary" : "ghost"}
-                href={item.href}
-                class="justify-start w-full"
-              >
-                <item.icon class="w-4 h-4" />
-                {item.label}
-              </Button>
-            {/each}
-          </nav>
-        </Card.Content>
-      </Card.Root>
-    </div>
+    <SettingsNav items={navItems} />
 
     <!-- Page content -->
     <div class="flex-1 min-w-0">
