@@ -1,7 +1,7 @@
 <script lang="ts">
   import { orpc } from "$lib/orpc/orpc-client";
   import { browserLogger } from "$lib/browserLogging";
-  import { copyToClipboard } from "$lib/copy";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { humanDate } from "$lib/util";
 
@@ -11,7 +11,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import Modal from "$lib/components/Modal.svelte";
 
-  import { Plus, Trash2, Key, Loader2, Copy } from "@lucide/svelte";
+  import { Plus, Trash2, Key, Loader2 } from "@lucide/svelte";
 
   let apiKeys = $state<any[]>([]);
   let organizations = $state<any[]>([]);
@@ -183,24 +183,8 @@
     {#if createdKey}
       <div class="space-y-4">
         <div class="space-y-2">
-          <Label for="fullKey">Key Value</Label>
-          <div class="flex items-center gap-2">
-            <Input
-              id="fullKey"
-              type="text"
-              value={createdKey}
-              readonly
-              class="font-mono text-sm"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              onclick={() => copyToClipboard(createdKey!)}
-              title="Copy API key"
-            >
-              <Copy class="w-4 h-4" />
-            </Button>
-          </div>
+          <Label>Key Value</Label>
+          <CopyableValue value={createdKey} copyLabel="Copy API key" />
           <p class="text-xs text-muted-foreground">
             Make sure to copy this key now. You won't be able to see the full key again.
           </p>

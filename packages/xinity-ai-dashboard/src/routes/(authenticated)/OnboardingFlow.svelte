@@ -2,7 +2,7 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { organization } from "$lib/auth";
   import { goto, refreshAll } from "$app/navigation";
-  import { copyToClipboard } from "$lib/copy";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
   import { slugify } from "$lib/util";
   import type { ModelWithSpecifier } from "common-env/model-catalog";
 
@@ -11,7 +11,7 @@
   import { Label } from "$lib/components/ui/label";
   import * as Card from "$lib/components/ui/card";
 
-  import { Rocket, Copy, CheckCircle2, XCircle, Loader2, X } from "@lucide/svelte";
+  import { Rocket, CheckCircle2, XCircle, Loader2, X } from "@lucide/svelte";
   import ModelSelectorModal from "./modelhub/ModelSelectorModal.svelte";
 
   let { onCompleted }: { onCompleted: () => void } = $props();
@@ -114,19 +114,7 @@
           {/if}
           <div class="space-y-2">
             <Label>Your API Key</Label>
-            <div class="flex items-start gap-2">
-              <code
-                class="flex-1 min-w-0 rounded-md border border-input bg-muted px-3 py-2 font-mono text-sm break-all select-all"
-              >{apiKey}</code>
-              <Button
-                variant="outline"
-                size="icon"
-                onclick={() => copyToClipboard(apiKey)}
-                title="Copy API key"
-              >
-                <Copy class="w-4 h-4" />
-              </Button>
-            </div>
+            <CopyableValue value={apiKey} copyLabel="Copy API key" />
             <p class="text-xs text-muted-foreground">
               Copy this key now. You won't be able to see the full key again.
             </p>

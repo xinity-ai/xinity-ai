@@ -1,7 +1,7 @@
 <script lang="ts">
   import { refreshAll } from "$app/navigation";
   import { twoFactor } from "$lib/auth";
-  import { copyToClipboard } from "$lib/copy";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { renderSVG } from "uqr";
 
@@ -9,7 +9,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { Loader2, Copy } from "@lucide/svelte";
+  import { Loader2 } from "@lucide/svelte";
 
   let { onComplete, onCancel }: {
     onComplete: () => void;
@@ -122,14 +122,7 @@
 
       <div class="space-y-2">
         <p class="text-sm text-muted-foreground">Or enter this key manually:</p>
-        <div class="flex items-center gap-2">
-          <code class="flex-1 text-sm font-mono bg-muted px-3 py-2 rounded-md break-all select-all">
-            {extractSecret(totpURI)}
-          </code>
-          <Button variant="outline" size="sm" onclick={() => copyToClipboard(extractSecret(totpURI))}>
-            <Copy class="w-4 h-4" />
-          </Button>
-        </div>
+        <CopyableValue value={extractSecret(totpURI)} copyLabel="Copy key" />
       </div>
 
       <BackupCodesDisplay

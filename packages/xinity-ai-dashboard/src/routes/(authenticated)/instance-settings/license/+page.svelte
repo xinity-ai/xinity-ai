@@ -2,8 +2,8 @@
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
-  import { Copy, CheckCircle2, Lock } from "@lucide/svelte";
-  import { copyToClipboard } from "$lib/copy";
+  import { CheckCircle2, Lock } from "@lucide/svelte";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
   import type { PageData } from "./$types";
   import { formatGb } from "$lib/util";
 
@@ -148,18 +148,7 @@
         Provide this ID when requesting a license to bind it to this specific dashboard install.
       </p>
       {#if data.instanceId}
-        <div class="flex items-center gap-2">
-          <code class="flex-1 px-3 py-2 rounded bg-muted text-sm font-mono break-all">{data.instanceId}</code>
-          <Button
-            variant="outline"
-            size="icon"
-            title="Copy instance ID"
-            aria-label="Copy instance ID"
-            onclick={() => copyToClipboard(data.instanceId!)}
-          >
-            <Copy class="w-4 h-4" />
-          </Button>
-        </div>
+        <CopyableValue value={data.instanceId} copyLabel="Copy instance ID" />
       {:else}
         <p class="text-sm text-muted-foreground italic">Not yet initialised. Restart the dashboard to generate one.</p>
       {/if}

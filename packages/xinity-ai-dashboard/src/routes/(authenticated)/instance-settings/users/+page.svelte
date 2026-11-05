@@ -10,9 +10,9 @@
   import * as Select from "$lib/components/ui/select";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { Search, Ban, ShieldCheck, UserPlus, X, MailCheck, MailX, KeyRound, Copy, Ellipsis } from "@lucide/svelte";
+  import { Search, Ban, ShieldCheck, UserPlus, X, MailCheck, MailX, KeyRound, Ellipsis } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
-  import { copyToClipboard } from "$lib/copy";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
   import { createUrlPagedList } from "$lib/state/url-paged-list.svelte";
   import PaginationFooter from "$lib/components/PaginationFooter.svelte";
   import { humanDateShort } from "$lib/util";
@@ -349,12 +349,7 @@
 {#snippet tempPasswordDisplay(password: string, description: Snippet, onDone: () => void)}
   <div class="space-y-4">
     <p class="text-sm text-muted-foreground">{@render description()}</p>
-    <div class="flex items-center gap-2">
-      <code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">{password}</code>
-      <Button variant="outline" size="icon-sm" onclick={() => copyToClipboard(password)}>
-        <Copy class="w-4 h-4" />
-      </Button>
-    </div>
+    <CopyableValue value={password} copyLabel="Copy password" />
     <p class="text-xs text-muted-foreground">This password will not be shown again.</p>
     <div class="flex justify-end">
       <Button onclick={onDone}>Done</Button>
