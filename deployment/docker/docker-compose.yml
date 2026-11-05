@@ -104,6 +104,7 @@ services:
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
       APP_NAME: ${APP_NAME:-Xinity Admin}
       SIGNUP_ENABLED: ${SIGNUP_ENABLED:-true}
+      INTERNAL_SIGNIN_ENABLED: ${INTERNAL_SIGNIN_ENABLED:-true}
     networks:
       - xinity-network
     ports:

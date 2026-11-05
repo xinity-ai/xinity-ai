@@ -102,6 +102,7 @@ Who can sign in, and who is allowed to create an organization.
 |---|---|---|
 | `BETTER_AUTH_SECRET` | (required) | Better Auth secret key, generate with: openssl rand -base64 32. Secret. |
 | `SIGNUP_ENABLED` | `true` | Enable user signup. Can be set to `@dynamic` to take its value from the dashboard. |
+| `INTERNAL_SIGNIN_ENABLED` | `true` | Allow sign-in with an account held by this instance (email and password, or passkey). When off, users sign in through SSO only. Can be set to `@dynamic` to take its value from the dashboard. |
 | `MULTI_TENANT_MODE` | `false` | Allow any authenticated user to create organizations. |
 | `INSTANCE_ADMIN_EMAILS` | (empty) | Emails of users who get instance-wide admin privileges (can manage all orgs). |
 

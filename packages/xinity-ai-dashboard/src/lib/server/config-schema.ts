@@ -55,6 +55,7 @@ const server = defineGroup<Server>({
 type Auth = {
   secret: string;
   signupEnabled: () => boolean;
+  internalSigninEnabled: () => boolean;
   multiTenantMode: boolean;
   instanceAdmins: string[];
 };
@@ -80,6 +81,8 @@ const auth = defineGroup<Auth>({
       .describe("Better Auth secret key, generate with: openssl rand -base64 32").meta(secret())),
     signupEnabled: dynamic("SIGNUP_ENABLED", configBool().default(true)
       .describe("Enable user signup")),
+    internalSigninEnabled: dynamic("INTERNAL_SIGNIN_ENABLED", configBool().default(true)
+      .describe("Allow sign-in with an account held by this instance (email and password, or passkey). When off, users sign in through SSO only")),
     multiTenantMode: env("MULTI_TENANT_MODE", configBool().default(false)
       .describe("Allow any authenticated user to create organizations")),
     instanceAdmins: env("INSTANCE_ADMIN_EMAILS", configList(z.email().toLowerCase()).default([])
