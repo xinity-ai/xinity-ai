@@ -89,6 +89,8 @@
     "sso.delete_provider",
     "sso.register_oidc",
     "sso.register_saml",
+    "sso.request_domain_verification",
+    "sso.verify_domain",
     "user.update_settings",
   ] as const;
 

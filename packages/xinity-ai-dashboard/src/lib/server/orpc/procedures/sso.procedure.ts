@@ -298,8 +298,9 @@ function domainToHostname(domain: string): string {
 }
 
 const requestDomainVerification = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "sso.request_domain_verification", resource: "sso", resourceId: { fromInput: "providerId" } } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/request-domain-verification", method: "POST", tags, summary: "Request domain verification" })
   .input(z.object({ providerId: z.string() }))
   .handler(async ({ input, context, errors }) => {
@@ -326,8 +327,9 @@ const requestDomainVerification = rootOs
   });
 
 const verifyDomain = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "sso.verify_domain", resource: "sso", resourceId: { fromInput: "providerId" } } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/verify-domain", method: "POST", tags, summary: "Verify domain ownership" })
   .input(z.object({ providerId: z.string() }))
   .handler(async ({ input, context, errors }) => {
