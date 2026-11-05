@@ -10,6 +10,7 @@
   import { Label } from "$lib/components/ui/label";
   import * as Alert from "$lib/components/ui/alert";
   import Modal from "$lib/components/Modal.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
   import { Plus, Trash2, Key, LoaderCircle } from "@lucide/svelte";
 
@@ -166,25 +167,10 @@
   </div>
 </Modal>
 
-<!-- Delete Passkey Modal -->
-<Modal bind:open={deleteDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
-    <div>
-      <h3 class="text-lg font-semibold">Delete passkey?</h3>
-      <p class="text-sm text-muted-foreground">
-        {#if confirmDelete}
-          This will remove "{confirmDelete.name || "Unnamed passkey"}". You can't undo this.
-        {/if}
-      </p>
-    </div>
-
-    <div class="flex justify-end gap-2">
-      <Button variant="outline" onclick={() => (deleteDialogOpen = false)}>
-        Cancel
-      </Button>
-      <Button variant="destructive" onclick={doDeletePasskey}>
-        Delete
-      </Button>
-    </div>
-  </div>
-</Modal>
+<ConfirmDialog
+  bind:open={deleteDialogOpen}
+  title="Delete passkey?"
+  description={`This will remove "${confirmDelete?.name || "Unnamed passkey"}". You can't undo this.`}
+  confirmLabel="Delete"
+  onConfirm={() => void doDeletePasskey()}
+/>

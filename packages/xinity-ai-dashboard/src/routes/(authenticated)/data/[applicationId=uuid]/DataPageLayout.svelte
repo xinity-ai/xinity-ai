@@ -360,7 +360,8 @@
   bind:open={deleteModalOpen}
   title="Delete API call?"
   description="This will permanently remove the call and its reactions. This action cannot be undone."
-  confirmLabel={deleting ? "Deleting..." : "Delete Call"}
+  confirmLabel="Delete Call"
+  pending={deleting}
   onConfirm={() => void confirmDelete()}
   onCancel={closeDeleteModal}
 >

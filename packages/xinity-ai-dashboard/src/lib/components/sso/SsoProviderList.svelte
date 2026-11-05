@@ -223,7 +223,8 @@
 <ConfirmDialog
   bind:open={deleteOpen}
   title="Delete SSO provider"
-  confirmLabel={deleting ? "Deleting..." : "Delete provider"}
+  confirmLabel="Delete provider"
+  pending={deleting}
   onConfirm={() => void executeDelete()}
   onCancel={() => { deleteOpen = false; deleteTarget = null; }}
 >

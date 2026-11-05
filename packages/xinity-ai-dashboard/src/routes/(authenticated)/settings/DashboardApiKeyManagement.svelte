@@ -10,6 +10,7 @@
   import { Label } from "$lib/components/ui/label";
   import * as Alert from "$lib/components/ui/alert";
   import Modal from "$lib/components/Modal.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
   import { Plus, Trash2, Key, LoaderCircle } from "@lucide/svelte";
 
@@ -254,23 +255,10 @@
   </div>
 </Modal>
 
-<!-- Delete API Key Modal -->
-<Modal bind:open={deleteDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
-    <div>
-      <h3 class="text-lg font-semibold">Delete API Key</h3>
-      <p class="text-sm text-muted-foreground">
-        Delete "{apiKeys.find((key) => key.id === apiKeyToDelete)?.name || "Unknown"}"? This action cannot be undone.
-      </p>
-    </div>
-
-    <div class="flex justify-end gap-2">
-      <Button variant="outline" onclick={() => (deleteDialogOpen = false)}>
-        Cancel
-      </Button>
-      <Button variant="destructive" onclick={doDeleteApiKey}>
-        Delete
-      </Button>
-    </div>
-  </div>
-</Modal>
+<ConfirmDialog
+  bind:open={deleteDialogOpen}
+  title="Delete API Key"
+  description={`Delete "${apiKeys.find((key) => key.id === apiKeyToDelete)?.name || "Unknown"}"? This action cannot be undone.`}
+  confirmLabel="Delete"
+  onConfirm={() => void doDeleteApiKey()}
+/>
