@@ -6,9 +6,10 @@
   import TwoFactorSetup from "./TwoFactorSetup.svelte";
   import BackupCodesDisplay from "./BackupCodesDisplay.svelte";
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { LoaderCircle, ShieldCheck, ShieldOff } from "@lucide/svelte";
+  import { ShieldCheck, ShieldOff } from "@lucide/svelte";
 
   let { twoFactorEnabled = false }: { twoFactorEnabled: boolean } = $props();
 
@@ -121,14 +122,9 @@
 
       <div class="flex gap-2">
         <Button variant="outline" type="button" onclick={reset}>Cancel</Button>
-        <Button variant="destructive" type="submit" disabled={isSubmitting}>
-          {#if isSubmitting}
-            <LoaderCircle class="w-4 h-4 animate-spin" />
-            Disabling...
-          {:else}
-            Disable Two-Factor Authentication
-          {/if}
-        </Button>
+        <PendingButton variant="destructive" type="submit" pending={isSubmitting} pendingLabel="Disabling...">
+          Disable Two-Factor Authentication
+        </PendingButton>
       </div>
     </form>
 
@@ -157,14 +153,9 @@
 
       <div class="flex gap-2">
         <Button variant="outline" type="button" onclick={reset}>Cancel</Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {#if isSubmitting}
-            <LoaderCircle class="w-4 h-4 animate-spin" />
-            Regenerating...
-          {:else}
-            Regenerate
-          {/if}
-        </Button>
+        <PendingButton type="submit" pending={isSubmitting} pendingLabel="Regenerating...">
+          Regenerate
+        </PendingButton>
       </div>
     </form>
 

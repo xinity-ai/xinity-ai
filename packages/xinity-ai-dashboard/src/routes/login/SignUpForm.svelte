@@ -3,10 +3,9 @@
   import { signUp } from "$lib/auth";
   import { friendlyError } from "./friendly-error";
 
-  import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { LoaderCircle } from "@lucide/svelte";
 
   let {
     email = $bindable(),
@@ -99,12 +98,7 @@
       bind:value={password}
     />
   </div>
-  <Button type="submit" class="w-full" disabled={isLoading}>
-    {#if isLoading}
-      <LoaderCircle class="w-4 h-4 animate-spin" />
-      Creating account...
-    {:else}
-      Create Account
-    {/if}
-  </Button>
+  <PendingButton type="submit" class="w-full" pending={isLoading} pendingLabel="Creating account...">
+    Create Account
+  </PendingButton>
 </form>

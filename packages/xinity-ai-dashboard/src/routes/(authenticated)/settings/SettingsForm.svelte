@@ -4,9 +4,8 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { pick } from "$lib/util";
   import { toastState } from "$lib/state/toast.svelte";
-  import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Separator } from "$lib/components/ui/separator";
-  import { LoaderCircle } from "@lucide/svelte";
 
   type SettingsField = keyof NonNullable<Parameters<typeof orpc.user.updateSettings>[0]> & keyof User;
 
@@ -62,13 +61,8 @@
   <Separator />
 
   <div class="flex gap-3">
-    <Button onclick={save} disabled={isSaving}>
-      {#if isSaving}
-        <LoaderCircle class="w-4 h-4 animate-spin" />
-        Saving...
-      {:else}
-        Save Settings
-      {/if}
-    </Button>
+    <PendingButton onclick={save} pending={isSaving} pendingLabel="Saving...">
+      Save Settings
+    </PendingButton>
   </div>
 </div>

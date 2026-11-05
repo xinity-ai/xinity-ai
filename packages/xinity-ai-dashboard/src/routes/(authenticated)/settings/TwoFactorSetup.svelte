@@ -7,9 +7,9 @@
 
   import BackupCodesDisplay from "./BackupCodesDisplay.svelte";
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { LoaderCircle } from "@lucide/svelte";
 
   let { onComplete, onCancel }: {
     onComplete: () => void;
@@ -97,14 +97,9 @@
 
       <div class="flex gap-2">
         <Button variant="outline" type="button" onclick={onCancel}>Cancel</Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {#if isSubmitting}
-            <LoaderCircle class="w-4 h-4 animate-spin" />
-            Setting up...
-          {:else}
-            Continue
-          {/if}
-        </Button>
+        <PendingButton type="submit" pending={isSubmitting} pendingLabel="Setting up...">
+          Continue
+        </PendingButton>
       </div>
     </form>
 
@@ -167,14 +162,9 @@
         <Button variant="outline" type="button" onclick={() => { errorMessage = ""; step = "qr"; }}>
           Back
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {#if isSubmitting}
-            <LoaderCircle class="w-4 h-4 animate-spin" />
-            Verifying...
-          {:else}
-            Verify and Enable
-          {/if}
-        </Button>
+        <PendingButton type="submit" pending={isSubmitting} pendingLabel="Verifying...">
+          Verify and Enable
+        </PendingButton>
       </div>
     </form>
   {/if}

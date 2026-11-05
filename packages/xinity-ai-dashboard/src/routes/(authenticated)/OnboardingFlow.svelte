@@ -7,6 +7,7 @@
   import type { ModelWithSpecifier } from "common-env/model-catalog";
 
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import * as Card from "$lib/components/ui/card";
@@ -217,14 +218,9 @@
               {/if}
             </div>
 
-            <Button type="submit" disabled={!canSubmit} class="w-full">
-              {#if isSubmitting}
-                <LoaderCircle class="w-4 h-4 animate-spin" />
-                Setting up...
-              {:else}
-                Get Started
-              {/if}
-            </Button>
+            <PendingButton type="submit" disabled={!canSubmit} pending={isSubmitting} pendingLabel="Setting up..." class="w-full">
+              Get Started
+            </PendingButton>
           </form>
         </Card.Content>
       </Card.Root>

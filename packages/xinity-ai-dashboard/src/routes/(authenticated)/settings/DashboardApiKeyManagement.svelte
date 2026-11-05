@@ -6,6 +6,7 @@
   import { humanDate } from "$lib/util";
 
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import * as Alert from "$lib/components/ui/alert";
@@ -242,14 +243,9 @@
           <Button type="button" variant="outline" onclick={closeCreateDialog}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isCreating}>
-            {#if isCreating}
-              <LoaderCircle class="w-4 h-4 animate-spin" />
-              Creating...
-            {:else}
-              Create
-            {/if}
-          </Button>
+          <PendingButton type="submit" pending={isCreating} pendingLabel="Creating...">
+            Create
+          </PendingButton>
         </div>
       </form>
     {/if}

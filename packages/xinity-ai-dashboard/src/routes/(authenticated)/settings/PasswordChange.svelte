@@ -3,10 +3,10 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { toastState } from "$lib/state/toast.svelte";
 
-  import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { LoaderCircle, Lock, TriangleAlert } from "@lucide/svelte";
+  import { Lock, TriangleAlert } from "@lucide/svelte";
 
   let { temporaryPassword = false }: { temporaryPassword?: boolean } = $props();
 
@@ -99,13 +99,8 @@
       <p class="text-sm text-destructive">{errorMessage}</p>
     {/if}
 
-    <Button type="submit" disabled={isSubmitting}>
-      {#if isSubmitting}
-        <LoaderCircle class="w-4 h-4 animate-spin" />
-        Changing...
-      {:else}
-        <Lock class="w-4 h-4" />
-        Change Password
-      {/if}
-    </Button>
+    <PendingButton type="submit" pending={isSubmitting} pendingLabel="Changing...">
+      <Lock class="w-4 h-4" />
+      Change Password
+    </PendingButton>
   </form>

@@ -5,8 +5,8 @@
   import Modal from "$lib/components/Modal.svelte";
   import DialogPanel from "$lib/components/DialogPanel.svelte";
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
-  import { LoaderCircle } from "@lucide/svelte";
 
   let { open = $bindable(false), callbackUrl }: {
     open: boolean;
@@ -90,14 +90,9 @@
 
       <div class="flex justify-between items-center">
         <Button variant="ghost" type="button" onclick={resetAndClose}>Cancel</Button>
-        <Button type="submit" disabled={isVerifying}>
-          {#if isVerifying}
-            <LoaderCircle class="w-4 h-4 animate-spin" />
-            Verifying...
-          {:else}
-            Verify
-          {/if}
-        </Button>
+        <PendingButton type="submit" pending={isVerifying} pendingLabel="Verifying...">
+          Verify
+        </PendingButton>
       </div>
 
       <div class="text-center">

@@ -2,7 +2,7 @@
   import Modal from "$lib/components/Modal.svelte";
   import DialogPanel from "$lib/components/DialogPanel.svelte";
   import { Button, type ButtonVariant } from "$lib/components/ui/button";
-  import { LoaderCircle } from "@lucide/svelte";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import type { Snippet } from "svelte";
 
   let {
@@ -45,12 +45,7 @@
       {/if}
       <div class="flex justify-end gap-2">
         <Button variant="outline" disabled={pending} onclick={handleCancel}>Cancel</Button>
-        <Button variant={confirmVariant} disabled={pending} onclick={onConfirm}>
-          {#if pending}
-            <LoaderCircle class="w-4 h-4 animate-spin" />
-          {/if}
-          {confirmLabel}
-        </Button>
+        <PendingButton variant={confirmVariant} {pending} onclick={onConfirm}>{confirmLabel}</PendingButton>
       </div>
     </div>
   </DialogPanel>

@@ -6,6 +6,7 @@
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import * as Card from "$lib/components/ui/card";
   import * as Alert from "$lib/components/ui/alert";
   import { Input } from "$lib/components/ui/input";
@@ -173,14 +174,9 @@
         </div>
 
         <div class="flex gap-3 pt-2">
-          <Button type="submit" disabled={!canSubmit} class="flex-1">
-            {#if isSubmitting}
-              <LoaderCircle class="w-4 h-4 animate-spin" />
-              Creating...
-            {:else}
-              Create Organization
-            {/if}
-          </Button>
+          <PendingButton type="submit" disabled={!canSubmit} pending={isSubmitting} pendingLabel="Creating..." class="flex-1">
+            Create Organization
+          </PendingButton>
           <Button variant="outline" href="/organizations/">
             Cancel
           </Button>
