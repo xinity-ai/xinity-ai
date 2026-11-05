@@ -3,6 +3,7 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { updateOptimistically } from "$lib/util";
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
@@ -278,7 +279,7 @@
 <!-- Edit Application Modal -->
 {#if editingApp}
   <Modal open={true} onClose={cancelEditApp}>
-    <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+    <DialogPanel>
       <form
         onsubmit={(e) => { e.preventDefault(); void saveApplication(); }}
         class="space-y-4"
@@ -313,7 +314,7 @@
           <Button type="submit">Save</Button>
         </div>
       </form>
-    </div>
+    </DialogPanel>
   </Modal>
 {/if}
 
@@ -329,7 +330,7 @@
 
 <!-- Create Application Modal -->
 <Modal bind:open={showCreateModal} onClose={cancelCreate}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     <form
       onsubmit={(e) => { e.preventDefault(); void createApplication(); }}
       class="space-y-4"
@@ -365,6 +366,6 @@
         <Button type="submit">Create</Button>
       </div>
     </form>
-  </div>
+  </DialogPanel>
 </Modal>
 {/if}

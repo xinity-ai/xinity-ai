@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import { Button } from "$lib/components/ui/button";
   import { X } from "@lucide/svelte";
 
@@ -89,7 +90,7 @@
 </script>
 
 <Modal bind:open>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     <h3 class="text-lg font-semibold mb-4">Edit Metadata</h3>
 
     <label class="flex flex-wrap gap-2 p-3 min-h-[48px] border rounded-md bg-background mb-4 cursor-text">
@@ -133,5 +134,5 @@
       <Button variant="outline" onclick={() => (open = false)}>Cancel</Button>
       <Button onclick={handleSave}>Save</Button>
     </div>
-  </div>
+  </DialogPanel>
 </Modal>

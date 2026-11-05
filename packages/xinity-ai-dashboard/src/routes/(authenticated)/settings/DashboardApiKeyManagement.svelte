@@ -10,6 +10,7 @@
   import { Label } from "$lib/components/ui/label";
   import * as Alert from "$lib/components/ui/alert";
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
   import { Plus, Trash2, Key, LoaderCircle } from "@lucide/svelte";
@@ -177,8 +178,8 @@
 </div>
 
 <!-- Create API Key Modal -->
-<Modal bind:open={createDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
+<Modal bind:open={createDialogOpen}>
+  <DialogPanel class="space-y-4">
     <h3 class="text-lg font-semibold">Create API Key</h3>
 
     {#if createdKey}
@@ -252,7 +253,7 @@
         </div>
       </form>
     {/if}
-  </div>
+  </DialogPanel>
 </Modal>
 
 <ConfirmDialog

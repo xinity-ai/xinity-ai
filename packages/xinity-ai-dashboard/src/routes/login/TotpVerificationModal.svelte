@@ -3,6 +3,7 @@
   import { twoFactor } from "$lib/auth";
 
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { LoaderCircle } from "@lucide/svelte";
@@ -47,8 +48,8 @@
   }
 </script>
 
-<Modal bind:open onClose={resetAndClose} class="max-w-sm">
-  <div class="bg-card rounded-xl border shadow-2xl w-full p-6">
+<Modal bind:open onClose={resetAndClose}>
+  <DialogPanel class="max-w-sm">
     <h2 class="mb-4 text-lg font-bold">Two-Factor Authentication</h2>
     <form
       onsubmit={(e) => { e.preventDefault(); verify(); }}
@@ -112,5 +113,5 @@
         </button>
       </div>
     </form>
-  </div>
+  </DialogPanel>
 </Modal>

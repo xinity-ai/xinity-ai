@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invalidate } from "$app/navigation";
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import CopyableValue from "$lib/components/CopyableValue.svelte";
   import type { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
   import { orpc } from "$lib/orpc/orpc-client";
@@ -131,7 +132,7 @@
 
 <!-- Key Edit Modal -->
 <Modal open={showModal} onClose={cancelEdit}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     <h2 class="text-lg font-semibold mb-4">
       {isNew ? "Generate New API Key" : "Edit API Key"}
     </h2>
@@ -233,5 +234,5 @@
         {/if}
       </div>
     </form>
-  </div>
+  </DialogPanel>
 </Modal>

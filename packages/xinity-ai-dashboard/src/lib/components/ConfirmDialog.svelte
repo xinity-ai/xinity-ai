@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import { Button, type ButtonVariant } from "$lib/components/ui/button";
   import { LoaderCircle } from "@lucide/svelte";
   import type { Snippet } from "svelte";
@@ -33,7 +34,7 @@
 </script>
 
 <Modal bind:open onClose={handleCancel}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     <h2 class="text-lg font-semibold mb-4">{title}</h2>
     <div class="space-y-4">
       {#if description}
@@ -52,5 +53,5 @@
         </Button>
       </div>
     </div>
-  </div>
+  </DialogPanel>
 </Modal>

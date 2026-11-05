@@ -6,6 +6,7 @@
   import { Input } from "$lib/components/ui/input";
   import * as Card from "$lib/components/ui/card";
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import * as Select from "$lib/components/ui/select";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
@@ -389,7 +390,7 @@
 
 <!-- Create User Modal -->
 <Modal bind:open={createUserModalOpen} onClose={() => { createUserModalOpen = false; createUserTempPassword = ""; createUserName = ""; createUserEmail = ""; }}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     {#if createUserTempPassword}
       <h2 class="text-lg font-semibold mb-4">User Created</h2>
       {@render tempPasswordDisplay(
@@ -420,12 +421,12 @@
         </div>
       </form>
     {/if}
-  </div>
+  </DialogPanel>
 </Modal>
 
 <!-- Reset Password Modal -->
 <Modal bind:open={resetPasswordModalOpen} onClose={() => { resetPasswordModalOpen = false; resetPasswordTempPassword = ""; }}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     {#if resetPasswordTempPassword}
       <h2 class="text-lg font-semibold mb-4">Password Reset</h2>
       {@render tempPasswordDisplay(
@@ -450,12 +451,12 @@
         </div>
       </div>
     {/if}
-  </div>
+  </DialogPanel>
 </Modal>
 
 <!-- Add to Organization Modal -->
 <Modal bind:open={addOrgModalOpen} onClose={() => { addOrgModalOpen = false; }}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     <h2 class="text-lg font-semibold mb-4">Add {addOrgTargetUser?.name} to Organization</h2>
     <div class="space-y-4">
       <div>
@@ -492,5 +493,5 @@
         <Button disabled={!addOrgSelectedOrg} onclick={handleAddToOrg}>Add to Organization</Button>
       </div>
     </div>
-  </div>
+  </DialogPanel>
 </Modal>
