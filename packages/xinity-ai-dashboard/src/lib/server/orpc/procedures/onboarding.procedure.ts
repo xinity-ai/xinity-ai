@@ -5,7 +5,7 @@ import { createOrganization } from "./organization.procedure";
 import { createApiKey } from "./api-key.procedure";
 import { createDeployment } from "./deployment.procedure";
 import { rootLogger } from "$lib/server/logging";
-import { auth, getGreenlitCallId, adminCreateUser } from "$lib/server/auth-server";
+import { auth, getGreenlitCallId, adminCreateUser, INTERNAL_SIGNIN_DISABLED_MESSAGE } from "$lib/server/auth-server";
 import { config } from "$lib/server/config";
 import { isInstanceAdmin } from "$lib/server/roles";
 import { getDB } from "$lib/server/db";
@@ -168,6 +168,9 @@ const cli = rootOs
     const rlog = log.child({ traceId: context.traceId });
     if (!config.auth.signupEnabled()) {
       throw errors.FORBIDDEN({ message: "User signup is currently disabled" });
+    }
+    if (!config.auth.internalSigninEnabled()) {
+      throw errors.FORBIDDEN({ message: INTERNAL_SIGNIN_DISABLED_MESSAGE });
     }
 
     const [existingUser] = await getDB().select({ id: userT.id }).from(userT).limit(1);
