@@ -4,9 +4,9 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Card from "$lib/components/ui/card";
-  import * as Select from "$lib/components/ui/select";
+  import RoleSelect from "$lib/components/RoleSelect.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
+  import type { RoleName } from "$lib/roles";
   import { Search, ChevronDown, ChevronRight, X, Users, Shield, HardDrive } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { createUrlPagedList } from "$lib/state/url-paged-list.svelte";
@@ -173,20 +173,11 @@
                           <td class="py-2 pr-4">{member.userName}</td>
                           <td class="py-2 pr-4 text-muted-foreground">{member.userEmail}</td>
                           <td class="py-2 pr-4">
-                            <Select.Root
-                              type="single"
-                              value={member.role}
-                              onValueChange={(v) => void handleRoleChange(member.userId, org.id, v)}
-                            >
-                              <Select.Trigger class="h-7 px-2 text-xs min-w-24">
-                                {roleLabels[member.role as RoleName] ?? member.role}
-                              </Select.Trigger>
-                              <Select.Content>
-                                {#each Object.entries(roleLabels) as [value, label]}
-                                  <Select.Item {value} {label} />
-                                {/each}
-                              </Select.Content>
-                            </Select.Root>
+                            <RoleSelect
+                              class="h-7 px-2 text-xs min-w-24"
+                              value={member.role as RoleName}
+                              onValueChange={(role) => void handleRoleChange(member.userId, org.id, role)}
+                            />
                           </td>
                           <td class="py-2 pr-4">
                             {#if member.userBanned}

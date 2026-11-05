@@ -9,6 +9,7 @@
   import DialogPanel from "$lib/components/DialogPanel.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import * as Select from "$lib/components/ui/select";
+  import RoleSelect from "$lib/components/RoleSelect.svelte";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Search, Ban, ShieldCheck, UserPlus, X, MailCheck, MailX, KeyRound, Ellipsis } from "@lucide/svelte";
@@ -71,7 +72,7 @@
       ? "Select organization..."
       : organizations.find((o) => o.id === addOrgSelectedOrg)?.name ?? "Select organization...",
   );
-  const addOrgRoleLabel = $derived(roleLabels[addOrgSelectedRole] ?? "Select role...");
+  const assignableAdminRoles = (Object.keys(roleLabels) as RoleName[]).filter((role) => role !== "owner");
 
   async function handleBan() {
     if (!banTargetUser) return;
@@ -475,18 +476,13 @@
       </div>
       <div>
         <label for="role-select" class="text-sm font-medium">Role</label>
-        <Select.Root type="single" bind:value={addOrgSelectedRole}>
-          <Select.Trigger id="role-select" class="w-full mt-1">
-            {addOrgRoleLabel}
-          </Select.Trigger>
-          <Select.Content portalProps={{ disabled: true }}>
-            {#each Object.entries(roleLabels) as [value, label]}
-              {#if value !== "owner"}
-                <Select.Item {value} {label} />
-              {/if}
-            {/each}
-          </Select.Content>
-        </Select.Root>
+        <RoleSelect
+          id="role-select"
+          class="w-full mt-1"
+          bind:value={addOrgSelectedRole}
+          roles={assignableAdminRoles}
+          inModal
+        />
       </div>
       <div class="flex justify-end gap-2">
         <Button variant="outline" onclick={() => { addOrgModalOpen = false; }}>Cancel</Button>
