@@ -1,9 +1,13 @@
 import { getDB } from "$lib/server/db";
 import { userT, sql } from "common-db";
+import { config } from "$lib/server/config";
 
 export const TEMPORARY_PASSWORD_MESSAGE = "Change your temporary password first";
 
 export async function hasTemporaryPassword(userId: string): Promise<boolean> {
+  if (!config.auth.internalSigninEnabled()) {
+    return false;
+  }
   const [row] = await getDB()
     .select({ temporaryPassword: userT.temporaryPassword })
     .from(userT)

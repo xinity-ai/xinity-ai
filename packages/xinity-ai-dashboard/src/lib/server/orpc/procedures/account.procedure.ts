@@ -1,6 +1,7 @@
 import { rootOs, withUserSession, auditMiddleware } from "../root";
 import { z } from "zod";
-import { auth, getGreenlitCallId } from "$lib/server/auth-server";
+import { auth, getGreenlitCallId, INTERNAL_SIGNIN_DISABLED_MESSAGE } from "$lib/server/auth-server";
+import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
 import { memberT, sql } from "common-db";
@@ -20,6 +21,9 @@ const changePassword = rootOs
   }))
   .handler(async ({ context, input, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
+    if (!config.auth.internalSigninEnabled()) {
+      throw errors.FORBIDDEN({ message: INTERNAL_SIGNIN_DISABLED_MESSAGE });
+    }
     try {
       await auth.api.changePassword({
         headers: context.request.headers,

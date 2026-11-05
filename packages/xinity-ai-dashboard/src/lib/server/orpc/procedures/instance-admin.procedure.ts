@@ -1,8 +1,9 @@
 import { rootOs, withInstanceAdmin, auditMiddleware } from "../root";
 import { z } from "zod";
 import { getDB } from "$lib/server/db";
+import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
-import { adminCreateUser, adminResetPassword } from "$lib/server/auth-server";
+import { adminCreateUser, adminResetPassword, INTERNAL_SIGNIN_DISABLED_MESSAGE } from "$lib/server/auth-server";
 import { userT, accountT, memberT, organizationT, auditEventT, sessionT, dashboardApiKeyT, deploymentMatchesInstallation, sql, and, count } from "common-db";
 import { RoleSchema } from "$lib/server/roles";
 import { countLegacyCalls, postfillLegacyCalls } from "$lib/server/lib/calls/legacy-postfill";
@@ -284,6 +285,9 @@ const createUser = rootOs
   .errors({ CONFLICT: {} })
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
+    if (!config.auth.internalSigninEnabled()) {
+      throw errors.FORBIDDEN({ message: INTERNAL_SIGNIN_DISABLED_MESSAGE });
+    }
     const temporaryPassword = generateTempPassword();
     const created = await adminCreateUser(input.email, input.name, temporaryPassword);
     if (!created.created) {
@@ -309,6 +313,9 @@ const resetUserPassword = rootOs
   .input(z.object({ userId: z.string() }))
   .handler(async ({ input, context, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
+    if (!config.auth.internalSigninEnabled()) {
+      throw errors.FORBIDDEN({ message: INTERNAL_SIGNIN_DISABLED_MESSAGE });
+    }
     const db = getDB();
     // Look up the user's email and verify they have a credential-based account
     const [user] = await db
