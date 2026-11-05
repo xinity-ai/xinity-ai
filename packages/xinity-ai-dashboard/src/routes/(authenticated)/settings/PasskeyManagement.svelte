@@ -11,7 +11,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import Modal from "$lib/components/Modal.svelte";
 
-  import { Plus, Trash2, Key, Loader2 } from "@lucide/svelte";
+  import { Plus, Trash2, Key, LoaderCircle } from "@lucide/svelte";
 
   let passkeys = $state<any[]>([]);
   let isLoading = $state(true);
@@ -82,7 +82,7 @@
   <div class="border rounded-lg">
     {#if isLoading}
       <div class="flex items-center justify-center p-8">
-        <Loader2 class="w-5 h-5 animate-spin text-muted-foreground" />
+        <LoaderCircle class="w-5 h-5 animate-spin text-muted-foreground" />
         <span class="ml-2 text-sm text-muted-foreground">Loading passkeys...</span>
       </div>
     {:else if loadError}

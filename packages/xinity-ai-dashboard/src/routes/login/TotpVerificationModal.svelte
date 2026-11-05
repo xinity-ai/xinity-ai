@@ -5,7 +5,7 @@
   import Modal from "$lib/components/Modal.svelte";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
-  import { Loader2 } from "@lucide/svelte";
+  import { LoaderCircle } from "@lucide/svelte";
 
   let { open = $bindable(false), callbackUrl }: {
     open: boolean;
@@ -91,7 +91,7 @@
         <Button variant="ghost" type="button" onclick={resetAndClose}>Cancel</Button>
         <Button type="submit" disabled={isVerifying}>
           {#if isVerifying}
-            <Loader2 class="w-4 h-4 animate-spin" />
+            <LoaderCircle class="w-4 h-4 animate-spin" />
             Verifying...
           {:else}
             Verify

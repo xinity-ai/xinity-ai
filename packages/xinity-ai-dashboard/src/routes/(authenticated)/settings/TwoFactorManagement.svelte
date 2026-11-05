@@ -8,7 +8,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { Loader2, ShieldCheck, ShieldOff } from "@lucide/svelte";
+  import { LoaderCircle, ShieldCheck, ShieldOff } from "@lucide/svelte";
 
   let { twoFactorEnabled = false }: { twoFactorEnabled: boolean } = $props();
 
@@ -123,7 +123,7 @@
         <Button variant="outline" type="button" onclick={reset}>Cancel</Button>
         <Button variant="destructive" type="submit" disabled={isSubmitting}>
           {#if isSubmitting}
-            <Loader2 class="w-4 h-4 animate-spin" />
+            <LoaderCircle class="w-4 h-4 animate-spin" />
             Disabling...
           {:else}
             Disable Two-Factor Authentication
@@ -159,7 +159,7 @@
         <Button variant="outline" type="button" onclick={reset}>Cancel</Button>
         <Button type="submit" disabled={isSubmitting}>
           {#if isSubmitting}
-            <Loader2 class="w-4 h-4 animate-spin" />
+            <LoaderCircle class="w-4 h-4 animate-spin" />
             Regenerating...
           {:else}
             Regenerate

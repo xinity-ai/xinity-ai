@@ -11,7 +11,7 @@
   import { Label } from "$lib/components/ui/label";
   import * as Card from "$lib/components/ui/card";
 
-  import { Rocket, CheckCircle2, XCircle, Loader2, X } from "@lucide/svelte";
+  import { Rocket, CircleCheck, CircleX, LoaderCircle, X } from "@lucide/svelte";
   import ModelSelectorModal from "./modelhub/ModelSelectorModal.svelte";
 
   let { onCompleted }: { onCompleted: () => void } = $props();
@@ -93,7 +93,7 @@
       <Card.Root>
         <Card.Header class="text-center">
           <div class="mx-auto mb-3 flex items-center justify-center w-14 h-14 rounded-full bg-green-100">
-            <CheckCircle2 class="w-7 h-7 text-green-600" />
+            <CircleCheck class="w-7 h-7 text-green-600" />
           </div>
           <Card.Title class="text-2xl">You're all set!</Card.Title>
           <Card.Description>
@@ -162,11 +162,11 @@
                 <div class="flex items-center gap-2 text-xs text-muted-foreground">
                   <span>Slug: <span class="font-mono">{slug}</span></span>
                   {#if checkingSlug}
-                    <Loader2 class="w-3 h-3 animate-spin" />
+                    <LoaderCircle class="w-3 h-3 animate-spin" />
                   {:else if slugAvailable === true}
-                    <CheckCircle2 class="w-3 h-3 text-green-500" />
+                    <CircleCheck class="w-3 h-3 text-green-500" />
                   {:else if slugAvailable === false}
-                    <XCircle class="w-3 h-3 text-destructive" />
+                    <CircleX class="w-3 h-3 text-destructive" />
                     <span class="text-destructive">This name is already taken</span>
                   {/if}
                 </div>
@@ -219,7 +219,7 @@
 
             <Button type="submit" disabled={!canSubmit} class="w-full">
               {#if isSubmitting}
-                <Loader2 class="w-4 h-4 animate-spin" />
+                <LoaderCircle class="w-4 h-4 animate-spin" />
                 Setting up...
               {:else}
                 Get Started

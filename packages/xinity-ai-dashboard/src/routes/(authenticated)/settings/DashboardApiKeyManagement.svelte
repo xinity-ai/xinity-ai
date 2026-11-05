@@ -11,7 +11,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import Modal from "$lib/components/Modal.svelte";
 
-  import { Plus, Trash2, Key, Loader2 } from "@lucide/svelte";
+  import { Plus, Trash2, Key, LoaderCircle } from "@lucide/svelte";
 
   let apiKeys = $state<any[]>([]);
   let organizations = $state<any[]>([]);
@@ -129,7 +129,7 @@
   <div class="border rounded-lg">
     {#if isLoading}
       <div class="flex items-center justify-center p-8">
-        <Loader2 class="w-5 h-5 animate-spin text-muted-foreground" />
+        <LoaderCircle class="w-5 h-5 animate-spin text-muted-foreground" />
         <span class="ml-2 text-sm text-muted-foreground">Loading API keys...</span>
       </div>
     {:else if loadError}
@@ -242,7 +242,7 @@
           </Button>
           <Button type="submit" disabled={isCreating}>
             {#if isCreating}
-              <Loader2 class="w-4 h-4 animate-spin" />
+              <LoaderCircle class="w-4 h-4 animate-spin" />
               Creating...
             {:else}
               Create

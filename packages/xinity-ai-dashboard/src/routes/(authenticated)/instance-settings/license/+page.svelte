@@ -2,7 +2,7 @@
   import * as Card from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
-  import { CheckCircle2, Lock } from "@lucide/svelte";
+  import { CircleCheck, Lock } from "@lucide/svelte";
   import CopyableValue from "$lib/components/CopyableValue.svelte";
   import type { PageData } from "./$types";
   import { formatGb } from "$lib/util";
@@ -101,7 +101,7 @@
           {@const enabled = data.license.features[feature.key]}
           <li class="flex items-start gap-3 px-3 py-2.5">
             {#if enabled}
-              <CheckCircle2 class="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+              <CircleCheck class="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
             {:else}
               <Lock class="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
             {/if}

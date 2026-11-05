@@ -12,7 +12,7 @@
   import { Label } from "$lib/components/ui/label";
 
   // Icons
-  import { ArrowLeft, Loader2, CheckCircle2, XCircle } from "@lucide/svelte";
+  import { ArrowLeft, LoaderCircle, CircleCheck, CircleX } from "@lucide/svelte";
 
   let name = $state("");
   let slug = $state("");
@@ -149,11 +149,11 @@
             />
             <div class="absolute inset-y-0 right-0 flex items-center pr-3">
               {#if checkingSlug}
-                <Loader2 class="w-4 h-4 text-muted-foreground animate-spin" />
+                <LoaderCircle class="w-4 h-4 text-muted-foreground animate-spin" />
               {:else if slugAvailable === true}
-                <CheckCircle2 class="w-4 h-4 text-green-500" />
+                <CircleCheck class="w-4 h-4 text-green-500" />
               {:else if slugAvailable === false}
-                <XCircle class="w-4 h-4 text-destructive" />
+                <CircleX class="w-4 h-4 text-destructive" />
               {/if}
             </div>
           </div>
@@ -175,7 +175,7 @@
         <div class="flex gap-3 pt-2">
           <Button type="submit" disabled={!canSubmit} class="flex-1">
             {#if isSubmitting}
-              <Loader2 class="w-4 h-4 animate-spin" />
+              <LoaderCircle class="w-4 h-4 animate-spin" />
               Creating...
             {:else}
               Create Organization

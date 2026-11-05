@@ -6,7 +6,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { Loader2 } from "@lucide/svelte";
+  import { LoaderCircle } from "@lucide/svelte";
 
   let {
     email = $bindable(),
@@ -101,7 +101,7 @@
   </div>
   <Button type="submit" class="w-full" disabled={isLoading}>
     {#if isLoading}
-      <Loader2 class="w-4 h-4 animate-spin" />
+      <LoaderCircle class="w-4 h-4 animate-spin" />
       Creating account...
     {:else}
       Create Account

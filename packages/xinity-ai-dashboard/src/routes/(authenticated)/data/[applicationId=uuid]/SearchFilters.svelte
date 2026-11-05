@@ -3,7 +3,7 @@
   import * as Select from "$lib/components/ui/select";
   import { Input } from "$lib/components/ui/input";
   import { Button } from "$lib/components/ui/button";
-  import { Filter } from "@lucide/svelte";
+  import { Funnel } from "@lucide/svelte";
 
   let {
       searchQuery = $bindable(""),
@@ -104,7 +104,7 @@
       onclick={() => (showMetadataFilter = !showMetadataFilter)}
       title="Filter by metadata"
     >
-      <Filter class="w-4 h-4" />
+      <Funnel class="w-4 h-4" />
       Metadata
     </Button>
   </div>

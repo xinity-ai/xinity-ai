@@ -5,7 +5,7 @@
   import { ssoProviderLabel } from "../../sso-provider-label";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
-  import { Loader2 } from "@lucide/svelte";
+  import { LoaderCircle } from "@lucide/svelte";
 
   const providerId = $derived(page.params.providerId ?? "");
   const providerLabel = $derived(ssoProviderLabel(providerId));
@@ -67,7 +67,7 @@
           disabled={!hasProvider || isLoading}
         >
           {#if isLoading}
-            <Loader2 class="w-4 h-4 animate-spin" />
+            <LoaderCircle class="w-4 h-4 animate-spin" />
             Connecting...
           {:else}
             Continue with {providerLabel}

@@ -9,7 +9,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { Loader2 } from "@lucide/svelte";
+  import { LoaderCircle } from "@lucide/svelte";
 
   let { onComplete, onCancel }: {
     onComplete: () => void;
@@ -99,7 +99,7 @@
         <Button variant="outline" type="button" onclick={onCancel}>Cancel</Button>
         <Button type="submit" disabled={isSubmitting}>
           {#if isSubmitting}
-            <Loader2 class="w-4 h-4 animate-spin" />
+            <LoaderCircle class="w-4 h-4 animate-spin" />
             Setting up...
           {:else}
             Continue
@@ -169,7 +169,7 @@
         </Button>
         <Button type="submit" disabled={isSubmitting}>
           {#if isSubmitting}
-            <Loader2 class="w-4 h-4 animate-spin" />
+            <LoaderCircle class="w-4 h-4 animate-spin" />
             Verifying...
           {:else}
             Verify and Enable
