@@ -4,6 +4,7 @@ import type { PageServerLoad } from "./$types";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { ssoProviderT, sql } from "common-db";
+import { cachedIssuerIconUrl } from "$lib/server/lib/auth/sso-provider-icon";
 import { safeCallbackPath } from "./callback-url";
 
 export const load: PageServerLoad = async ({ request, url }) => {
@@ -17,12 +18,13 @@ export const load: PageServerLoad = async ({ request, url }) => {
   const hostMismatch =
     config.nodeEnv !== "development" && url.host !== configuredOrigin.host;
 
-  const ssoProviders = config.auth.multiTenantMode
+  const instanceProviders = config.auth.multiTenantMode
     ? []
     : await getDB().select({
         providerId: ssoProviderT.providerId,
-        domain: ssoProviderT.domain,
+        issuer: ssoProviderT.issuer,
       }).from(ssoProviderT).where(sql`${ssoProviderT.organizationId} IS NULL`);
+  const ssoProviders = instanceProviders.map(({ providerId, issuer }) => ({ providerId, iconUrl: cachedIssuerIconUrl(issuer) }));
 
   return {
     callbackUrl,

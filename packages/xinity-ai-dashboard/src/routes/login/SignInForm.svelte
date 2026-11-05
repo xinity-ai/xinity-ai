@@ -1,5 +1,6 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
+  import { SvelteSet } from "svelte/reactivity";
   import { signIn } from "$lib/auth";
   import { friendlyError, friendlySsoError } from "./friendly-error";
   import { ssoProviderLabel } from "./sso-provider-label";
@@ -19,7 +20,7 @@
   }: {
     email: string | undefined;
     callbackUrl: string;
-    ssoProviders?: { providerId: string; domain: string }[];
+    ssoProviders?: { providerId: string; iconUrl?: string }[];
     internalSigninEnabled: boolean;
     onTwoFactorRedirect: () => void;
   } = $props();
@@ -55,6 +56,7 @@
   }
 
   let ssoPendingProviderId = $state<string | undefined>();
+  const failedIconProviderIds = new SvelteSet<string>();
 
   async function startSso(providerId: string) {
     error = undefined;
@@ -141,6 +143,15 @@
           <LoaderCircle class="w-4 h-4 animate-spin" />
           Redirecting...
         {:else}
+          {#if provider.iconUrl && !failedIconProviderIds.has(provider.providerId)}
+            <img
+              src={provider.iconUrl}
+              alt=""
+              class="w-4 h-4"
+              referrerpolicy="no-referrer"
+              onerror={() => failedIconProviderIds.add(provider.providerId)}
+            />
+          {/if}
           Continue with {ssoProviderLabel(provider.providerId)}
         {/if}
       </Button>
