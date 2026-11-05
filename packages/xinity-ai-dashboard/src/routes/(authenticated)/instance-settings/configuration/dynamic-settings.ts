@@ -93,6 +93,13 @@ export const DYNAMIC_SETTINGS: DynamicSetting[] = [
     schema: configBool().default(true).describe("Enable user signup"),
   },
   {
+    key: "INTERNAL_SIGNIN_ENABLED",
+    components: ["dashboard"],
+    group: "Authentication",
+    schema: configBool().default(true)
+      .describe("Allow sign-in with an account held by this instance (email and password, or passkey). When off, users sign in through SSO only"),
+  },
+  {
     key: "DEPLOYMENT_STRATEGY",
     components: ["dashboard"],
     group: "Compute",

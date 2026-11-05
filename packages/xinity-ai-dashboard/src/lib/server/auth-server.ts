@@ -56,6 +56,17 @@ function isSsoManagementPath(path: string): boolean {
   return path.startsWith("/sso/") && !ssoSignInPathPrefixes.some((prefix) => path.startsWith(prefix));
 }
 
+// Password endpoints share no prefix, so this lists them one by one. lib/auth/better-auth-endpoints.test.ts
+// fails whenever Better Auth's endpoints change, which is the moment to check this list again.
+const internalSigninPaths = new Set(["/sign-in/email", "/sign-up/email", "/request-password-reset", "/reset-password", "/change-password", "/verify-password"]);
+const internalSigninPathPrefixes = ["/reset-password/", "/passkey/", "/two-factor/"];
+
+function isInternalSigninPath(path: string): boolean {
+  return internalSigninPaths.has(path) || internalSigninPathPrefixes.some((prefix) => path.startsWith(prefix));
+}
+
+export const INTERNAL_SIGNIN_DISABLED_MESSAGE = "Sign-in with email and password or passkey is disabled on this instance.";
+
 const roleAssignmentPaths = new Set(["/organization/invite-member", "/organization/update-member-role"]);
 
 function requestedRoles(role: unknown): string[] {
@@ -374,6 +385,10 @@ export const auth = betterAuth({
   },
   hooks: {
     before: createAuthMiddleware(async (ctx) => {
+      if (isInternalSigninPath(ctx.path) && !config.auth.internalSigninEnabled()) {
+        throw new APIError("FORBIDDEN", { message: INTERNAL_SIGNIN_DISABLED_MESSAGE });
+      }
+
       if (ctx.query?.greenlitCallId && greenlitCallIds.has(ctx.query.greenlitCallId)) {
         greenlitCallIds.delete(ctx.query.greenlitCallId);
         return;

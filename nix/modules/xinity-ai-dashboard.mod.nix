@@ -8,6 +8,7 @@
       # [sync:dynamic-keys] - generated from the config declaration, do not edit
       dashboardManageableKeys = [
         "SIGNUP_ENABLED"
+        "INTERNAL_SIGNIN_ENABLED"
         "DEPLOYMENT_STRATEGY"
         "PROMETHEUS_URL"
         "LICENSE_KEY"
@@ -122,6 +123,12 @@
           type = lib.types.bool;
           default = true;
           description = "Whether user self-registration is enabled. When disabled, only existing users or those invited by an admin can sign in.";
+        };
+
+        internalSigninEnabled = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Whether users can sign in with an account held by this instance (email and password, or passkey). When disabled, users sign in through SSO only.";
         };
 
         computeManagementEnabled = lib.mkOption {
@@ -372,6 +379,7 @@
             NODE_ENV = cfg.nodeEnv;
             APP_NAME = cfg.appName;
             SIGNUP_ENABLED = lib.boolToString cfg.signupEnabled;
+            INTERNAL_SIGNIN_ENABLED = lib.boolToString cfg.internalSigninEnabled;
             COMPUTE_MANAGEMENT_ENABLED = lib.boolToString cfg.computeManagementEnabled;
             NOTIFICATIONS_ENABLED = lib.boolToString cfg.notificationsEnabled;
             MULTI_TENANT_MODE = lib.boolToString cfg.multiTenantMode;
