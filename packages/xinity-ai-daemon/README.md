@@ -31,6 +31,12 @@ The driver needs no configuration: the daemon probes `OLLAMA_URL` (default `http
 
 Models are pulled from the Ollama registry with progress tracking. Up to 2 concurrent pull/delete operations.
 
+**The daemon deletes every model in its Ollama instance that is not deployed to the node**, including models you pulled yourself. On a machine where you already use Ollama, run a separate instance for Xinity and point `OLLAMA_URL` at it:
+
+```bash
+OLLAMA_HOST=127.0.0.1:11435 OLLAMA_MODELS="$HOME/.xinity-ollama/models" ollama serve
+```
+
 ### vLLM Driver
 
 Models go through: download from HuggingFace (resumable, with file filtering), start as a systemd unit or Docker container, health check polling (default timeout: 1 hour), and warmup request. Each installation runs within the card and host memory the scheduler charged it, see [the daemon docs](../../docs/features/daemon.md#vllm).
@@ -64,6 +70,8 @@ curl -fsSL https://ollama.com/install.sh | sh
 ```
 
 Or use `xinity up infra-ollama`.
+
+The daemon deletes every model in this instance that is not deployed to the node, see [Ollama Driver](#ollama-driver).
 
 ### vLLM
 

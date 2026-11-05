@@ -90,14 +90,14 @@ Run this on each machine with GPU capacity:
 xinity up daemon
 ```
 
-The daemon connects to the tether via SSE and receives deployment instructions through it. It needs Ollama or vLLM available on the same machine to actually serve models: `xinity up infra-ollama` installs Ollama and writes the daemon env, or point the daemon at an existing vLLM install with `VLLM_PATH`/`VLLM_DOCKER_IMAGE`.
+The daemon connects to the tether via SSE and receives deployment instructions through it. It needs Ollama or vLLM available on the same machine to actually serve models: `xinity up infra-ollama` installs Ollama, which the daemon finds on its own, or point the daemon at an existing vLLM install with `VLLM_PATH`/`VLLM_DOCKER_IMAGE`. The daemon deletes every model in its Ollama instance that is not deployed to the node, so do not share that instance with models you want to keep.
 
 ## Infrastructure Utilities
 
 Infrastructure dependencies are managed with `xinity up infra-<tool>`:
 
 ```bash
-xinity up infra-ollama      # Install/update ollama, write daemon env
+xinity up infra-ollama      # Install/update ollama (the daemon finds it on its own)
 xinity up infra-redis       # Detect/install Redis or Valkey, configure, persist connection URL
 xinity up infra-seaweedfs   # Install SeaweedFS S3-compatible object store
 xinity up infra-postgres    # Standalone PostgreSQL install/start (without migrations)

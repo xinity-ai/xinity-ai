@@ -28,6 +28,8 @@ The daemon receives deployment instructions from the tether via a persistent SSE
 
 Models are pulled from the Ollama registry with progress tracking (debounced to 15-second updates). Up to 2 concurrent pull/delete operations.
 
+**The daemon deletes every model in its Ollama instance that is not deployed to the node**, including models it never pulled. Ollama loads any model it holds on request, so an undeployed model could take GPU memory the scheduler has already given to deployed models. Give Xinity an Ollama instance of its own, see the [daemon README](../../packages/xinity-ai-daemon/README.md#ollama-driver).
+
 ### vLLM
 
 The installation flow: download weights from HuggingFace (resumable, with file filtering), start the server, poll health (default timeout: 1 hour), then run a warmup request.
