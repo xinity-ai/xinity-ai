@@ -34,9 +34,10 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
     fetchUserSettings(session.user.id),
     fetchTotalAvailableVramGb(),
   ]);
-  const { displaySettings, temporaryPassword } = userSettings;
+  const { displaySettings } = userSettings;
+  const mustChangePassword = userSettings.temporaryPassword && config.auth.internalSigninEnabled();
 
-  if (temporaryPassword && !url.pathname.startsWith("/settings/auth")) {
+  if (mustChangePassword && !url.pathname.startsWith("/settings/auth")) {
     redirect(302, "/settings/auth/");
   }
 
@@ -50,7 +51,8 @@ export const load: LayoutServerLoad = async ({ request, url, cookies }) => {
     activeOrganizationId: session.session.activeOrganizationId,
     memberRole,
     displaySettings,
-    temporaryPassword,
+    mustChangePassword,
+    internalSigninEnabled: config.auth.internalSigninEnabled(),
     isInstanceAdmin: userIsInstanceAdmin,
     singleTenantMode: !multiTenantMode,
     canCreateOrganization: (multiTenantMode || userIsInstanceAdmin) && (hasFeature("multi-org") || !hasActiveOrg),

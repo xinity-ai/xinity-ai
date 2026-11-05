@@ -51,6 +51,14 @@
             You can close this tab and continue in your email.
           </p>
         </div>
+      {:else if !data.internalSigninEnabled}
+        <SignInForm
+          bind:email={$params.email}
+          callbackUrl={data.callbackUrl}
+          ssoProviders={data.ssoProviders}
+          internalSigninEnabled={false}
+          onTwoFactorRedirect={() => (showingTOTP = true)}
+        />
       {:else}
         <div class="flex border-b border-border">
           <button
@@ -74,6 +82,7 @@
             bind:email={$params.email}
             callbackUrl={data.callbackUrl}
             ssoProviders={data.ssoProviders}
+            internalSigninEnabled
             onTwoFactorRedirect={() => (showingTOTP = true)}
           />
         </div>

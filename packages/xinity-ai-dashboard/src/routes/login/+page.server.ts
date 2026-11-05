@@ -28,6 +28,7 @@ export const load: PageServerLoad = async ({ request, url }) => {
     callbackUrl,
     ssoProviders,
     signupEnabled: config.auth.signupEnabled(),
+    internalSigninEnabled: config.auth.internalSigninEnabled(),
     emailVerificationRequired: Boolean(config.mail),
     hostMismatch,
     configuredOrigin: configuredOrigin.origin,

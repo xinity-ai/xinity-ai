@@ -20,64 +20,68 @@
 <div class="space-y-6">
   <div>
     <h2 class="text-lg font-semibold tracking-tight">Authentication Settings</h2>
-    <p class="text-sm text-muted-foreground">Manage your password, two-factor authentication, passkeys, and API keys</p>
+    <p class="text-sm text-muted-foreground">
+      {data.internalSigninEnabled ? "Manage your password, two-factor authentication, passkeys, and API keys" : "Manage your API keys"}
+    </p>
   </div>
 
   <Separator />
 
-  <Collapsible.Root open={openSection === "password"} onOpenChange={() => toggle("password")}>
-    <Collapsible.Trigger class="flex w-full items-center gap-3 py-2 cursor-pointer">
-      <ChevronRight class="w-4 h-4 text-muted-foreground transition-transform duration-200 {openSection === 'password' ? 'rotate-90' : ''}" />
-      <Lock class="w-4 h-4 text-muted-foreground" />
-      <div class="text-left">
-        <h3 class="text-base font-semibold">Password</h3>
-        <p class="text-sm text-muted-foreground">Change your account password</p>
-      </div>
-    </Collapsible.Trigger>
-    <Collapsible.Content>
-      <div class="pt-4 pl-7">
-        <PasswordChange temporaryPassword={data.fullUser?.temporaryPassword ?? false} />
-      </div>
-    </Collapsible.Content>
-  </Collapsible.Root>
+  {#if data.internalSigninEnabled}
+    <Collapsible.Root open={openSection === "password"} onOpenChange={() => toggle("password")}>
+      <Collapsible.Trigger class="flex w-full items-center gap-3 py-2 cursor-pointer">
+        <ChevronRight class="w-4 h-4 text-muted-foreground transition-transform duration-200 {openSection === 'password' ? 'rotate-90' : ''}" />
+        <Lock class="w-4 h-4 text-muted-foreground" />
+        <div class="text-left">
+          <h3 class="text-base font-semibold">Password</h3>
+          <p class="text-sm text-muted-foreground">Change your account password</p>
+        </div>
+      </Collapsible.Trigger>
+      <Collapsible.Content>
+        <div class="pt-4 pl-7">
+          <PasswordChange temporaryPassword={data.fullUser?.temporaryPassword ?? false} />
+        </div>
+      </Collapsible.Content>
+    </Collapsible.Root>
 
-  <Separator />
+    <Separator />
 
-  <Collapsible.Root open={openSection === "twoFactor"} onOpenChange={() => toggle("twoFactor")}>
-    <Collapsible.Trigger class="flex w-full items-center gap-3 py-2 cursor-pointer">
-      <ChevronRight class="w-4 h-4 text-muted-foreground transition-transform duration-200 {openSection === 'twoFactor' ? 'rotate-90' : ''}" />
-      <ShieldCheck class="w-4 h-4 text-muted-foreground" />
-      <div class="text-left">
-        <h3 class="text-base font-semibold">Two-Factor Authentication</h3>
-        <p class="text-sm text-muted-foreground">Add an extra layer of security with TOTP</p>
-      </div>
-    </Collapsible.Trigger>
-    <Collapsible.Content>
-      <div class="pt-4 pl-7">
-        <TwoFactorManagement twoFactorEnabled={data.fullUser?.twoFactorEnabled ?? false} />
-      </div>
-    </Collapsible.Content>
-  </Collapsible.Root>
+    <Collapsible.Root open={openSection === "twoFactor"} onOpenChange={() => toggle("twoFactor")}>
+      <Collapsible.Trigger class="flex w-full items-center gap-3 py-2 cursor-pointer">
+        <ChevronRight class="w-4 h-4 text-muted-foreground transition-transform duration-200 {openSection === 'twoFactor' ? 'rotate-90' : ''}" />
+        <ShieldCheck class="w-4 h-4 text-muted-foreground" />
+        <div class="text-left">
+          <h3 class="text-base font-semibold">Two-Factor Authentication</h3>
+          <p class="text-sm text-muted-foreground">Add an extra layer of security with TOTP</p>
+        </div>
+      </Collapsible.Trigger>
+      <Collapsible.Content>
+        <div class="pt-4 pl-7">
+          <TwoFactorManagement twoFactorEnabled={data.fullUser?.twoFactorEnabled ?? false} />
+        </div>
+      </Collapsible.Content>
+    </Collapsible.Root>
 
-  <Separator />
+    <Separator />
 
-  <Collapsible.Root open={openSection === "passkeys"} onOpenChange={() => toggle("passkeys")}>
-    <Collapsible.Trigger class="flex w-full items-center gap-3 py-2 cursor-pointer">
-      <ChevronRight class="w-4 h-4 text-muted-foreground transition-transform duration-200 {openSection === 'passkeys' ? 'rotate-90' : ''}" />
-      <Fingerprint class="w-4 h-4 text-muted-foreground" />
-      <div class="text-left">
-        <h3 class="text-base font-semibold">Passkeys</h3>
-        <p class="text-sm text-muted-foreground">Sign in without passwords using passkeys</p>
-      </div>
-    </Collapsible.Trigger>
-    <Collapsible.Content>
-      <div class="pt-4 pl-7">
-        <PasskeyManagement />
-      </div>
-    </Collapsible.Content>
-  </Collapsible.Root>
+    <Collapsible.Root open={openSection === "passkeys"} onOpenChange={() => toggle("passkeys")}>
+      <Collapsible.Trigger class="flex w-full items-center gap-3 py-2 cursor-pointer">
+        <ChevronRight class="w-4 h-4 text-muted-foreground transition-transform duration-200 {openSection === 'passkeys' ? 'rotate-90' : ''}" />
+        <Fingerprint class="w-4 h-4 text-muted-foreground" />
+        <div class="text-left">
+          <h3 class="text-base font-semibold">Passkeys</h3>
+          <p class="text-sm text-muted-foreground">Sign in without passwords using passkeys</p>
+        </div>
+      </Collapsible.Trigger>
+      <Collapsible.Content>
+        <div class="pt-4 pl-7">
+          <PasskeyManagement />
+        </div>
+      </Collapsible.Content>
+    </Collapsible.Root>
 
-  <Separator />
+    <Separator />
+  {/if}
 
   <Collapsible.Root open={openSection === "apiKeys"} onOpenChange={() => toggle("apiKeys")}>
     <Collapsible.Trigger class="flex w-full items-center gap-3 py-2 cursor-pointer">

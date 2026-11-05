@@ -21,6 +21,8 @@
   type ListOrgsData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.listOrganizations>>["data"]>;
   type AdminOrganization = ListOrgsData["organizations"][number];
 
+  let { data } = $props();
+
   const searchParams = createUrlSearchParamsStore();
   const LIMIT = 25;
 
@@ -228,10 +230,12 @@
         <Card.Title>Users</Card.Title>
         <Card.Description>{total} total users</Card.Description>
       </div>
-      <Button onclick={() => { createUserModalOpen = true; }}>
-        <UserPlus class="w-4 h-4 mr-2" />
-        Create User
-      </Button>
+      {#if data.internalSigninEnabled}
+        <Button onclick={() => { createUserModalOpen = true; }}>
+          <UserPlus class="w-4 h-4 mr-2" />
+          Create User
+        </Button>
+      {/if}
     </div>
     <div class="relative mt-4">
       <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -336,14 +340,16 @@
                             Verify email
                           {/if}
                         </DropdownMenu.Item>
-                        <DropdownMenu.Item onclick={() => {
-                          resetPasswordTargetUser = { id: user.id, name: user.name };
-                          resetPasswordTempPassword = "";
-                          resetPasswordModalOpen = true;
-                        }}>
-                          <KeyRound class="w-4 h-4 mr-2" />
-                          Reset password
-                        </DropdownMenu.Item>
+                        {#if data.internalSigninEnabled}
+                          <DropdownMenu.Item onclick={() => {
+                            resetPasswordTargetUser = { id: user.id, name: user.name };
+                            resetPasswordTempPassword = "";
+                            resetPasswordModalOpen = true;
+                          }}>
+                            <KeyRound class="w-4 h-4 mr-2" />
+                            Reset password
+                          </DropdownMenu.Item>
+                        {/if}
                         <DropdownMenu.Separator />
                         <DropdownMenu.Item onclick={() => {
                           addOrgTargetUser = { id: user.id, name: user.name };
