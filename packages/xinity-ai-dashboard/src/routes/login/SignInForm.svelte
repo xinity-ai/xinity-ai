@@ -13,11 +13,13 @@
     email = $bindable(),
     callbackUrl,
     ssoProviders = [],
+    internalSigninEnabled,
     onTwoFactorRedirect,
   }: {
     email: string | undefined;
     callbackUrl: string;
     ssoProviders?: { providerId: string; domain: string }[];
+    internalSigninEnabled: boolean;
     onTwoFactorRedirect: () => void;
   } = $props();
 
@@ -60,62 +62,72 @@
   {#if error}
     <p role="alert" class="text-sm text-destructive">{error}</p>
   {/if}
-  <div class="space-y-2">
-    <Label for="in-email">Email</Label>
-    <Input
-      type="email"
-      id="in-email"
-      name="in-email"
-      required
-      bind:value={email}
-    />
-  </div>
-  <div class="space-y-2">
-    <Label for="in-pass">Password</Label>
-    <Input
-      type="password"
-      id="in-pass"
-      name="in-pass"
-      required
-      bind:value={password}
-    />
-  </div>
-  <Button type="submit" class="w-full" disabled={isLoading}>
-    {#if isLoading}
-      <Loader2 class="w-4 h-4 animate-spin" />
-      Signing in...
-    {:else}
-      Sign In
-    {/if}
-  </Button>
-  {#if ssoProviders?.length}
-    <div class="relative my-2">
-      <div class="absolute inset-0 flex items-center">
-        <span class="w-full border-t border-border"></span>
-      </div>
-      <div class="relative flex justify-center text-xs uppercase">
-        <span class="bg-card px-2 text-muted-foreground">or continue with</span>
-      </div>
+  {#if internalSigninEnabled}
+    <div class="space-y-2">
+      <Label for="in-email">Email</Label>
+      <Input
+        type="email"
+        id="in-email"
+        name="in-email"
+        required
+        bind:value={email}
+      />
     </div>
+    <div class="space-y-2">
+      <Label for="in-pass">Password</Label>
+      <Input
+        type="password"
+        id="in-pass"
+        name="in-pass"
+        required
+        bind:value={password}
+      />
+    </div>
+    <Button type="submit" class="w-full" disabled={isLoading}>
+      {#if isLoading}
+        <Loader2 class="w-4 h-4 animate-spin" />
+        Signing in...
+      {:else}
+        Sign In
+      {/if}
+    </Button>
+  {:else if !ssoProviders.length}
+    <p role="alert" class="text-sm text-muted-foreground text-center">
+      No sign-in method is available. Contact your administrator.
+    </p>
+  {/if}
+  {#if ssoProviders.length}
+    {#if internalSigninEnabled}
+      <div class="relative my-2">
+        <div class="absolute inset-0 flex items-center">
+          <span class="w-full border-t border-border"></span>
+        </div>
+        <div class="relative flex justify-center text-xs uppercase">
+          <span class="bg-card px-2 text-muted-foreground">or continue with</span>
+        </div>
+      </div>
+    {/if}
     {#each ssoProviders as provider}
       <Button variant="outline" href="/login/sso/{provider.providerId}/?callbackUrl={encodeURIComponent(callbackUrl)}" class="w-full">
         Sign in with SSO ({provider.domain})
       </Button>
     {/each}
   {/if}
-  <Button
-    variant="outline"
-    class="w-full"
-    type="button"
-    onclick={() =>
-      signIn.passkey({
-        fetchOptions: {
-          onSuccess() {
-            goto(callbackUrl);
+  {#if internalSigninEnabled}
+    <Button
+      variant="outline"
+      class="w-full"
+      type="button"
+      onclick={() =>
+        signIn.passkey({
+          fetchOptions: {
+            onSuccess() {
+              goto(callbackUrl);
+            },
           },
-        },
-      })}
-  >
-    <KeyIcon /> Sign in with Passkey
-  </Button>
+        })}
+    >
+      <KeyIcon /> Sign in with Passkey
+    </Button>
+  {/if}
 </form>
