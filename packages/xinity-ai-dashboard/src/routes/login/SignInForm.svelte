@@ -1,13 +1,14 @@
 <script lang="ts">
   import { goto } from "$app/navigation";
   import { signIn } from "$lib/auth";
-  import { friendlyError } from "./friendly-error";
+  import { friendlyError, friendlySsoError } from "./friendly-error";
+  import { ssoProviderLabel } from "./sso-provider-label";
 
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import KeyIcon from "$lib/components/icons/KeyIcon.svelte";
-  import { Loader2 } from "@lucide/svelte";
+  import { LoaderCircle } from "@lucide/svelte";
 
   let {
     email = $bindable(),
@@ -52,6 +53,27 @@
       isLoading = false;
     }
   }
+
+  let ssoPendingProviderId = $state<string | undefined>();
+
+  async function startSso(providerId: string) {
+    error = undefined;
+    ssoPendingProviderId = providerId;
+    try {
+      const res = await signIn.sso({
+        providerId,
+        callbackURL: callbackUrl,
+        errorCallbackURL: `/login/sso/${providerId}/?callbackUrl=${encodeURIComponent(callbackUrl)}`,
+      });
+      if (res?.error) {
+        error = friendlySsoError(res.error.message) ?? res.error.message;
+        ssoPendingProviderId = undefined;
+      }
+    } catch (e) {
+      error = (e as Error).message ?? "Unexpected error";
+      ssoPendingProviderId = undefined;
+    }
+  }
 </script>
 
 <form
@@ -85,7 +107,7 @@
     </div>
     <Button type="submit" class="w-full" disabled={isLoading}>
       {#if isLoading}
-        <Loader2 class="w-4 h-4 animate-spin" />
+        <LoaderCircle class="w-4 h-4 animate-spin" />
         Signing in...
       {:else}
         Sign In
@@ -108,8 +130,19 @@
       </div>
     {/if}
     {#each ssoProviders as provider}
-      <Button variant="outline" href="/login/sso/{provider.providerId}/?callbackUrl={encodeURIComponent(callbackUrl)}" class="w-full">
-        Sign in with SSO ({provider.domain})
+      <Button
+        variant="outline"
+        type="button"
+        class="w-full"
+        disabled={ssoPendingProviderId !== undefined}
+        onclick={() => startSso(provider.providerId)}
+      >
+        {#if ssoPendingProviderId === provider.providerId}
+          <LoaderCircle class="w-4 h-4 animate-spin" />
+          Redirecting...
+        {:else}
+          Continue with {ssoProviderLabel(provider.providerId)}
+        {/if}
       </Button>
     {/each}
   {/if}

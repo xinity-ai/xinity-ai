@@ -2,25 +2,19 @@
   import { page } from "$app/state";
   import { signIn } from "$lib/auth";
   import { friendlySsoError } from "../../friendly-error";
+  import { ssoProviderLabel } from "../../sso-provider-label";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
   import { Loader2 } from "@lucide/svelte";
 
   const providerId = $derived(page.params.providerId ?? "");
-  const providerLabel = $derived(formatProviderId(providerId));
+  const providerLabel = $derived(ssoProviderLabel(providerId));
   const hasProvider = $derived(providerId.length > 0);
 
   let errorMessage = $state(
     friendlySsoError(page.url.searchParams.get("error") ?? undefined, page.data.providerDomains) ?? "",
   );
   let isLoading = $state(false);
-
-  function formatProviderId(id: string) {
-    if (!id) return "your provider";
-    return id
-      .replace(/[-_]+/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-  }
 
   async function handleSignIn() {
     if (!hasProvider || isLoading) return;
