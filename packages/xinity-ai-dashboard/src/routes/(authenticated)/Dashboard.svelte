@@ -3,6 +3,7 @@
   import type { ChartConfiguration } from "chart.js";
   import type { KeyMetrics, ChartsData, TablesData } from "./dashboard.types";
   import { humanDate, formatDurationMs } from "$lib/util";
+  import { formatTokens } from "$lib/compute/format";
 
   let { keyMetrics, charts, tables }: {
     keyMetrics: Promise<KeyMetrics>;
@@ -16,17 +17,8 @@
   }
 
   function formatTokenAvg(val: number | null): string {
-    if (val == null) return "-";
-    if (val >= 1000) return (val / 1000).toFixed(1) + "k";
-    return String(val);
+    return val == null ? "-" : formatTokens(val);
   }
-
-  function formatTokens(val: number): string {
-    if (val >= 1_000_000) return (val / 1_000_000).toFixed(1) + "M";
-    if (val >= 1000) return (val / 1000).toFixed(1) + "k";
-    return String(val);
-  }
-
 </script>
 
 <div class="p-6 compact:p-3">

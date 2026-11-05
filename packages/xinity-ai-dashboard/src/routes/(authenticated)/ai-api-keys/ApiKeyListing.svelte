@@ -6,6 +6,7 @@ import { toastState } from "$lib/state/toast.svelte";
 import type { ApplicationDto } from "$lib/orpc/dtos/application.dto";
 import { permissions } from "$lib/state/permissions.svelte";
 import { invalidate } from "$app/navigation";
+import { humanDateShort } from "$lib/util";
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
@@ -16,7 +17,6 @@ import { invalidate } from "$app/navigation";
   // Icons
   import { Plus, Pencil, KeyRound, ChevronDown, ChevronUp, Info } from "@lucide/svelte";
 
-  const locale = "de";
   const VISIBLE_KEY_COUNT = 10;
   type EditingKey = Pick<ApiKeyDto, "name" | "specifier" | "id" | "applicationId">;
 
@@ -165,9 +165,7 @@ import { invalidate } from "$app/navigation";
           </td>
           <td class="px-6 py-4 compact:px-3 compact:py-2 whitespace-nowrap text-sm">
             <div class="flex items-center gap-1.5">
-              {key.createdAt.toLocaleDateString(locale, {
-                dateStyle: "medium",
-              })}
+              {humanDateShort(key.createdAt)}
               {#if section === "org" && key.createdByUserName}
                 <Tooltip.Provider>
                   <Tooltip.Root>

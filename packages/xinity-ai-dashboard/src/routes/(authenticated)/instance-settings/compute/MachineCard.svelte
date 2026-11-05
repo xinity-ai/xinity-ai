@@ -2,6 +2,7 @@
   import type { NodeInterconnect, NodeSummary } from "$lib/compute/format";
   import UtilizationRing from "./UtilizationRing.svelte";
   import AnimatedNumber from "./AnimatedNumber.svelte";
+  import { humanDate } from "$lib/util";
   import { formatTokens, formatPercent, formatEnergy, formatRelativeTime, gpuSummary, totalVramGb } from "$lib/compute/format";
   import { Zap, ArrowRightLeft, CircleCheck, Trash2, Cpu, Lock, MemoryStick, Cable, TriangleAlert, Info } from "@lucide/svelte";
   import { experimentalGpuVendors, GPU_VENDOR_SUPPORT } from "common-env/model-catalog";
@@ -130,7 +131,7 @@
         <Lock class="w-3 h-3 text-emerald-500 shrink-0" />TLS
       </span>
     {/if}
-    <span class="ml-auto whitespace-nowrap" title="First seen {new Date(node.firstSeenMs).toLocaleString()}">
+    <span class="ml-auto whitespace-nowrap" title="First seen {humanDate(new Date(node.firstSeenMs))}">
       seen {lastSeen}
     </span>
   </div>
