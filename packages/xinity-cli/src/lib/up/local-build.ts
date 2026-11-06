@@ -4,6 +4,7 @@ import { $ } from "bun";
 import { binaryBaseName, type Component } from "../core/component-meta.ts";
 import { isDirectory } from "../core/fs.ts";
 import type { StepEvent } from "../term/step-event.ts";
+import type { HostArch } from "../core/platform.ts";
 
 const BUILDABLE_COMPONENTS = ["daemon", "gateway", "dashboard", "infoserver", "tether"] as const;
 type BuildableComponent = (typeof BUILDABLE_COMPONENTS)[number];
@@ -27,7 +28,7 @@ const BUN_BUILD_ENTRYPOINTS: Record<Exclude<BuildableComponent, "dashboard">, st
   tether: "./src/index.ts",
 };
 
-function buildCommand(component: BuildableComponent, arch: "x64" | "arm64"): string[] {
+function buildCommand(component: BuildableComponent, arch: HostArch): string[] {
   const target = `bun-linux-${arch}`;
   const binName = binaryBaseName(component);
 
@@ -64,7 +65,7 @@ export async function localVersionString(repoPath: string): Promise<string> {
 export async function* buildLocalArtifact(
   component: Component,
   repoPath: string,
-  targetArch: "x64" | "arm64",
+  targetArch: HostArch,
 ): AsyncGenerator<StepEvent, { archivePath: string; version: string; sha256: string } | null> {
   if (!isBuildable(component)) {
     yield { type: "fail", label: "Local build", detail: `${component} does not support local builds (only: ${BUILDABLE_COMPONENTS.join(", ")})` };

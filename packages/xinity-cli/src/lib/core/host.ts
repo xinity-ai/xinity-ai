@@ -5,6 +5,7 @@
  * instance. Use `connectHost()` from remote-host.ts to create one.
  */
 import { quoteShellArg } from "common-env";
+import type { HostArch } from "./platform.ts";
 
 // ─── Low-level shell primitives ─────────────────────────────────────────────
 
@@ -90,8 +91,8 @@ export type Host = {
    */
   computeSha256(filePath: string): Promise<string | null>;
 
-  /** Get the CPU architecture of this host (Node.js-style: "x64", "arm64"). */
-  getArch(): Promise<string>;
+  /** Get the release build flavour this host can run. Throws on unsupported architectures. */
+  getArch(): Promise<HostArch>;
 
   /**
    * Open a tunnel so that a service URL (e.g. postgres://remotehost:5432)

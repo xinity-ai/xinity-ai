@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { pickReleaseAsset, verifySha256, type Release } from "../../../src/lib/up/github.ts";
+import { localArch } from "../../../src/lib/core/platform.ts";
 import { createTempDir, type TempDir } from "../../helpers/temp-config.ts";
 
 function makeRelease(assetNames: string[], tagName = "v0.1.0"): Release {
@@ -62,18 +63,19 @@ describe("github", () => {
       expect(pickReleaseAsset(release, "dashboard", "x64")).toBe("xinity-ai-dashboard-linux-x64.tar.gz");
     });
 
-    test("only 'arm64' maps to arm64; everything else becomes x64", () => {
+    test("picks the build matching the host arch", () => {
       const release = makeRelease([
         "xinity-ai-gateway-linux-x64.tar.gz",
+        "xinity-ai-gateway-linux-x64-baseline.tar.gz",
         "xinity-ai-gateway-linux-arm64.tar.gz",
       ]);
-      expect(pickReleaseAsset(release, "gateway", "x86_64")).toBe("xinity-ai-gateway-linux-x64.tar.gz");
-      expect(pickReleaseAsset(release, "gateway", "aarch64")).toBe("xinity-ai-gateway-linux-x64.tar.gz");
+      expect(pickReleaseAsset(release, "gateway", "x64")).toBe("xinity-ai-gateway-linux-x64.tar.gz");
+      expect(pickReleaseAsset(release, "gateway", "x64-baseline")).toBe("xinity-ai-gateway-linux-x64-baseline.tar.gz");
       expect(pickReleaseAsset(release, "gateway", "arm64")).toBe("xinity-ai-gateway-linux-arm64.tar.gz");
     });
 
-    test("uses process.arch when arch is omitted", () => {
-      const expected = process.arch === "arm64" ? "arm64" : "x64";
+    test("uses the local arch when arch is omitted", () => {
+      const expected = localArch();
       const release = makeRelease([`xinity-ai-gateway-linux-${expected}.tar.gz`]);
       expect(pickReleaseAsset(release, "gateway")).toBe(`xinity-ai-gateway-linux-${expected}.tar.gz`);
     });

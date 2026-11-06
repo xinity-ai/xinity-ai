@@ -198,7 +198,7 @@ async function buildAndUploadLocalArtifact(
   progress: Progress,
 ): Promise<Artifact | null> {
   const hostArch = await host.getArch();
-  const buildResult = await runSteps(buildLocalArtifact(component, repoPath, hostArch as "x64" | "arm64"), progress);
+  const buildResult = await runSteps(buildLocalArtifact(component, repoPath, hostArch), progress);
   if (!buildResult) return null;
 
   const archivePath = await uploadArtifact(buildResult.archivePath, host, progress);

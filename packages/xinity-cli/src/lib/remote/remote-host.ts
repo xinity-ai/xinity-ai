@@ -5,7 +5,7 @@ import { cancel, log } from "../core/clack.ts";
 import { cyan, dim } from "picocolors";
 import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
 import { quoteShellArg, quoteShellArgv } from "common-env";
-import { sshSocketPath, SUPPORTS_SSH_MULTIPLEXING } from "../core/platform.ts";
+import { hostArch, sshSocketPath, SUPPORTS_SSH_MULTIPLEXING, type HostArch } from "../core/platform.ts";
 
 async function findAvailableLoopbackPort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -409,13 +409,16 @@ export class RemoteHost implements Host {
     return hash || null;
   }
 
-  async getArch(): Promise<string> {
-    const result = await this.runShell("uname -m");
-    if (!result.ok) throw new Error(`Failed to detect remote architecture: ${result.output}`);
-    const raw = result.output.trim();
-    if (raw === "aarch64" || raw === "arm64") return "arm64";
-    if (raw === "x86_64" || raw === "amd64") return "x64";
-    return raw;
+  async getArch(): Promise<HostArch> {
+    const result = await this.runShell(
+      `echo "xinity-arch=$(uname -m) avx2=$(grep -qw avx2 /proc/cpuinfo 2>/dev/null && echo yes)"`,
+    );
+    // Matched by marker because shell startup files on the host may print to stdout.
+    const probe = result.output.match(/^xinity-arch=(\S*) avx2=(\S*)$/m);
+    if (!result.ok || !probe) {
+      throw new Error(`Failed to detect remote architecture: ${result.output}`);
+    }
+    return hostArch(probe[1]!, probe[2] === "yes");
   }
 
   async openTunnel(url: string): Promise<TunnelResult> {

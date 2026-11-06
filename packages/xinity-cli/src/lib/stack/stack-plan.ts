@@ -491,7 +491,7 @@ async function applyStackPlan(
       for (const action of localActions) {
         const hostForAction = active.find((hp) => hp.actions.includes(action));
         const host = hosts.get(hostForAction!.address) ?? orphanHosts.get(hostForAction!.address);
-        const arch = await host!.getArch() as "x64" | "arm64";
+        const arch = await host!.getArch();
         const cacheKey = `${action.component}:${arch}`;
         if (!buildCache.has(cacheKey)) {
           log.info(`Building ${cyan(action.component)} for ${arch}…`);
