@@ -12,3 +12,7 @@ export function betterAuthErrorBody(err: unknown): BetterAuthErrorBody | null {
     message: typeof err.body?.message === "string" ? err.body.message : undefined,
   };
 }
+
+export function betterAuthErrorMessage(err: unknown): string | null {
+  return betterAuthErrorBody(err)?.message ?? (err instanceof Error ? err.message : null);
+}

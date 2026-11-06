@@ -15,7 +15,7 @@
   import ModelChoiceCard from "./ModelChoiceCard.svelte";
 
   // Icons
-  import { X, Search, Info, HardDrive, Eye, EyeOff, Plus, Loader2, AlertCircle,
+  import { X, Search, Info, HardDrive, Eye, EyeOff, Plus, LoaderCircle, AlertCircle,
     LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic } from "@lucide/svelte";
   // Icons for the not-yet-available model types (see MODEL_TYPES below):
   // import { Image as ImageIcon, AudioLines } from "@lucide/svelte";
@@ -327,7 +327,7 @@
         </div>
       {:else if !modelCatalog.initialLoaded}
         <div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
-          <Loader2 class="w-10 h-10 mb-4 animate-spin opacity-50" />
+          <LoaderCircle class="w-10 h-10 mb-4 animate-spin opacity-50" />
           <p class="text-sm">Loading models...</p>
         </div>
       {:else if filteredModels.length === 0}
@@ -379,7 +379,7 @@
             </div>
           {:else if modelCatalog.isLoading}
             <div class="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 class="w-4 h-4 animate-spin" />
+              <LoaderCircle class="w-4 h-4 animate-spin" />
               <span>Loading more models...</span>
             </div>
           {:else if !modelCatalog.hasMore}

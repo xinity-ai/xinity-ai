@@ -3,9 +3,10 @@
   import { twoFactor } from "$lib/auth";
 
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
-  import { Loader2 } from "@lucide/svelte";
 
   let { open = $bindable(false), callbackUrl }: {
     open: boolean;
@@ -47,8 +48,8 @@
   }
 </script>
 
-<Modal bind:open onClose={resetAndClose} class="max-w-sm">
-  <div class="bg-card rounded-xl border shadow-2xl w-full p-6">
+<Modal bind:open onClose={resetAndClose}>
+  <DialogPanel class="max-w-sm">
     <h2 class="mb-4 text-lg font-bold">Two-Factor Authentication</h2>
     <form
       onsubmit={(e) => { e.preventDefault(); verify(); }}
@@ -89,14 +90,9 @@
 
       <div class="flex justify-between items-center">
         <Button variant="ghost" type="button" onclick={resetAndClose}>Cancel</Button>
-        <Button type="submit" disabled={isVerifying}>
-          {#if isVerifying}
-            <Loader2 class="w-4 h-4 animate-spin" />
-            Verifying...
-          {:else}
-            Verify
-          {/if}
-        </Button>
+        <PendingButton type="submit" pending={isVerifying} pendingLabel="Verifying...">
+          Verify
+        </PendingButton>
       </div>
 
       <div class="text-center">
@@ -112,5 +108,5 @@
         </button>
       </div>
     </form>
-  </div>
+  </DialogPanel>
 </Modal>

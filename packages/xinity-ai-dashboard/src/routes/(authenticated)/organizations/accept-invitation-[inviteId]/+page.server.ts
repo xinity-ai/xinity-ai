@@ -3,6 +3,8 @@ import { auth } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
 import { organizationT, sql } from "common-db";
+import { APIError } from "better-auth";
+import { betterAuthErrorBody, betterAuthErrorMessage } from "$lib/server/lib/auth/better-auth-errors";
 
 const log = rootLogger.child({ name: "accept-invitation" });
 
@@ -35,18 +37,13 @@ export const load: PageServerLoad = async ({ params, request, parent }) => {
       inviteId,
     };
   } catch (err: unknown) {
-    // Handle specific error cases: Better Auth errors carry body.code, statusCode, etc.
-    const e = err as Record<string, unknown> | null;
-    const body = (e?.body ?? {}) as Record<string, unknown>;
-    const errorCode = (body.code || e?.code) as string | undefined;
-    const statusCode = (e?.statusCode || e?.status || 500) as number;
     log.error({ err }, "Error reading invitation");
 
     return {
       error: true as const,
-      errorCode,
-      statusCode,
-      errorMessage: (e?.message as string) || (body.message as string) || "Unknown error occurred",
+      errorCode: betterAuthErrorBody(err)?.code,
+      statusCode: err instanceof APIError ? err.statusCode : 500,
+      errorMessage: betterAuthErrorMessage(err) ?? "Unknown error occurred",
       userEmail: user?.email,
       inviteId,
     };

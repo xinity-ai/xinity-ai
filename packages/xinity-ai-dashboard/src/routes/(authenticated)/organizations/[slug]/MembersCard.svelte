@@ -5,7 +5,7 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
-  import * as Select from "$lib/components/ui/select";
+  import RoleSelect from "$lib/components/RoleSelect.svelte";
   import * as Avatar from "$lib/components/ui/avatar";
   import { Badge } from "$lib/components/ui/badge";
   import { Input } from "$lib/components/ui/input";
@@ -63,7 +63,6 @@
   let isRemoving = $state(false);
 
   const availableRoles = $derived(getAvailableRoles(activeRole, allRoles));
-  const inviteRoleLabel = $derived(roleLabels[inviteRole] || "Select role");
 
   function getMemberRole(memberId: string, actualRole: RoleName): RoleName {
     return memberRoleOverrides[memberId] ?? actualRole;
@@ -184,16 +183,7 @@
 
           <div class="space-y-2">
             <Label for="invite-role">Role</Label>
-            <Select.Root type="single" bind:value={inviteRole}>
-              <Select.Trigger class="w-full">
-                {inviteRoleLabel}
-              </Select.Trigger>
-              <Select.Content>
-                {#each availableRoles as role}
-                  <Select.Item value={role} label={roleLabels[role]} />
-                {/each}
-              </Select.Content>
-            </Select.Root>
+            <RoleSelect id="invite-role" class="w-full" bind:value={inviteRole} roles={availableRoles} />
           </div>
         </div>
 
@@ -245,27 +235,17 @@
                 {@const effectiveRole = getMemberRole(member.id, member.role)}
                 {@const isSaving = savingMemberIds.has(member.id)}
                 <div class="flex items-center">
-                  <Select.Root
-                    type="single"
+                  <RoleSelect
+                    class="h-8 px-2 text-xs min-w-25 border rounded-md bg-background focus:ring-0"
                     value={effectiveRole}
+                    roles={availableRoles}
                     disabled={isSaving}
-                    onValueChange={(v) => {
-                      if (v && v !== effectiveRole) {
-                        handleRoleChange(member.id, v as RoleName);
+                    onValueChange={(role) => {
+                      if (role && role !== effectiveRole) {
+                        handleRoleChange(member.id, role);
                       }
                     }}
-                  >
-                    <Select.Trigger
-                      class="h-8 px-2 text-xs min-w-25 border rounded-md bg-background focus:ring-0"
-                    >
-                      {roleLabels[effectiveRole] || effectiveRole}
-                    </Select.Trigger>
-                    <Select.Content>
-                      {#each availableRoles as role}
-                        <Select.Item value={role} label={roleLabels[role]} />
-                      {/each}
-                    </Select.Content>
-                  </Select.Root>
+                  />
                 </div>
               {:else}
                 <Badge variant={roleBadgeVariant[member.role] || "secondary"}>

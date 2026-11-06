@@ -90,6 +90,7 @@
 
   let allCalls = $state<DataViewCall[]>([]);
   let offset = $state(0);
+  let serverPosition = 0;
   let loadingMore = $state(false);
   let hasMore = $state(true);
 
@@ -132,10 +133,9 @@
     if (key !== prevFilterKey) {
       prevFilterKey = key;
       offset = 0;
+      serverPosition = 0;
       allCalls = [];
       deletedCount = 0;
-      reactionSummaryRequests = new Map();
-      responseRequests = new Map();
       hasMore = true;
       clearSelection();
     }
@@ -154,23 +154,15 @@
       const newCalls = data.filter((c) => !existingIds.has(c.id));
       allCalls = [...existing, ...newCalls];
     }
+    serverPosition = offset + data.length;
     hasMore = data.length >= PAGE_SIZE;
     loadingMore = false;
   });
 
-  let reactionSummaryRequests = $state(new Map<string, ReturnType<typeof getApiCallReactionSummary>>());
-  let responseRequests = $state(new Map<string, ReturnType<typeof getAPICallResponse>>());
-
-  $effect(() => {
-    for (const call of allCalls) {
-      if (!reactionSummaryRequests.has(call.id)) {
-        reactionSummaryRequests.set(call.id, getApiCallReactionSummary(call.id));
-      }
-      if (!responseRequests.has(call.id)) {
-        responseRequests.set(call.id, getAPICallResponse(call.id));
-      }
-    }
-  });
+  const reactionSummaryRequests = $derived(
+    new Map(allCalls.map((call) => [call.id, getApiCallReactionSummary(call.id)])),
+  );
+  const responseRequests = $derived(new Map(allCalls.map((call) => [call.id, getAPICallResponse(call.id)])));
   // The remote query cache outlives this component, so arriving here would otherwise show whatever
   // was true on the last visit.
   onMount(() => {
@@ -199,6 +191,7 @@
     const removed = new Set(ids);
     allCalls = allCalls.filter((c) => !removed.has(c.id));
     deletedCount += reassigned;
+    serverPosition -= reassigned;
     if (selectedCall && removed.has(selectedCall.id)) {
       selectedCall = null;
     }
@@ -249,7 +242,12 @@
   function loadMoreData() {
     if (loadingMore || !hasMore) return;
     loadingMore = true;
-    offset = allCalls.length;
+    // Deletions can shift the next unseen row back onto the current offset, where assigning would not refetch.
+    if (serverPosition === offset) {
+      void apiCalls.refresh();
+    } else {
+      offset = serverPosition;
+    }
   }
 
   function requestDelete(call: DataViewCall) {
@@ -270,6 +268,7 @@
       if (result?.success) {
         allCalls = allCalls.filter((c) => c.id !== deleteTarget!.id);
         deletedCount++;
+        serverPosition--;
         if (selectedCall?.id === deleteTarget.id) {
           selectedCall = null;
         }
@@ -361,7 +360,8 @@
   bind:open={deleteModalOpen}
   title="Delete API call?"
   description="This will permanently remove the call and its reactions. This action cannot be undone."
-  confirmLabel={deleting ? "Deleting..." : "Delete Call"}
+  confirmLabel="Delete Call"
+  pending={deleting}
   onConfirm={() => void confirmDelete()}
   onCancel={closeDeleteModal}
 >

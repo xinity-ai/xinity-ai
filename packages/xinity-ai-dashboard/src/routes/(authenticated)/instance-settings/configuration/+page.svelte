@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
+  import { humanDate } from "$lib/util";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Card from "$lib/components/ui/card";
@@ -237,7 +238,7 @@
               {#if override}
                 <p class="text-xs text-muted-foreground">
                   Set by {override.updatedBy ?? "an unknown user"} on
-                  {new Date(override.updatedAt).toLocaleString()}
+                  {humanDate(override.updatedAt)}
                   {#if override.digest}
                     <span class="font-mono" title="Fingerprint of the stored value, so you can tell it apart from another without revealing either">
                       &middot; {override.digest}

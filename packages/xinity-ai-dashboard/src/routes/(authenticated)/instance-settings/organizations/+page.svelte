@@ -1,16 +1,16 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Card from "$lib/components/ui/card";
-  import * as Select from "$lib/components/ui/select";
+  import RoleSelect from "$lib/components/RoleSelect.svelte";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
-  import { Search, ChevronDown, ChevronRight, ChevronLeft, X, Users, Shield, HardDrive } from "@lucide/svelte";
+  import type { RoleName } from "$lib/roles";
+  import { Search, ChevronDown, ChevronRight, X, Users, Shield, HardDrive } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
-  import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
+  import { createUrlPagedList } from "$lib/state/url-paged-list.svelte";
+  import PaginationFooter from "$lib/components/PaginationFooter.svelte";
   import { humanDateShort, formatGb } from "$lib/util";
 
   type ListOrgsData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.listOrganizations>>["data"]>;
@@ -18,52 +18,13 @@
   type GetOrgMembersData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.getOrganizationMembers>>["data"]>;
   type OrgMember = GetOrgMembersData["members"][number];
 
-  const searchParams = createUrlSearchParamsStore();
-  const LIMIT = 25;
-
-  let orgs = $state<AdminOrganization[]>([]);
-  let total = $state(0);
-
-  const currentPage = $derived(Number($searchParams.page) || 1);
-  const searchValue = $derived($searchParams.search ?? "");
-
-  let searchInputValue = $state($searchParams.search ?? "");
-  let searchTimeout: ReturnType<typeof setTimeout> | undefined;
+  const orgs = createUrlPagedList<AdminOrganization>(25, async (query) => {
+    const { data } = await orpc.instanceAdmin.listOrganizations(query);
+    return data ? { items: data.organizations, total: data.total } : null;
+  });
   let expandedOrg = $state<string | null>(null);
   let orgMembers = $state<Record<string, OrgMember[]>>({});
   const loadingMembers = $state<Set<string>>(new Set());
-
-  async function fetchOrgs() {
-    const result = await orpc.instanceAdmin.listOrganizations({
-      page: currentPage,
-      limit: LIMIT,
-      search: searchValue || undefined,
-    });
-    if (result.data) {
-      orgs = result.data.organizations;
-      total = result.data.total;
-    }
-  }
-
-  onMount(() => {
-    void fetchOrgs();
-    return () => clearTimeout(searchTimeout);
-  });
-
-  function onSearchInput(e: Event) {
-    searchInputValue = (e.target as HTMLInputElement).value;
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      $searchParams.search = searchInputValue || "";
-      delete $searchParams.page;
-      void fetchOrgs();
-    }, 300);
-  }
-
-  function goToPage(p: number) {
-    $searchParams.page = String(p);
-    void fetchOrgs();
-  }
 
   async function loadMembers(orgId: string) {
     if (!orgMembers[orgId]) {
@@ -85,7 +46,7 @@
       delete orgMembers[organizationId];
       orgMembers = { ...orgMembers };
       void loadMembers(organizationId);
-      void fetchOrgs();
+      void orgs.refresh();
     }
   }
 
@@ -111,11 +72,10 @@
       toastState.add("Failed to update SSO self-management", "error");
     } else {
       toastState.add(enabled ? "SSO self-management enabled" : "SSO self-management disabled", "success");
-      void fetchOrgs();
+      void orgs.refresh();
     }
   }
 
-  const totalPages = $derived(Math.ceil(total / LIMIT));
 </script>
 
 <Card.Root>
@@ -123,25 +83,24 @@
     <div class="flex items-center justify-between">
       <div>
         <Card.Title>Organizations</Card.Title>
-        <Card.Description>{total} total organizations</Card.Description>
+        <Card.Description>{orgs.total} total organizations</Card.Description>
       </div>
     </div>
     <div class="relative mt-4">
       <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
       <Input
         placeholder="Search by name or slug..."
-        value={searchInputValue}
-        oninput={onSearchInput}
+        bind:value={orgs.searchInput}
         class="pl-9"
       />
     </div>
   </Card.Header>
   <Card.Content>
-    {#if orgs.length === 0}
+    {#if orgs.items.length === 0}
       <p class="text-center text-muted-foreground py-8">No organizations found.</p>
     {:else}
       <div class="space-y-2">
-        {#each orgs as org (org.id)}
+        {#each orgs.items as org (org.id)}
           <Collapsible.Root
             class="border rounded-lg"
             open={expandedOrg === org.id}
@@ -214,20 +173,11 @@
                           <td class="py-2 pr-4">{member.userName}</td>
                           <td class="py-2 pr-4 text-muted-foreground">{member.userEmail}</td>
                           <td class="py-2 pr-4">
-                            <Select.Root
-                              type="single"
-                              value={member.role}
-                              onValueChange={(v) => void handleRoleChange(member.userId, org.id, v)}
-                            >
-                              <Select.Trigger class="h-7 px-2 text-xs min-w-24">
-                                {roleLabels[member.role as RoleName] ?? member.role}
-                              </Select.Trigger>
-                              <Select.Content>
-                                {#each Object.entries(roleLabels) as [value, label]}
-                                  <Select.Item {value} {label} />
-                                {/each}
-                              </Select.Content>
-                            </Select.Root>
+                            <RoleSelect
+                              class="h-7 px-2 text-xs min-w-24"
+                              value={member.role as RoleName}
+                              onValueChange={(role) => void handleRoleChange(member.userId, org.id, role)}
+                            />
                           </td>
                           <td class="py-2 pr-4">
                             {#if member.userBanned}
@@ -260,32 +210,14 @@
       </div>
 
       <!-- Pagination -->
-      {#if totalPages > 1}
-        <div class="flex items-center justify-between mt-4 pt-4 border-t">
-          <span class="text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages}
-          </span>
-          <div class="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage <= 1}
-              onclick={() => goToPage(currentPage - 1)}
-            >
-              <ChevronLeft class="w-4 h-4" />
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage >= totalPages}
-              onclick={() => goToPage(currentPage + 1)}
-            >
-              Next
-              <ChevronRight class="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
+      {#if orgs.totalPages > 1}
+        <PaginationFooter
+          label="Page {orgs.currentPage} of {orgs.totalPages}"
+          canPrev={orgs.currentPage > 1}
+          canNext={orgs.currentPage < orgs.totalPages}
+          onPrev={() => orgs.goToPage(orgs.currentPage - 1)}
+          onNext={() => orgs.goToPage(orgs.currentPage + 1)}
+        />
       {/if}
     {/if}
   </Card.Content>

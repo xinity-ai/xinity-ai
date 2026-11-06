@@ -3,6 +3,7 @@ import { z } from "zod";
 import { auth, getGreenlitCallId } from "$lib/server/auth-server";
 import { rootLogger } from "$lib/server/logging";
 import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
+import { hasOrgPermission } from "$lib/server/lib/auth/permissions";
 import { isInstanceAdmin } from "$lib/server/roles";
 import { getDB } from "$lib/server/db";
 import { ssoProviderT, organizationT, sql } from "common-db";
@@ -104,14 +105,7 @@ async function requireSsoAccess(
     throw errors.FORBIDDEN({ message: "This organization is not allowed to manage its own SSO. Contact an instance admin." });
   }
 
-  const permResult = await auth.api.hasPermission({
-    headers,
-    body: {
-      permissions: { organization: ["update"] },
-      organizationId,
-    },
-  });
-  if (!permResult.success) {
+  if (!(await hasOrgPermission(headers, organizationId, { organization: ["update"] }))) {
     throw errors.FORBIDDEN({ message: "You do not have permission to manage SSO for this organization" });
   }
 }
@@ -304,8 +298,9 @@ function domainToHostname(domain: string): string {
 }
 
 const requestDomainVerification = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "sso.request_domain_verification", resource: "sso", resourceId: { fromInput: "providerId" } } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/request-domain-verification", method: "POST", tags, summary: "Request domain verification" })
   .input(z.object({ providerId: z.string() }))
   .handler(async ({ input, context, errors }) => {
@@ -332,8 +327,9 @@ const requestDomainVerification = rootOs
   });
 
 const verifyDomain = rootOs
-  .meta({ mcp: false })
+  .meta({ mcp: false, audit: { action: "sso.verify_domain", resource: "sso", resourceId: { fromInput: "providerId" } } })
   .use(withAuth)
+  .use(auditMiddleware)
   .route({ path: "/verify-domain", method: "POST", tags, summary: "Verify domain ownership" })
   .input(z.object({ providerId: z.string() }))
   .handler(async ({ input, context, errors }) => {

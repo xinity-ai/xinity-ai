@@ -6,6 +6,7 @@
   import { ssoProviderLabel } from "./sso-provider-label";
 
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import KeyIcon from "$lib/components/icons/KeyIcon.svelte";
@@ -107,14 +108,9 @@
         bind:value={password}
       />
     </div>
-    <Button type="submit" class="w-full" disabled={isLoading}>
-      {#if isLoading}
-        <LoaderCircle class="w-4 h-4 animate-spin" />
-        Signing in...
-      {:else}
-        Sign In
-      {/if}
-    </Button>
+    <PendingButton type="submit" class="w-full" pending={isLoading} pendingLabel="Signing in...">
+      Sign In
+    </PendingButton>
   {:else if !ssoProviders.length}
     <p role="alert" class="text-sm text-muted-foreground text-center">
       No sign-in method is available. Contact your administrator.

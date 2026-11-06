@@ -1,19 +1,22 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, type Snippet } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import * as Card from "$lib/components/ui/card";
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import * as Select from "$lib/components/ui/select";
+  import RoleSelect from "$lib/components/RoleSelect.svelte";
   import { roleLabels, roleBadgeVariant, type RoleName } from "$lib/roles";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-  import { Search, Ban, ShieldCheck, UserPlus, X, ChevronLeft, ChevronRight, MailCheck, MailX, KeyRound, Copy, Ellipsis } from "@lucide/svelte";
+  import { Search, Ban, ShieldCheck, UserPlus, X, MailCheck, MailX, KeyRound, Ellipsis } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
-  import { copyToClipboard } from "$lib/copy";
-  import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
+  import { createUrlPagedList } from "$lib/state/url-paged-list.svelte";
+  import PaginationFooter from "$lib/components/PaginationFooter.svelte";
   import { humanDateShort } from "$lib/util";
 
   type ListUsersData = NonNullable<Awaited<ReturnType<typeof orpc.instanceAdmin.listUsers>>["data"]>;
@@ -23,30 +26,11 @@
 
   let { data } = $props();
 
-  const searchParams = createUrlSearchParamsStore();
-  const LIMIT = 25;
-
-  let users = $state<AdminUser[]>([]);
-  let total = $state(0);
+  const users = createUrlPagedList<AdminUser>(25, async (query) => {
+    const { data } = await orpc.instanceAdmin.listUsers(query);
+    return data ? { items: data.users, total: data.total } : null;
+  });
   let organizations = $state<AdminOrganization[]>([]);
-
-  const currentPage = $derived(Number($searchParams.page) || 1);
-  const searchValue = $derived($searchParams.search ?? "");
-
-  let searchInputValue = $state($searchParams.search ?? "");
-  let searchTimeout: ReturnType<typeof setTimeout> | undefined;
-
-  async function fetchUsers() {
-    const result = await orpc.instanceAdmin.listUsers({
-      page: currentPage,
-      limit: LIMIT,
-      search: searchValue || undefined,
-    });
-    if (result.data) {
-      users = result.data.users;
-      total = result.data.total;
-    }
-  }
 
   async function fetchOrganizations() {
     const result = await orpc.instanceAdmin.listOrganizations({ page: 1, limit: 100 });
@@ -56,25 +40,8 @@
   }
 
   onMount(() => {
-    void fetchUsers();
     void fetchOrganizations();
-    return () => clearTimeout(searchTimeout);
   });
-
-  function onSearchInput(e: Event) {
-    searchInputValue = (e.target as HTMLInputElement).value;
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-      $searchParams.search = searchInputValue || "";
-      delete $searchParams.page;
-      void fetchUsers();
-    }, 300);
-  }
-
-  function goToPage(p: number) {
-    $searchParams.page = String(p);
-    void fetchUsers();
-  }
 
   // Ban modal state
   let banModalOpen = $state(false);
@@ -105,7 +72,7 @@
       ? "Select organization..."
       : organizations.find((o) => o.id === addOrgSelectedOrg)?.name ?? "Select organization...",
   );
-  const addOrgRoleLabel = $derived(roleLabels[addOrgSelectedRole] ?? "Select role...");
+  const assignableAdminRoles = (Object.keys(roleLabels) as RoleName[]).filter((role) => role !== "owner");
 
   async function handleBan() {
     if (!banTargetUser) return;
@@ -120,7 +87,7 @@
       banModalOpen = false;
       banReason = "";
       banTargetUser = null;
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -130,7 +97,7 @@
       toastState.add("Failed to unban user", "error");
     } else {
       toastState.add(`Unbanned ${name}`, "success");
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -149,7 +116,7 @@
       addOrgTargetUser = null;
       addOrgSelectedOrg = "";
       addOrgSelectedRole = "pending";
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -159,7 +126,7 @@
       toastState.add(result.error.message || "Failed to remove user from organization", "error");
     } else {
       toastState.add(`Removed ${userName} from organization`, "success");
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -173,7 +140,7 @@
       toastState.add(result.error.message || "Failed to update role", "error");
     } else {
       toastState.add("Role updated", "success");
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -186,7 +153,7 @@
       toastState.add(result.error.message || "Failed to update verification status", "error");
     } else {
       toastState.add(`${!currentlyVerified ? "Verified" : "Unverified"} email for ${name}`, "success");
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -202,7 +169,7 @@
       toastState.add(result.error.message || "Failed to create user", "error");
     } else {
       createUserTempPassword = result.data.temporaryPassword;
-      void fetchUsers();
+      void users.refresh();
     }
   }
 
@@ -219,8 +186,6 @@
       resetPasswordTempPassword = result.data.temporaryPassword;
     }
   }
-
-  const totalPages = $derived(Math.ceil(total / LIMIT));
 </script>
 
 <Card.Root>
@@ -228,7 +193,7 @@
     <div class="flex items-center justify-between">
       <div>
         <Card.Title>Users</Card.Title>
-        <Card.Description>{total} total users</Card.Description>
+        <Card.Description>{users.total} total users</Card.Description>
       </div>
       {#if data.internalSigninEnabled}
         <Button onclick={() => { createUserModalOpen = true; }}>
@@ -241,14 +206,13 @@
       <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
       <Input
         placeholder="Search by name or email..."
-        value={searchInputValue}
-        oninput={onSearchInput}
+        bind:value={users.searchInput}
         class="pl-9"
       />
     </div>
   </Card.Header>
   <Card.Content>
-    {#if users.length === 0}
+    {#if users.items.length === 0}
       <p class="text-center text-muted-foreground py-8">No users found.</p>
     {:else}
       <div class="overflow-x-auto">
@@ -264,7 +228,7 @@
             </tr>
           </thead>
           <tbody>
-            {#each users as user (user.id)}
+            {#each users.items as user (user.id)}
               <tr class="border-b last:border-0">
                 <td class="py-3 pr-4 font-medium">{user.name}</td>
                 <td class="py-3 pr-4 text-muted-foreground">{user.email}</td>
@@ -371,51 +335,36 @@
       </div>
 
       <!-- Pagination -->
-      {#if totalPages > 1}
-        <div class="flex items-center justify-between mt-4 pt-4 border-t">
-          <span class="text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages}
-          </span>
-          <div class="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage <= 1}
-              onclick={() => goToPage(currentPage - 1)}
-            >
-              <ChevronLeft class="w-4 h-4" />
-              Previous
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={currentPage >= totalPages}
-              onclick={() => goToPage(currentPage + 1)}
-            >
-              Next
-              <ChevronRight class="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
+      {#if users.totalPages > 1}
+        <PaginationFooter
+          label="Page {users.currentPage} of {users.totalPages}"
+          canPrev={users.currentPage > 1}
+          canNext={users.currentPage < users.totalPages}
+          onPrev={() => users.goToPage(users.currentPage - 1)}
+          onNext={() => users.goToPage(users.currentPage + 1)}
+        />
       {/if}
     {/if}
   </Card.Content>
 </Card.Root>
 
-{#snippet tempPasswordDisplay(password: string, description: string, onDone: () => void)}
+{#snippet tempPasswordDisplay(password: string, description: Snippet, onDone: () => void)}
   <div class="space-y-4">
-    <p class="text-sm text-muted-foreground">{@html description}</p>
-    <div class="flex items-center gap-2">
-      <code class="flex-1 rounded-md bg-muted px-3 py-2 text-sm font-mono select-all">{password}</code>
-      <Button variant="outline" size="icon-sm" onclick={() => copyToClipboard(password)}>
-        <Copy class="w-4 h-4" />
-      </Button>
-    </div>
+    <p class="text-sm text-muted-foreground">{@render description()}</p>
+    <CopyableValue value={password} copyLabel="Copy password" />
     <p class="text-xs text-muted-foreground">This password will not be shown again.</p>
     <div class="flex justify-end">
       <Button onclick={onDone}>Done</Button>
     </div>
   </div>
+{/snippet}
+
+{#snippet createdUserDescription()}
+  User <span class="font-medium text-foreground">{createUserName}</span> has been created. Give them this temporary password:
+{/snippet}
+
+{#snippet resetPasswordDescription()}
+  New temporary password for <span class="font-medium text-foreground">{resetPasswordTargetUser?.name}</span>:
 {/snippet}
 
 <!-- Ban Modal -->
@@ -442,12 +391,12 @@
 
 <!-- Create User Modal -->
 <Modal bind:open={createUserModalOpen} onClose={() => { createUserModalOpen = false; createUserTempPassword = ""; createUserName = ""; createUserEmail = ""; }}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     {#if createUserTempPassword}
       <h2 class="text-lg font-semibold mb-4">User Created</h2>
       {@render tempPasswordDisplay(
         createUserTempPassword,
-        `User <span class="font-medium text-foreground">${createUserName}</span> has been created. Give them this temporary password:`,
+        createdUserDescription,
         () => { createUserModalOpen = false; createUserTempPassword = ""; createUserName = ""; createUserEmail = ""; },
       )}
     {:else}
@@ -473,17 +422,17 @@
         </div>
       </form>
     {/if}
-  </div>
+  </DialogPanel>
 </Modal>
 
 <!-- Reset Password Modal -->
 <Modal bind:open={resetPasswordModalOpen} onClose={() => { resetPasswordModalOpen = false; resetPasswordTempPassword = ""; }}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     {#if resetPasswordTempPassword}
       <h2 class="text-lg font-semibold mb-4">Password Reset</h2>
       {@render tempPasswordDisplay(
         resetPasswordTempPassword,
-        `New temporary password for <span class="font-medium text-foreground">${resetPasswordTargetUser?.name}</span>:`,
+        resetPasswordDescription,
         () => { resetPasswordModalOpen = false; resetPasswordTempPassword = ""; },
       )}
     {:else}
@@ -503,12 +452,12 @@
         </div>
       </div>
     {/if}
-  </div>
+  </DialogPanel>
 </Modal>
 
 <!-- Add to Organization Modal -->
 <Modal bind:open={addOrgModalOpen} onClose={() => { addOrgModalOpen = false; }}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     <h2 class="text-lg font-semibold mb-4">Add {addOrgTargetUser?.name} to Organization</h2>
     <div class="space-y-4">
       <div>
@@ -527,23 +476,18 @@
       </div>
       <div>
         <label for="role-select" class="text-sm font-medium">Role</label>
-        <Select.Root type="single" bind:value={addOrgSelectedRole}>
-          <Select.Trigger id="role-select" class="w-full mt-1">
-            {addOrgRoleLabel}
-          </Select.Trigger>
-          <Select.Content portalProps={{ disabled: true }}>
-            {#each Object.entries(roleLabels) as [value, label]}
-              {#if value !== "owner"}
-                <Select.Item {value} {label} />
-              {/if}
-            {/each}
-          </Select.Content>
-        </Select.Root>
+        <RoleSelect
+          id="role-select"
+          class="w-full mt-1"
+          bind:value={addOrgSelectedRole}
+          roles={assignableAdminRoles}
+          inModal
+        />
       </div>
       <div class="flex justify-end gap-2">
         <Button variant="outline" onclick={() => { addOrgModalOpen = false; }}>Cancel</Button>
         <Button disabled={!addOrgSelectedOrg} onclick={handleAddToOrg}>Add to Organization</Button>
       </div>
     </div>
-  </div>
+  </DialogPanel>
 </Modal>

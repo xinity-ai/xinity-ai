@@ -9,7 +9,7 @@
   import { Button } from "$lib/components/ui/button";
 
   import {
-    CheckCircle2,
+    CircleCheck,
     Circle,
     X,
     PartyPopper,
@@ -19,7 +19,7 @@
     ThumbsUp,
     Users,
     AppWindow,
-    Loader2,
+    LoaderCircle,
   } from "@lucide/svelte";
 
   let {
@@ -149,7 +149,7 @@
         title="Dismiss checklist"
       >
         {#if isDismissing}
-          <Loader2 class="w-3.5 h-3.5 animate-spin" />
+          <LoaderCircle class="w-3.5 h-3.5 animate-spin" />
         {:else}
           <X class="w-3.5 h-3.5" />
         {/if}
@@ -169,7 +169,7 @@
         {#each steps as step}
           {#if step.complete}
             <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-green-50 border border-green-200">
-              <CheckCircle2 class="w-4 h-4 text-green-600 shrink-0" />
+              <CircleCheck class="w-4 h-4 text-green-600 shrink-0" />
               <span class="text-xs font-medium text-green-800 line-through truncate">{step.label}</span>
             </div>
           {:else if step.disabled}

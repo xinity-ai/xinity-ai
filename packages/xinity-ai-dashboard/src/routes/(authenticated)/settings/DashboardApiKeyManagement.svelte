@@ -1,17 +1,20 @@
 <script lang="ts">
   import { orpc } from "$lib/orpc/orpc-client";
   import { browserLogger } from "$lib/browserLogging";
-  import { copyToClipboard } from "$lib/copy";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { humanDate } from "$lib/util";
 
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import * as Alert from "$lib/components/ui/alert";
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
-  import { Plus, Trash2, Key, Loader2, Copy } from "@lucide/svelte";
+  import { Plus, Trash2, Key, LoaderCircle } from "@lucide/svelte";
 
   let apiKeys = $state<any[]>([]);
   let organizations = $state<any[]>([]);
@@ -129,7 +132,7 @@
   <div class="border rounded-lg">
     {#if isLoading}
       <div class="flex items-center justify-center p-8">
-        <Loader2 class="w-5 h-5 animate-spin text-muted-foreground" />
+        <LoaderCircle class="w-5 h-5 animate-spin text-muted-foreground" />
         <span class="ml-2 text-sm text-muted-foreground">Loading API keys...</span>
       </div>
     {:else if loadError}
@@ -176,31 +179,15 @@
 </div>
 
 <!-- Create API Key Modal -->
-<Modal bind:open={createDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
+<Modal bind:open={createDialogOpen}>
+  <DialogPanel class="space-y-4">
     <h3 class="text-lg font-semibold">Create API Key</h3>
 
     {#if createdKey}
       <div class="space-y-4">
         <div class="space-y-2">
-          <Label for="fullKey">Key Value</Label>
-          <div class="flex items-center gap-2">
-            <Input
-              id="fullKey"
-              type="text"
-              value={createdKey}
-              readonly
-              class="font-mono text-sm"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              onclick={() => copyToClipboard(createdKey!)}
-              title="Copy API key"
-            >
-              <Copy class="w-4 h-4" />
-            </Button>
-          </div>
+          <Label>Key Value</Label>
+          <CopyableValue id="fullKey" value={createdKey} copyLabel="Copy API key" />
           <p class="text-xs text-muted-foreground">
             Make sure to copy this key now. You won't be able to see the full key again.
           </p>
@@ -256,37 +243,19 @@
           <Button type="button" variant="outline" onclick={closeCreateDialog}>
             Cancel
           </Button>
-          <Button type="submit" disabled={isCreating}>
-            {#if isCreating}
-              <Loader2 class="w-4 h-4 animate-spin" />
-              Creating...
-            {:else}
-              Create
-            {/if}
-          </Button>
+          <PendingButton type="submit" pending={isCreating} pendingLabel="Creating...">
+            Create
+          </PendingButton>
         </div>
       </form>
     {/if}
-  </div>
+  </DialogPanel>
 </Modal>
 
-<!-- Delete API Key Modal -->
-<Modal bind:open={deleteDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
-    <div>
-      <h3 class="text-lg font-semibold">Delete API Key</h3>
-      <p class="text-sm text-muted-foreground">
-        Delete "{apiKeys.find((key) => key.id === apiKeyToDelete)?.name || "Unknown"}"? This action cannot be undone.
-      </p>
-    </div>
-
-    <div class="flex justify-end gap-2">
-      <Button variant="outline" onclick={() => (deleteDialogOpen = false)}>
-        Cancel
-      </Button>
-      <Button variant="destructive" onclick={doDeleteApiKey}>
-        Delete
-      </Button>
-    </div>
-  </div>
-</Modal>
+<ConfirmDialog
+  bind:open={deleteDialogOpen}
+  title="Delete API Key"
+  description={`Delete "${apiKeys.find((key) => key.id === apiKeyToDelete)?.name || "Unknown"}"? This action cannot be undone.`}
+  confirmLabel="Delete"
+  onConfirm={() => void doDeleteApiKey()}
+/>

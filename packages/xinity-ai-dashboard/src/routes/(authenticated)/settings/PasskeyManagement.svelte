@@ -10,8 +10,10 @@
   import { Label } from "$lib/components/ui/label";
   import * as Alert from "$lib/components/ui/alert";
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
 
-  import { Plus, Trash2, Key, Loader2 } from "@lucide/svelte";
+  import { Plus, Trash2, Key, LoaderCircle } from "@lucide/svelte";
 
   let passkeys = $state<any[]>([]);
   let isLoading = $state(true);
@@ -82,7 +84,7 @@
   <div class="border rounded-lg">
     {#if isLoading}
       <div class="flex items-center justify-center p-8">
-        <Loader2 class="w-5 h-5 animate-spin text-muted-foreground" />
+        <LoaderCircle class="w-5 h-5 animate-spin text-muted-foreground" />
         <span class="ml-2 text-sm text-muted-foreground">Loading passkeys...</span>
       </div>
     {:else if loadError}
@@ -129,8 +131,8 @@
 </div>
 
 <!-- Create Passkey Modal -->
-<Modal bind:open={createDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
+<Modal bind:open={createDialogOpen}>
+  <DialogPanel class="space-y-4">
     <div>
       <h3 class="text-lg font-semibold">Create a passkey</h3>
       <p class="text-sm text-muted-foreground">
@@ -163,28 +165,13 @@
         <Button type="submit">Create</Button>
       </div>
     </form>
-  </div>
+  </DialogPanel>
 </Modal>
 
-<!-- Delete Passkey Modal -->
-<Modal bind:open={deleteDialogOpen} class="max-w-md">
-  <div class="bg-card rounded-xl shadow-2xl w-full p-6 space-y-4">
-    <div>
-      <h3 class="text-lg font-semibold">Delete passkey?</h3>
-      <p class="text-sm text-muted-foreground">
-        {#if confirmDelete}
-          This will remove "{confirmDelete.name || "Unnamed passkey"}". You can't undo this.
-        {/if}
-      </p>
-    </div>
-
-    <div class="flex justify-end gap-2">
-      <Button variant="outline" onclick={() => (deleteDialogOpen = false)}>
-        Cancel
-      </Button>
-      <Button variant="destructive" onclick={doDeletePasskey}>
-        Delete
-      </Button>
-    </div>
-  </div>
-</Modal>
+<ConfirmDialog
+  bind:open={deleteDialogOpen}
+  title="Delete passkey?"
+  description={`This will remove "${confirmDelete?.name || "Unnamed passkey"}". You can't undo this.`}
+  confirmLabel="Delete"
+  onConfirm={() => void doDeletePasskey()}
+/>

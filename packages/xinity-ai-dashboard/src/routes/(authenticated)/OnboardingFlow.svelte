@@ -2,16 +2,17 @@
   import { orpc } from "$lib/orpc/orpc-client";
   import { organization } from "$lib/auth";
   import { goto, refreshAll } from "$app/navigation";
-  import { copyToClipboard } from "$lib/copy";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
   import { slugify } from "$lib/util";
   import type { ModelWithSpecifier } from "common-env/model-catalog";
 
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import * as Card from "$lib/components/ui/card";
 
-  import { Rocket, Copy, CheckCircle2, XCircle, Loader2, X } from "@lucide/svelte";
+  import { Rocket, CircleCheck, CircleX, LoaderCircle, X } from "@lucide/svelte";
   import ModelSelectorModal from "./modelhub/ModelSelectorModal.svelte";
 
   let { onCompleted }: { onCompleted: () => void } = $props();
@@ -93,7 +94,7 @@
       <Card.Root>
         <Card.Header class="text-center">
           <div class="mx-auto mb-3 flex items-center justify-center w-14 h-14 rounded-full bg-green-100">
-            <CheckCircle2 class="w-7 h-7 text-green-600" />
+            <CircleCheck class="w-7 h-7 text-green-600" />
           </div>
           <Card.Title class="text-2xl">You're all set!</Card.Title>
           <Card.Description>
@@ -114,19 +115,7 @@
           {/if}
           <div class="space-y-2">
             <Label>Your API Key</Label>
-            <div class="flex items-start gap-2">
-              <code
-                class="flex-1 min-w-0 rounded-md border border-input bg-muted px-3 py-2 font-mono text-sm break-all select-all"
-              >{apiKey}</code>
-              <Button
-                variant="outline"
-                size="icon"
-                onclick={() => copyToClipboard(apiKey)}
-                title="Copy API key"
-              >
-                <Copy class="w-4 h-4" />
-              </Button>
-            </div>
+            <CopyableValue value={apiKey} copyLabel="Copy API key" />
             <p class="text-xs text-muted-foreground">
               Copy this key now. You won't be able to see the full key again.
             </p>
@@ -174,11 +163,11 @@
                 <div class="flex items-center gap-2 text-xs text-muted-foreground">
                   <span>Slug: <span class="font-mono">{slug}</span></span>
                   {#if checkingSlug}
-                    <Loader2 class="w-3 h-3 animate-spin" />
+                    <LoaderCircle class="w-3 h-3 animate-spin" />
                   {:else if slugAvailable === true}
-                    <CheckCircle2 class="w-3 h-3 text-green-500" />
+                    <CircleCheck class="w-3 h-3 text-green-500" />
                   {:else if slugAvailable === false}
-                    <XCircle class="w-3 h-3 text-destructive" />
+                    <CircleX class="w-3 h-3 text-destructive" />
                     <span class="text-destructive">This name is already taken</span>
                   {/if}
                 </div>
@@ -229,14 +218,9 @@
               {/if}
             </div>
 
-            <Button type="submit" disabled={!canSubmit} class="w-full">
-              {#if isSubmitting}
-                <Loader2 class="w-4 h-4 animate-spin" />
-                Setting up...
-              {:else}
-                Get Started
-              {/if}
-            </Button>
+            <PendingButton type="submit" disabled={!canSubmit} pending={isSubmitting} pendingLabel="Setting up..." class="w-full">
+              Get Started
+            </PendingButton>
           </form>
         </Card.Content>
       </Card.Root>

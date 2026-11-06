@@ -9,7 +9,7 @@ import { NotificationType } from "$lib/server/notifications/events";
 import { memberT, userT, invitationT, sql, driverErrorCode } from "common-db";
 import { isInstanceAdmin, isRoleAvailable, RoleSchema } from "$lib/server/roles";
 import { MULTI_ORG_LICENSE_MESSAGE, organizationLimitReached } from "$lib/server/lib/instance/organization-limit";
-import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
+import { betterAuthErrorBody, betterAuthErrorMessage } from "$lib/server/lib/auth/better-auth-errors";
 import { findOrgName, findOrgDeleteBlockers, purgeSoftDeletedOrgDependents, deleteOrgCallLogs } from "$lib/server/lib/org-queries";
 
 const log = rootLogger.child({ name: "organization.procedure" });
@@ -141,7 +141,7 @@ const inviteMember = rootOs
           throw errors.BAD_REQUEST({ message: "The specified role does not exist" });
         default:
           throw errors.INTERNAL_SERVER_ERROR({
-            message: body?.message ?? (err instanceof Error ? err.message : null) ?? "Failed to send invitation",
+            message: betterAuthErrorMessage(err) ?? "Failed to send invitation",
           });
       }
     }

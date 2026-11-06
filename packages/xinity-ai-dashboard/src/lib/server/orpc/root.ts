@@ -5,7 +5,7 @@
 import { auth, type Session } from "$lib/server/auth-server";
 import { os } from "@orpc/server";
 import { rootLogger } from "../logging";
-import type { PermissionSpec } from "$lib/server/lib/auth/permissions";
+import { hasOrgPermission, type PermissionSpec } from "$lib/server/lib/auth/permissions";
 import { hasTemporaryPassword, TEMPORARY_PASSWORD_MESSAGE } from "$lib/server/lib/auth/temporary-password";
 import { isInstanceAdmin } from "../roles";
 import { runWithAudit, type ActorInfo, type AuditContext, type AuditTag } from "./audit";
@@ -166,15 +166,7 @@ export function requirePermission(permissions: PermissionSpec) {
     activeOrganizationId: string,
   }>().middleware(async ({ context, next, errors }) => {
     const rlog = log.child({ traceId: context.traceId });
-    const result = await auth.api.hasPermission({
-      headers: context.request.headers,
-      body: {
-        permissions,
-        organizationId: context.activeOrganizationId,
-      },
-    });
-
-    if (!result.success) {
+    if (!(await hasOrgPermission(context.request.headers, context.activeOrganizationId, permissions))) {
       rlog.warn({ permissions, userId: context.session?.user?.id }, "Permission denied");
       throw errors.FORBIDDEN();
     }

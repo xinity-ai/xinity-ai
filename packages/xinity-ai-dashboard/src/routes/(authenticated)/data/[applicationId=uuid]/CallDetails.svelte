@@ -94,6 +94,7 @@
     x: 0,
     y: 0,
     messageIndex: -1,
+    partIndex: undefined as number | undefined,
     startIndex: -1,
     endIndex: -1,
     token: 0,
@@ -105,6 +106,7 @@
     x: 0,
     y: 0,
     messageIndex: -1,
+    partIndex: undefined as number | undefined,
     start: -1,
     end: -1,
     locked: false,
@@ -561,7 +563,19 @@
     });
   }
 
-  function handleInputSelection(event: MouseEvent, messageIndex: number) {
+  function isSamePart(
+    exclusion: InputExclusion,
+    messageIndex: number,
+    partIndex: number | undefined,
+  ) {
+    return exclusion.messageIndex === messageIndex && exclusion.partIndex === partIndex;
+  }
+
+  function handleInputSelection(
+    event: MouseEvent,
+    messageIndex: number,
+    partIndex?: number,
+  ) {
     if (inputExclusionPopupTimeout) {
       clearTimeout(inputExclusionPopupTimeout);
       inputExclusionPopupTimeout = null;
@@ -584,6 +598,10 @@
 
     const range = sel.getRangeAt(0);
     const container = event.currentTarget as HTMLElement;
+    if (!container.contains(range.startContainer) || !container.contains(range.endContainer)) {
+      clearInputExclusionPopup();
+      return;
+    }
 
     // Calculate character offset relative to the container's text content
     const preRange = document.createRange();
@@ -598,6 +616,7 @@
     }
 
     inputExclusionPopup.messageIndex = messageIndex;
+    inputExclusionPopup.partIndex = partIndex;
     inputExclusionPopup.startIndex = start;
     inputExclusionPopup.endIndex = end;
     inputExclusionPopup.x = event.clientX;
@@ -617,14 +636,14 @@
 
     const newExclusion: InputExclusion = {
       messageIndex: inputExclusionPopup.messageIndex,
+      partIndex: inputExclusionPopup.partIndex,
       start: inputExclusionPopup.startIndex,
       end: inputExclusionPopup.endIndex,
     };
 
-    // Remove overlapping exclusions for the same message
     const nonOverlapping = existing.filter(
       (e) =>
-        e.messageIndex !== newExclusion.messageIndex ||
+        !isSamePart(e, newExclusion.messageIndex, newExclusion.partIndex) ||
         e.end <= newExclusion.start ||
         e.start >= newExclusion.end,
     );
@@ -641,6 +660,7 @@
 
   function clearInputExclusion(
     messageIndex: number,
+    partIndex: number | undefined,
     start: number,
     end: number,
   ) {
@@ -650,7 +670,7 @@
     const updated = existing.filter(
       (e) =>
         !(
-          e.messageIndex === messageIndex &&
+          isSamePart(e, messageIndex, partIndex) &&
           e.start === start &&
           e.end === end
         ),
@@ -673,10 +693,11 @@
 
   function renderExcludedInputHtml(
     messageIndex: number,
+    partIndex: number | undefined,
     text: string,
   ): string {
     const exclusions = inputExclusions
-      .filter((e) => e.messageIndex === messageIndex)
+      .filter((e) => isSamePart(e, messageIndex, partIndex))
       .sort((a, b) => a.start - b.start);
 
     if (exclusions.length === 0) return escapeHtml(text);
@@ -686,7 +707,8 @@
     for (const ex of exclusions) {
       result += escapeHtml(text.substring(lastIndex, ex.start));
       const exText = escapeHtml(text.substring(ex.start, ex.end));
-      result += `<span class="input-exclusion" data-msg="${messageIndex}" data-start="${ex.start}" data-end="${ex.end}">${exText}</span>`;
+      const partAttr = partIndex === undefined ? "" : ` data-part="${partIndex}"`;
+      result += `<span class="input-exclusion" data-msg="${messageIndex}"${partAttr} data-start="${ex.start}" data-end="${ex.end}">${exText}</span>`;
       lastIndex = ex.end;
     }
     result += escapeHtml(text.substring(lastIndex));
@@ -713,11 +735,13 @@
       10,
     );
     if (msgIdx < 0 || start < 0 || end < 0) return;
+    const partAttr = target.getAttribute("data-part");
 
     const rect = target.getBoundingClientRect();
     inputExclusionHoverPopup.x = rect.left + rect.width / 2;
     inputExclusionHoverPopup.y = rect.top - 35;
     inputExclusionHoverPopup.messageIndex = msgIdx;
+    inputExclusionHoverPopup.partIndex = partAttr === null ? undefined : parseInt(partAttr, 10);
     inputExclusionHoverPopup.start = start;
     inputExclusionHoverPopup.end = end;
     inputExclusionHoverPopup.visible = true;
@@ -741,6 +765,7 @@
     }
     inputExclusionHoverPopup.visible = false;
     inputExclusionHoverPopup.messageIndex = -1;
+    inputExclusionHoverPopup.partIndex = undefined;
     inputExclusionHoverPopup.start = -1;
     inputExclusionHoverPopup.end = -1;
   }
@@ -842,7 +867,7 @@
                         onmouseup={(e) => handleInputSelection(e, idx)}
                         onmousedown={(e) => { inputMouseDownPos = { x: e.clientX, y: e.clientY }; clearInputExclusionPopup(); }}
                         onmousemove={handleInputExclusionHover}
-                      >{@html renderExcludedInputHtml(idx, msg.content)}</div>
+                      >{@html renderExcludedInputHtml(idx, undefined, msg.content)}</div>
                     {:else}
                       <!-- svelte-ignore a11y_no_static_element_interactions -->
                       <div
@@ -858,15 +883,15 @@
                           <!-- svelte-ignore a11y_no_static_element_interactions -->
                           <div
                             class="text-sm leading-relaxed whitespace-pre-wrap input-selectable"
-                            onmouseup={(e) => handleInputSelection(e, idx)}
+                            onmouseup={(e) => handleInputSelection(e, idx, pieceIdx)}
                             onmousedown={(e) => { inputMouseDownPos = { x: e.clientX, y: e.clientY }; clearInputExclusionPopup(); }}
                             onmousemove={handleInputExclusionHover}
-                          >{@html renderExcludedInputHtml(idx, piece.text)}</div>
+                          >{@html renderExcludedInputHtml(idx, pieceIdx, piece.text)}</div>
                         {:else}
                           <!-- svelte-ignore a11y_no_static_element_interactions -->
                           <div
                             class="text-sm leading-relaxed whitespace-pre-wrap input-selectable"
-                            onmouseup={(e) => handleInputSelection(e, idx)}
+                            onmouseup={(e) => handleInputSelection(e, idx, pieceIdx)}
                             onmousedown={(e) => { inputMouseDownPos = { x: e.clientX, y: e.clientY }; clearInputExclusionPopup(); }}
                           >{piece.text}</div>
                         {/if}
@@ -951,6 +976,7 @@
                 onclick={() => {
                   clearInputExclusion(
                     inputExclusionHoverPopup.messageIndex,
+                    inputExclusionHoverPopup.partIndex,
                     inputExclusionHoverPopup.start,
                     inputExclusionHoverPopup.end,
                   );

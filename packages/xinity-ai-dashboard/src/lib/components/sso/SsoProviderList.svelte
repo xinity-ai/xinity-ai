@@ -6,7 +6,7 @@
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import { copyToClipboard } from "$lib/copy";
   import { orpc } from "$lib/orpc/orpc-client";
-  import { Trash2, ShieldCheck, ShieldAlert, Copy, RefreshCw, Loader2 } from "@lucide/svelte";
+  import { Trash2, ShieldCheck, ShieldAlert, Copy, RefreshCw, LoaderCircle } from "@lucide/svelte";
 
   type ParsedProvider = {
     id: string;
@@ -194,7 +194,7 @@
                         onclick={() => checkDns(provider.providerId)}
                       >
                         {#if dns?.verifying}
-                          <Loader2 class="w-3 h-3 animate-spin" />
+                          <LoaderCircle class="w-3 h-3 animate-spin" />
                           Checking...
                         {:else}
                           <RefreshCw class="w-3 h-3" />
@@ -223,7 +223,8 @@
 <ConfirmDialog
   bind:open={deleteOpen}
   title="Delete SSO provider"
-  confirmLabel={deleting ? "Deleting..." : "Delete provider"}
+  confirmLabel="Delete provider"
+  pending={deleting}
   onConfirm={() => void executeDelete()}
   onCancel={() => { deleteOpen = false; deleteTarget = null; }}
 >

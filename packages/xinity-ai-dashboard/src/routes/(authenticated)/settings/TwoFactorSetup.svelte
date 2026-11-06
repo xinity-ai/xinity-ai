@@ -1,15 +1,15 @@
 <script lang="ts">
   import { refreshAll } from "$app/navigation";
   import { twoFactor } from "$lib/auth";
-  import { copyToClipboard } from "$lib/copy";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { renderSVG } from "uqr";
 
   import BackupCodesDisplay from "./BackupCodesDisplay.svelte";
   import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
-  import { Loader2, Copy } from "@lucide/svelte";
 
   let { onComplete, onCancel }: {
     onComplete: () => void;
@@ -97,14 +97,9 @@
 
       <div class="flex gap-2">
         <Button variant="outline" type="button" onclick={onCancel}>Cancel</Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {#if isSubmitting}
-            <Loader2 class="w-4 h-4 animate-spin" />
-            Setting up...
-          {:else}
-            Continue
-          {/if}
-        </Button>
+        <PendingButton type="submit" pending={isSubmitting} pendingLabel="Setting up...">
+          Continue
+        </PendingButton>
       </div>
     </form>
 
@@ -122,14 +117,7 @@
 
       <div class="space-y-2">
         <p class="text-sm text-muted-foreground">Or enter this key manually:</p>
-        <div class="flex items-center gap-2">
-          <code class="flex-1 text-sm font-mono bg-muted px-3 py-2 rounded-md break-all select-all">
-            {extractSecret(totpURI)}
-          </code>
-          <Button variant="outline" size="sm" onclick={() => copyToClipboard(extractSecret(totpURI))}>
-            <Copy class="w-4 h-4" />
-          </Button>
-        </div>
+        <CopyableValue value={extractSecret(totpURI)} copyLabel="Copy key" />
       </div>
 
       <BackupCodesDisplay
@@ -174,14 +162,9 @@
         <Button variant="outline" type="button" onclick={() => { errorMessage = ""; step = "qr"; }}>
           Back
         </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {#if isSubmitting}
-            <Loader2 class="w-4 h-4 animate-spin" />
-            Verifying...
-          {:else}
-            Verify and Enable
-          {/if}
-        </Button>
+        <PendingButton type="submit" pending={isSubmitting} pendingLabel="Verifying...">
+          Verify and Enable
+        </PendingButton>
       </div>
     </form>
   {/if}

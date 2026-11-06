@@ -1,7 +1,8 @@
 <script lang="ts">
   import { invalidate } from "$app/navigation";
   import Modal from "$lib/components/Modal.svelte";
-  import { copyToClipboard } from "$lib/copy";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
+  import CopyableValue from "$lib/components/CopyableValue.svelte";
   import type { ApiKeyDto } from "$lib/orpc/dtos/api-key.dto";
   import { orpc } from "$lib/orpc/orpc-client";
   import { toastState } from "$lib/state/toast.svelte";
@@ -14,7 +15,6 @@
   import * as Select from "$lib/components/ui/select";
 
   // Icons
-  import { Copy } from "@lucide/svelte";
 
   type EditingKey = Pick<ApiKeyDto, "name" | "specifier" | "id" | "applicationId">;
   type Application = { id: string; name: string; description?: string | null };
@@ -132,7 +132,7 @@
 
 <!-- Key Edit Modal -->
 <Modal open={showModal} onClose={cancelEdit}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-md w-full p-6">
+  <DialogPanel>
     <h2 class="text-lg font-semibold mb-4">
       {isNew ? "Generate New API Key" : "Edit API Key"}
     </h2>
@@ -197,25 +197,8 @@
 
       {#if fullCreatedKeyValue}
         <div class="space-y-2">
-          <Label for="fullKey">Key Value</Label>
-          <div class="flex items-center gap-2">
-            <Input
-              id="fullKey"
-              type="text"
-              value={fullCreatedKeyValue}
-              readonly
-              class="font-mono text-sm"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              type="button"
-              onclick={() => copyToClipboard(fullCreatedKeyValue)}
-              title="Copy API key"
-            >
-              <Copy class="w-4 h-4" />
-            </Button>
-          </div>
+          <Label>Key Value</Label>
+          <CopyableValue id="fullKey" value={fullCreatedKeyValue} copyLabel="Copy API key" />
           <p class="text-xs text-muted-foreground">
             Make sure to copy this key now. You won't be able to see the full key again.
           </p>
@@ -251,5 +234,5 @@
         {/if}
       </div>
     </form>
-  </div>
+  </DialogPanel>
 </Modal>

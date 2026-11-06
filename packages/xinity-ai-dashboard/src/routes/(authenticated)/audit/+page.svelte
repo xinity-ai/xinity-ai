@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { orpc } from "$lib/orpc/orpc-client";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
@@ -8,9 +8,11 @@
   import * as Card from "$lib/components/ui/card";
   import * as Select from "$lib/components/ui/select";
   import * as Tooltip from "$lib/components/ui/tooltip";
-  import { ChevronLeft, ChevronRight, Search, Download, ChevronDown, ChevronUp, Info } from "@lucide/svelte";
+  import { Search, Download, ChevronDown, ChevronUp, Info } from "@lucide/svelte";
   import { toastState } from "$lib/state/toast.svelte";
   import { createUrlSearchParamsStore } from "$lib/urlSearchParamsStore";
+  import { useDebouncedValue } from "$lib/state/debounced.svelte";
+  import PaginationFooter from "$lib/components/PaginationFooter.svelte";
   import { humanDate, localDayStart } from "$lib/util";
   import type { PageData } from "./$types";
   import type { AuditEvent } from "common-db";
@@ -87,6 +89,8 @@
     "sso.delete_provider",
     "sso.register_oidc",
     "sso.register_saml",
+    "sso.request_domain_verification",
+    "sso.verify_domain",
     "user.update_settings",
   ] as const;
 
@@ -161,16 +165,18 @@
     expandedRow = expandedRow === id ? null : id;
   }
 
-  let actorSearchTimeout: ReturnType<typeof setTimeout> | undefined;
+  const debouncedActor = useDebouncedValue(() => actorInputValue, 400);
 
-  function onActorInput(e: Event) {
-    actorInputValue = (e.target as HTMLInputElement).value;
-    clearTimeout(actorSearchTimeout);
-    actorSearchTimeout = setTimeout(() => {
-      $searchParams.actor = actorInputValue || "";
+  $effect(() => {
+    const actor = debouncedActor.current;
+    untrack(() => {
+      if (actor === ($searchParams.actor ?? "")) {
+        return;
+      }
+      $searchParams.actor = actor;
       applyFilters();
-    }, 400);
-  }
+    });
+  });
 
   function formatAction(action: string): string {
     const [resource, verb] = action.split(".");
@@ -257,7 +263,6 @@
 
   onMount(() => {
     void fetchEvents();
-    return () => clearTimeout(actorSearchTimeout);
   });
 </script>
 
@@ -374,8 +379,7 @@
             <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Actor ID..."
-              value={actorInputValue}
-              oninput={onActorInput}
+              bind:value={actorInputValue}
               class="pl-9"
             />
           </div>
@@ -506,31 +510,13 @@
             </table>
           </div>
 
-          <div class="flex items-center justify-between mt-4 pt-4 border-t">
-            <span class="text-sm text-muted-foreground">
-              Page {cursorStack.length + 1}
-            </span>
-            <div class="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={cursorStack.length === 0}
-                onclick={goPrev}
-              >
-                <ChevronLeft class="w-4 h-4" />
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={!nextCursor}
-                onclick={goNext}
-              >
-                Next
-                <ChevronRight class="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
+          <PaginationFooter
+            label="Page {cursorStack.length + 1}"
+            canPrev={cursorStack.length > 0}
+            canNext={!!nextCursor}
+            onPrev={goPrev}
+            onNext={goNext}
+          />
         {/if}
       </Card.Content>
     </Card.Root>

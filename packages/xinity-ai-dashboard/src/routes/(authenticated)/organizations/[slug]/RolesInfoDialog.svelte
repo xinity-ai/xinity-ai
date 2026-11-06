@@ -1,5 +1,6 @@
 <script lang="ts">
   import Modal from "$lib/components/Modal.svelte";
+  import DialogPanel from "$lib/components/DialogPanel.svelte";
   import RolesPermissionMatrix from "$lib/components/RolesPermissionMatrix.svelte";
   import { Button } from "$lib/components/ui/button";
   import { X } from "@lucide/svelte";
@@ -14,7 +15,7 @@
 </script>
 
 <Modal bind:open {onClose}>
-  <div class="bg-card rounded-xl border shadow-2xl max-w-3xl w-full">
+  <DialogPanel class="max-w-3xl p-0">
     <div class="flex items-center justify-between p-6 pb-0">
       <h2 class="text-xl font-semibold">Roles & Permissions</h2>
       <Button variant="ghost" size="icon-sm" onclick={onClose}>
@@ -25,5 +26,5 @@
     <div class="p-6 max-h-[70vh] overflow-y-auto">
       <RolesPermissionMatrix />
     </div>
-  </div>
+  </DialogPanel>
 </Modal>

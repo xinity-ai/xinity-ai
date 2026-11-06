@@ -3,9 +3,8 @@
   import { signIn } from "$lib/auth";
   import { friendlySsoError } from "../../friendly-error";
   import { ssoProviderLabel } from "../../sso-provider-label";
-  import { Button } from "$lib/components/ui/button";
+  import PendingButton from "$lib/components/PendingButton.svelte";
   import * as Card from "$lib/components/ui/card";
-  import { Loader2 } from "@lucide/svelte";
 
   const providerId = $derived(page.params.providerId ?? "");
   const providerLabel = $derived(ssoProviderLabel(providerId));
@@ -61,18 +60,15 @@
     </Card.Header>
     <Card.Content class="space-y-6">
       <div class="space-y-4">
-        <Button
+        <PendingButton
           class="w-full"
           onclick={handleSignIn}
-          disabled={!hasProvider || isLoading}
+          disabled={!hasProvider}
+          pending={isLoading}
+          pendingLabel="Connecting..."
         >
-          {#if isLoading}
-            <Loader2 class="w-4 h-4 animate-spin" />
-            Connecting...
-          {:else}
-            Continue with {providerLabel}
-          {/if}
-        </Button>
+          Continue with {providerLabel}
+        </PendingButton>
 
         {#if errorMessage}
           <div role="alert" class="p-3 text-sm text-destructive bg-destructive/10 border border-destructive/30 rounded-lg">

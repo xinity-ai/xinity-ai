@@ -5,7 +5,7 @@ import { config } from "$lib/server/config";
 import { rootLogger } from "$lib/server/logging";
 import { getDB } from "$lib/server/db";
 import { memberT, sql } from "common-db";
-import { betterAuthErrorBody } from "$lib/server/lib/auth/better-auth-errors";
+import { betterAuthErrorMessage } from "$lib/server/lib/auth/better-auth-errors";
 
 const log = rootLogger.child({ name: "account.procedure" });
 const tags = ["Auth"];
@@ -34,9 +34,7 @@ const changePassword = rootOs
       });
     } catch (error) {
       rlog.error({ err: error }, "Error during password change");
-      const detail = betterAuthErrorBody(error)?.message
-        ?? (error instanceof Error ? error.message : null);
-      throw errors.UNAUTHORIZED({ message: detail ?? "Failed to change password" });
+      throw errors.UNAUTHORIZED({ message: betterAuthErrorMessage(error) ?? "Failed to change password" });
     }
     return { success: true };
   });

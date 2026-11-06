@@ -5,7 +5,7 @@
   import DashboardApiKeyManagement from "../DashboardApiKeyManagement.svelte";
   import { Separator } from "$lib/components/ui/separator";
   import * as Collapsible from "$lib/components/ui/collapsible";
-  import { ChevronRight, Lock, ShieldCheck, Fingerprint, KeyRound } from "@lucide/svelte";
+  import { ChevronRight, Lock, ShieldCheck, FingerprintPattern, KeyRound } from "@lucide/svelte";
 
   let { data } = $props();
 
@@ -67,7 +67,7 @@
     <Collapsible.Root open={openSection === "passkeys"} onOpenChange={() => toggle("passkeys")}>
       <Collapsible.Trigger class="flex w-full items-center gap-3 py-2 cursor-pointer">
         <ChevronRight class="w-4 h-4 text-muted-foreground transition-transform duration-200 {openSection === 'passkeys' ? 'rotate-90' : ''}" />
-        <Fingerprint class="w-4 h-4 text-muted-foreground" />
+        <FingerprintPattern class="w-4 h-4 text-muted-foreground" />
         <div class="text-left">
           <h3 class="text-base font-semibold">Passkeys</h3>
           <p class="text-sm text-muted-foreground">Sign in without passwords using passkeys</p>
