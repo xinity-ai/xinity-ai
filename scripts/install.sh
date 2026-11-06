@@ -63,7 +63,13 @@ case "$OS" in
 esac
 
 case "$ARCH" in
-  x86_64)   SUFFIX="${PLATFORM}-x64" ;;
+  x86_64)
+    SUFFIX="${PLATFORM}-x64"
+    # The regular x64 build needs AVX2. Only Linux has a baseline build for older CPUs.
+    if [[ "$PLATFORM" = "linux" ]] && ! grep -qw avx2 /proc/cpuinfo 2>/dev/null; then
+      SUFFIX="${PLATFORM}-x64-baseline"
+    fi
+    ;;
   aarch64)  SUFFIX="${PLATFORM}-arm64" ;;
   arm64)    SUFFIX="${PLATFORM}-arm64" ;;
   *)        fail "Unsupported architecture: $ARCH" ;;

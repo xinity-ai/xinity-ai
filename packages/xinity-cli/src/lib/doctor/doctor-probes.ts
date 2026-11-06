@@ -306,6 +306,13 @@ export async function checkSmtp(url: string, host: Host): Promise<CheckResult> {
           connectError(_socket, error) {
             fail(error);
           },
+          // A failed TLS handshake does not always reach error().
+          handshake(socket, success, authorizationError) {
+            if (!success) {
+              socket.end();
+              fail(authorizationError ?? "TLS handshake failed");
+            }
+          },
         },
       }).catch(fail);
     });

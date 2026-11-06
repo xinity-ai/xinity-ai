@@ -7,6 +7,7 @@
  * rest return inert defaults so the Host interface is satisfied.
  */
 import type { Host, RunResult, ElevationResult, TunnelResult } from "../../src/lib/core/host.ts";
+import type { HostArch } from "../../src/lib/core/platform.ts";
 
 type RunHandler = (args: string[]) => Partial<RunResult> | undefined;
 type ShellHandler = (command: string) => Partial<RunResult> | undefined;
@@ -66,7 +67,7 @@ export class FakeHost implements Host {
   async downloadFile(): Promise<void> {}
   async verifySha256(): Promise<boolean> { return true; }
   async computeSha256(): Promise<string | null> { return null; }
-  async getArch(): Promise<string> { return "x64"; }
+  async getArch(): Promise<HostArch> { return "x64"; }
   async openTunnel(url: string): Promise<TunnelResult> {
     return { ok: true, localUrl: url, close: async () => {} };
   }

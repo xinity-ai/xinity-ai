@@ -7,7 +7,7 @@
 import { join } from "node:path";
 import { loadConfig } from "../config/config.ts";
 import { localRun } from "../core/host.ts";
-import { cliAssetSuffix, platformLabel } from "../core/platform.ts";
+import { cliAssetSuffix, localArch, platformLabel, type HostArch } from "../core/platform.ts";
 import { trustedRoot, verifyChecksumSignature, type TrustSource } from "./release-signature.ts";
 
 const DEFAULT_PROJECT_URL = "https://github.com/xinity-ai/xinity-ai";
@@ -277,15 +277,14 @@ function productSlug(component: string): string {
   return `xinity-ai-${component}`;
 }
 
-export function assetPrefix(component: string, arch?: string): string {
+export function assetPrefix(component: string, arch?: HostArch): string {
   if (component === "cli") {
     return `${productSlug(component)}-${cliAssetSuffix()}`;
   }
-  const resolved = (arch ?? process.arch) === "arm64" ? "arm64" : "x64";
-  return `${productSlug(component)}-linux-${resolved}`;
+  return `${productSlug(component)}-linux-${arch ?? localArch()}`;
 }
 
-export function pickReleaseAsset(release: Release, component: string, arch?: string): string {
+export function pickReleaseAsset(release: Release, component: string, arch?: HostArch): string {
   if (component === "db") {
     return "db-migrations.tar.gz";
   }
