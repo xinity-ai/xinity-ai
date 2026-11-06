@@ -35,6 +35,7 @@ export const serverStubs: Record<string, Record<string, unknown>> = {
     getGreenlitCallId: () => "",
     adminCreateUser: asyncNoop,
     adminResetPassword: asyncNoop,
+    INTERNAL_SIGNIN_DISABLED_MESSAGE: "",
   },
   "$lib/server/roles": {
     ac: { statements: {} },

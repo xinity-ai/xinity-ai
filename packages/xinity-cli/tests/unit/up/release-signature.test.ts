@@ -102,7 +102,7 @@ describe("fetchChecksums", () => {
     spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) => {
       const name = String(input).split("/").pop()!;
       const body = assets[name];
-      return body === undefined ? new Response(null, { status: 404 }) : new Response(body);
+      return body === undefined ? new Response(null, { status: 404 }) : new Response(typeof body === "string" ? body : new Uint8Array(body));
     }) as typeof fetch);
   });
 
