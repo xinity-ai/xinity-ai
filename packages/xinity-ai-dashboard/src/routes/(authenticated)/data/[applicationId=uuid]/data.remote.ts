@@ -319,6 +319,7 @@ export const upsertApiCallResponse = command(z.object({
     excludedMessages: z.number().int().array().optional(),
     inputExclusions: z.object({
       messageIndex: z.number().int(),
+      partIndex: z.number().int().optional(),
       start: z.number().int(),
       end: z.number().int(),
     }).array().optional(),

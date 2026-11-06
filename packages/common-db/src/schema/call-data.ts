@@ -241,6 +241,7 @@ export type Highlight = {
 };
 export type InputExclusion = {
   messageIndex: number;
+  partIndex?: number;
   start: number;
   end: number;
 };
