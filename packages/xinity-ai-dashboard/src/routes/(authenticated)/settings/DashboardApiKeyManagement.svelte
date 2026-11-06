@@ -187,7 +187,7 @@
       <div class="space-y-4">
         <div class="space-y-2">
           <Label>Key Value</Label>
-          <CopyableValue value={createdKey} copyLabel="Copy API key" />
+          <CopyableValue id="fullKey" value={createdKey} copyLabel="Copy API key" />
           <p class="text-xs text-muted-foreground">
             Make sure to copy this key now. You won't be able to see the full key again.
           </p>
