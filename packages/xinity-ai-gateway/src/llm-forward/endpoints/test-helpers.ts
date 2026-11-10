@@ -266,7 +266,8 @@ export function setupResponseTestMocks() {
   const logChatSync = jest.fn(async () => {});
   const logChatStream = jest.fn(async () => {});
   mock.module("../../callLogger", () => ({ logChatSync, logChatStream }));
-  mock.module("../../usageRecorder", () => ({ recordUsageEvent: mock(() => {}) }));
+  const recordUsageEvent = jest.fn((_record: Record<string, unknown>) => {});
+  mock.module("../../usageRecorder", () => ({ recordUsageEvent }));
 
   return {
     checkAuth,
@@ -279,6 +280,7 @@ export function setupResponseTestMocks() {
     deleteResponse,
     logChatSync,
     logChatStream,
+    recordUsageEvent,
     setMockPort(port: number) { mockPort = port; },
     clearAll() {
       checkAuth.mockClear();
@@ -289,6 +291,7 @@ export function setupResponseTestMocks() {
       deleteResponse.mockClear();
       logChatSync.mockClear();
       logChatStream.mockClear();
+      recordUsageEvent.mockClear();
       responseStore.clear();
       responseMessages.clear();
     },
