@@ -145,7 +145,7 @@ All `daemon_*` metrics carry a `node_id` label, plus `machine_name` when the nod
 | `daemon_gpu_temperature_celsius` | gauge | GPU temperature |
 | `daemon_gpu_power_draw_watts` | gauge | Measured or estimated power draw |
 | `daemon_gpu_power_limit_watts` | gauge | Power limit |
-| `daemon_gpu_throttled` | gauge | 1 when throttling is active |
+| `daemon_gpu_throttled` | gauge | 1 when clocks are held down by the power cap, a thermal slowdown, or a hardware slowdown |
 | `daemon_gpu_ecc_errors_total` | counter | ECC errors (labeled `type`: uncorrected or corrected) |
 | `daemon_gpu_energy_wh_total` | counter | Cumulative energy since daemon start (Wh) |
 
