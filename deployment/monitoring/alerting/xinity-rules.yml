@@ -1,0 +1,319 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: Availability
+    folder: Xinity
+    interval: 1m
+    rules:
+      - uid: xinity-core-service-down
+        title: Gateway or dashboard down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              expr: up{job=~"xinity-(gateway|dashboard)"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} on {{ $labels.instance }} is not answering metric scrapes."
+          description: "Prometheus has failed to scrape this instance for 5 minutes. Users cannot reach the API or the dashboard through it."
+
+      - uid: xinity-service-down
+        title: Xinity service down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              expr: up{job=~"xinity-(tether|infoserver|daemon)"}
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} on {{ $labels.instance }}{{ with $labels.machine_name }} ({{ . }}){{ end }} is not answering metric scrapes."
+          description: "Prometheus has failed to scrape this instance for 5 minutes."
+
+      - uid: xinity-event-loop-lag
+        title: Event loop lag high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              expr: histogram_quantile(0.99, sum by (job, instance, le) (rate(process_event_loop_lag_seconds_bucket{job=~"xinity-.*"}[5m])))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.5] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} on {{ $labels.instance }} has a p99 event loop lag of {{ humanizeDuration $values.A.Value }}."
+          description: "The process is running but responds slowly to every request it serves."
+
+  - orgId: 1
+    name: Gateway
+    folder: Xinity
+    interval: 1m
+    rules:
+      - uid: xinity-gateway-server-errors
+        title: Gateway server error rate high
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              # The traffic floor keeps a single failed request on an idle gateway from firing.
+              expr: |
+                (
+                  sum by (instance) (rate(http_requests_total{job="xinity-gateway",status=~"5.."}[5m]))
+                    / sum by (instance) (rate(http_requests_total{job="xinity-gateway"}[5m]))
+                )
+                and on (instance) (sum by (instance) (rate(http_requests_total{job="xinity-gateway"}[5m])) > 0.05)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ humanizePercentage $values.A.Value }} of requests on gateway {{ $labels.instance }} fail with a 5xx status."
+          description: "More than 5% of gateway requests have failed with a server error for 10 minutes."
+
+      - uid: xinity-model-backend-errors
+        title: Model backend failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              expr: |
+                (
+                  sum by (model) (rate(gateway_backend_errors_total[5m]))
+                    / sum by (model) (rate(gateway_model_requests_total[5m]))
+                )
+                and on (model) (sum by (model) (rate(gateway_model_requests_total[5m])) > 0.05)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.1] }
+        noDataState: OK
+        execErrState: Error
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ humanizePercentage $values.A.Value }} of requests to model {{ $labels.model }} fail at the backend."
+          description: "The inference backends serving this model have answered more than 10% of requests with an error for 10 minutes."
+
+  - orgId: 1
+    name: Fleet
+    folder: Xinity
+    interval: 1m
+    rules:
+      - uid: xinity-daemon-protocol-mismatch
+        title: Daemons on an incompatible version
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              expr: sum(increase(tether_request_rejections_total{reason="protocol_mismatch"}[10m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The tether is refusing daemons that speak a different protocol version."
+          description: "Part of the fleet runs a daemon version that does not match the tether. Those nodes retry indefinitely and receive no desired state until they are upgraded."
+
+      - uid: xinity-daemon-reconnect-churn
+        title: Daemons reconnecting repeatedly
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 900, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              # Connections closed within a minute, per connected node. Clean shutdowns and
+              # a node replacing its own connection are expected and excluded.
+              expr: |
+                sum(increase(tether_sse_connection_duration_seconds_bucket{le="60",reason!~"shutdown|superseded"}[15m]))
+                  / clamp_min(sum(tether_connected_nodes), 1)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Daemon connections to the tether keep dropping within a minute."
+          description: "Over the last 15 minutes there were more short-lived daemon connections than connected nodes. Check the reason label on tether_sse_connection_duration_seconds and the proxy in front of the tether."
+
+      - uid: xinity-gpu-ecc-uncorrected
+        title: Uncorrected GPU memory errors
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              expr: increase(daemon_gpu_ecc_errors_total{type="uncorrected"}[10m])
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "GPU {{ $labels.gpu }} on {{ with $labels.machine_name }}{{ . }}{{ else }}{{ $labels.node_id }}{{ end }} reported uncorrected memory errors."
+          description: "Uncorrected ECC errors can corrupt model output and often precede a GPU failure."
+
+      - uid: xinity-gpu-sampling-failing
+        title: GPU telemetry failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              expr: increase(daemon_gpu_sample_failures_total[5m])
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The daemon on {{ with $labels.machine_name }}{{ . }}{{ else }}{{ $labels.node_id }}{{ end }} cannot read its GPU telemetry."
+          description: "GPU sampling has kept failing for 15 minutes. GPU utilization, memory and energy readings for this node are stale."
+
+  - orgId: 1
+    name: Catalog
+    folder: Xinity
+    interval: 1m
+    rules:
+      - uid: xinity-catalog-refresh-failing
+        title: Model catalog refresh failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 1800, to: 0 }
+            datasourceUid: xinity-prometheus
+            model:
+              refId: A
+              expr: |
+                sum by (instance) (increase(infoserver_catalog_refreshes_total{catalog="models",outcome="failure"}[30m]))
+                unless on (instance) (sum by (instance) (increase(infoserver_catalog_refreshes_total{catalog="models",outcome="success"}[30m])) > 0)
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        labels:
+          severity: warning
+        annotations:
+          summary: "The infoserver on {{ $labels.instance }} has not refreshed its model catalog for 30 minutes."
+          description: "Every refresh in the last 30 minutes failed. The infoserver keeps serving the previous catalog, so new or changed models do not show up."

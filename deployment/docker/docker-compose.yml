@@ -215,6 +215,7 @@ services:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
       - ../monitoring/dashboards:/etc/grafana/xinity-dashboards:ro
+      - ../monitoring/alerting:/etc/grafana/provisioning/alerting:ro
     ports:
       - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
     networks:

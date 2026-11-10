@@ -200,6 +200,27 @@ An Audit trail row adds a breakdown of audit events by action and the audit even
 
 All dashboards are tagged `xinity-ai` and cross-linked via a shared navigation dropdown.
 
+## Grafana Alerts
+
+A set of alert rules lives in `deployment/monitoring/alerting/xinity-rules.yml` and is provisioned into Grafana's Xinity alert folder by both the Docker Compose `monitoring` profile and the NixOS monitoring module. They query the Prometheus datasource with the uid `xinity-prometheus`.
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| Gateway or dashboard down | critical | A gateway or dashboard instance has not been scraped for 5 minutes |
+| Xinity service down | warning | A tether, infoserver, or daemon instance has not been scraped for 5 minutes |
+| Event loop lag high | warning | p99 event loop lag of a service stays above 0.5s for 10 minutes |
+| Gateway server error rate high | critical | More than 5% of a gateway's requests fail with a 5xx status for 10 minutes |
+| Model backend failing | warning | More than 10% of a model's requests fail at the backend for 10 minutes |
+| Daemons on an incompatible version | warning | The tether refuses daemons with a protocol mismatch |
+| Daemons reconnecting repeatedly | warning | Daemon connections closing within a minute outnumber connected nodes over 15 minutes |
+| Uncorrected GPU memory errors | critical | A GPU reports any uncorrected ECC error |
+| GPU telemetry failing | warning | A daemon's GPU sampling keeps failing for 15 minutes |
+| Model catalog refresh failing | warning | Every infoserver catalog refresh in the last 30 minutes failed |
+
+Every rule carries a `severity` label to route on. Firing alerts appear under Alerting > Alert rules right away. To get notified, add a contact point under Alerting > Contact points (Slack, Microsoft Teams, a webhook, and many more) and select it as the default contact point under Alerting > Notification policies. Grafana's default contact point sends email and does nothing without an SMTP server.
+
+The provisioned rules cannot be edited in the Grafana UI. To change a threshold, duplicate the rule, adjust the copy, and pause the original. On NixOS, set `grafana.alerts.enable = false` to skip the whole set. Contact points can also be provisioned from configuration: on NixOS through `services.grafana.provision.alerting.contactPoints`, with Docker Compose by adding a file to `deployment/monitoring/alerting/`.
+
 ## Deployment
 
 ### Docker Compose
@@ -210,7 +231,7 @@ The deployment Docker Compose file includes a `monitoring` profile:
 docker compose --profile monitoring up -d
 ```
 
-This starts Prometheus (v3.1.0, port 9090) and Grafana (v11.4.0, port 3000) with dashboards pre-provisioned. Both bind to `127.0.0.1` by default.
+This starts Prometheus (v3.1.0, port 9090) and Grafana (v11.4.0, port 3000) with dashboards and alert rules pre-provisioned. Both bind to `127.0.0.1` by default.
 
 Set `PROMETHEUS_URL` in the dashboard's environment to enable live GPU utilization and energy readings on the Compute page.
 
@@ -240,5 +261,6 @@ Key options:
 | `tetherTarget` | `localhost:4020` | Tether metrics target |
 | `infoserverTarget` | `null` | Infoserver metrics target, scraped only when set |
 | `grafana.port` | `6121` | Grafana port |
+| `grafana.alerts.enable` | `true` | Provision the bundled alert rules |
 | `logs.port` | `6122` | Loki port |
 | `logs.retentionPeriod` | `168h` (7 days) | Log retention |
