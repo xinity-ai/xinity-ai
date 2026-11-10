@@ -1,6 +1,6 @@
 import { streamText, isLoopFinished, stepCountIs } from "ai";
 import { resolveAuthorizedModel } from "../ai-sdk";
-import { errorResponse, logChatUsage, recordUsage, validateModelType, toModelMessages, sseResponse, validationError, isUpstreamError, upstreamHttpStatus, modelLacksToolSupport } from "../util";
+import { errorResponse, logChatUsage, recordUsage, recordFailedRequest, validateModelType, toModelMessages, sseResponse, validationError, isUpstreamError, upstreamHttpStatus, modelLacksToolSupport } from "../util";
 import { deleteResponse, getResponse, getResponseMessages, saveResponse, type ResponseCreation } from "../response-store";
 import { rootLogger } from "../../logger";
 import { processMessageMedia, restoreMediaParts, restoreMessageMedia, mediaStore } from "../../media-store";
@@ -215,7 +215,8 @@ async function runStreaming(prepared: PreparedRequest, genParams: GenerationPara
   const baseResponse = await createAndSaveInProgressResponse(auth.orgId, responseId, createdAt, originalModel, body, creation);
 
   const streamBody = createResponseStream({
-    result: streamText(genParams),
+    // The raw chunks carry the per-chunk usage, so an aborted or failed stream keeps its tokens.
+    result: streamText({ ...genParams, includeRawChunks: true }),
     orgId: auth.orgId, responseId, messageItemId: `msg_${responseId}`, createdAt, originalModel, body,
     baseResponse, toolCalls, toolResults, include,
     abortSignal: genParams.abortSignal,
@@ -228,6 +229,14 @@ async function runStreaming(prepared: PreparedRequest, genParams: GenerationPara
         outputData: [{ model: originalModel, choices: [{ index: 0, delta: { role: "assistant", content: text } }] }],
         stream: true,
       });
+    },
+    onAborted: (usage) => {
+      idle?.clear();
+      recordUsage({ ...logFields, usage, logCalls: false, deployment: originalModel });
+    },
+    onFailed: (usage) => {
+      idle?.clear();
+      recordFailedRequest(logFields, usage);
     },
   });
 
@@ -263,12 +272,13 @@ export async function handleCreateResponseRequest(req: Request): Promise<Respons
 
     const { body, modelInfo, provider, messagesForLLM, activeTools, hasTools, outputConfig } = prepared;
     const messages = toModelMessages(messagesForLLM);
-    const paramsWith = (signal: AbortSignal) =>
+    const paramsWith = (signal?: AbortSignal) =>
       buildGenerationParams(body, modelInfo, provider, messages, activeTools, hasTools, outputConfig, signal);
 
-    // Background generation outlives the request that started it, so it takes no request-scoped deadline.
+    // Background generation outlives the request that started it, so it takes no request signal.
+    // The step deadline and the cancel check limit the run.
     if (body.background) {
-      return runInBackground(req, prepared, paramsWith(req.signal));
+      return runInBackground(req, prepared, paramsWith());
     }
 
     const idle = body.stream ? createIdleTimeout() : undefined;

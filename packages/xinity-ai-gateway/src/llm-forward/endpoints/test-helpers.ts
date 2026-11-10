@@ -2,6 +2,7 @@ import { mock, jest } from "bun:test";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { getModelInfo as getModelInfoT, ModelInfo, ModelLookup } from "../model-data";
 import { outputAsMessages } from "../responses/input-normalize";
+import { addStreamUsageOptions } from "../stream-usage-options";
 
 export function modelFound(info: ModelInfo): ModelLookup {
   return { status: "found", info };
@@ -281,6 +282,7 @@ export function makeChatJsonResponseWithToolCalls(
 export function makeChatSseBodyWithToolCalls(
   model: string,
   toolCalls: MockToolCall[],
+  usage?: MockUsage,
 ): string {
   const chunks: string[] = [
     sseChunk(model, { role: "assistant", content: null }),
@@ -294,7 +296,7 @@ export function makeChatSseBodyWithToolCalls(
       tool_calls: [{ index: i, function: { arguments: tc.arguments } }],
     }));
   }
-  chunks.push(sseChunk(model, {}, "tool_calls"));
+  chunks.push(sseChunk(model, {}, "tool_calls", usage));
   chunks.push("data: [DONE]\n\n");
   return chunks.join("");
 }
@@ -303,13 +305,21 @@ export function makeChatSseBodyWithToolCalls(
 export function makeChatSseResponseWithToolCalls(
   model: string,
   toolCalls: MockToolCall[],
+  usage?: MockUsage,
 ): Response {
-  return sseResponse(makeChatSseBodyWithToolCalls(model, toolCalls));
+  return sseResponse(makeChatSseBodyWithToolCalls(model, toolCalls, usage));
 }
 
 /** Builds a raw JSON response with arbitrary body, for testing schema resilience. */
 export function makeRawJsonResponse(body: unknown, status = 200): Response {
   return Response.json(body, { status });
+}
+
+let lastIdleController: AbortController | undefined;
+
+/** Fires the idle timeout that the mocked `createIdleTimeout` created last. */
+export function fireIdleTimeout(): void {
+  lastIdleController?.abort(new DOMException("The operation timed out.", "TimeoutError"));
 }
 
 // Must export the full backend-fetch surface: bun's mock.module is process-global,
@@ -327,9 +337,19 @@ export function mockBackendFetch(): void {
         body: JSON.stringify(body),
         signal,
       }),
-    createIdleTimeout: () => ({ signal: new AbortController().signal, reset: () => {}, clear: () => {} }),
+    // No timeout fires unless a test calls fireIdleTimeout().
+    createIdleTimeout: () => {
+      const controller = new AbortController();
+      lastIdleController = controller;
+      return { signal: controller.signal, reset: () => {}, clear: () => {} };
+    },
     nodeProvider: (target: { host: string; driver: string }) =>
-      createOpenAICompatible({ name: target.driver, baseURL: `http://${target.host}/v1`, includeUsage: true }),
+      createOpenAICompatible({
+        name: target.driver,
+        baseURL: `http://${target.host}/v1`,
+        includeUsage: true,
+        transformRequestBody: addStreamUsageOptions,
+      }),
   }));
 }
 

@@ -1,6 +1,7 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { verifyRequest } from "common-env";
 import { backendFetch, backendUrl, nodeProvider } from "./backend-fetch";
+import { addStreamUsageOptions } from "./stream-usage-options";
 
 const TOKEN = "node-auth-token-value";
 
@@ -116,5 +117,45 @@ describe("across a real connection", () => {
 
     expect(authorization).not.toContain(TOKEN);
     expect(verdict).toEqual({ ok: true });
+  });
+});
+
+describe("addStreamUsageOptions", () => {
+  test("adds both flags to a streaming body and keeps its other stream_options", () => {
+    const body = { model: "m", stream: true, stream_options: { include_usage: false, other: 1 } };
+    expect(addStreamUsageOptions(body)).toEqual({
+      model: "m",
+      stream: true,
+      stream_options: { include_usage: true, continuous_usage_stats: true, other: 1 },
+    });
+  });
+
+  test("returns a non-streaming body without change", () => {
+    const body = { model: "m", messages: [] };
+    expect(addStreamUsageOptions(body)).toBe(body);
+  });
+});
+
+// This fails if an AI SDK upgrade stops calling transformRequestBody.
+describe("nodeProvider request body", () => {
+  const prompt = [{ role: "user" as const, content: [{ type: "text" as const, text: "hi" }] }];
+  const provider = () => nodeProvider({ host: "10.0.0.1:4044", installationId: "inst-1", tls: false, authToken: null, driver: "vllm" });
+
+  test("a streaming call asks for the usage on every chunk", async () => {
+    const { sent } = capture();
+
+    await Promise.resolve(provider().chatModel("m").doStream({ prompt })).catch(() => {});
+
+    const body = await sent[0]!.json() as { stream_options?: unknown };
+    expect(body.stream_options).toEqual({ include_usage: true, continuous_usage_stats: true });
+  });
+
+  test("a non-streaming call sends no stream_options", async () => {
+    const { sent } = capture();
+
+    await Promise.resolve(provider().chatModel("m").doGenerate({ prompt })).catch(() => {});
+
+    const body = await sent[0]!.json() as { stream_options?: unknown };
+    expect(body.stream_options).toBeUndefined();
   });
 });

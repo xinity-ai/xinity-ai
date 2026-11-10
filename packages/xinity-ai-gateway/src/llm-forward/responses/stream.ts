@@ -14,6 +14,7 @@ import { createResponseObject, markResponseFailed } from "./response-object";
 import { saveResponse } from "../response-store";
 import { rootLogger } from "../../logger";
 import { isAbortError, classifyStreamError } from "../util";
+import { createUsageTracker, observeParsedChunk, type TrackedUsage } from "../usage-tracker";
 
 const log = rootLogger.child({ name: "response-stream" });
 
@@ -71,6 +72,10 @@ export type StreamResponseParams = {
   include: IncludeValue[];
   abortSignal?: AbortSignal;
   onFinished: (usage: LanguageModelUsage, text: string) => void;
+  /** called when the client aborts; `usage` holds the tokens the backend reported until then */
+  onAborted: (usage: TrackedUsage | undefined) => void;
+  /** called when the backend fails or times out; `usage` holds the tokens it reported until then */
+  onFailed: (usage: TrackedUsage | undefined) => void;
   /** called on every stream part, so a caller's idle timeout can be reset */
   onChunk?: () => void;
 }
@@ -82,8 +87,22 @@ export type StreamResponseParams = {
 export function createResponseStream(params: StreamResponseParams): ReadableStream {
   const {
     result, orgId, responseId, messageItemId, createdAt, originalModel, body,
-    baseResponse, toolCalls, toolResults, include, abortSignal, onFinished, onChunk,
+    baseResponse, toolCalls, toolResults, include, abortSignal, onFinished, onAborted, onFailed, onChunk,
   } = params;
+
+  // The provider gives each backend chunk as a `raw` part, so the tracker holds the usage of
+  // all text that the client received, also when the stream ends early.
+  const tracker = createUsageTracker();
+  // A client that cancels makes the next enqueue throw. That error is not a backend failure.
+  let clientCancelled = false;
+  // Each call gets one row, also when an enqueue fails after the row is written.
+  let recorded = false;
+  const recordOnce = (record: () => void) => {
+    if (!recorded) {
+      recorded = true;
+      record();
+    }
+  };
 
   return new ReadableStream({
     async start(controller) {
@@ -125,7 +144,11 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
 
         for await (const part of result.fullStream) {
           onChunk?.();
-          if (part.type === "reasoning-start") {
+          if (part.type === "raw") {
+            observeParsedChunk(tracker, part.rawValue);
+          } else if (part.type === "start-step") {
+            tracker.startCall();
+          } else if (part.type === "reasoning-start") {
             closeReasoningBlock();
             openReasoningBlock();
           } else if (part.type === "reasoning-delta") {
@@ -222,16 +245,18 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
         });
         await saveResponse(orgId, responseId, completedResponse)
           .catch((err) => log.error({ err, responseId }, "Failed to persist completed response"));
-        onFinished(finalUsage, finalText);
+        recordOnce(() => onFinished(finalUsage, finalText));
 
         emitResponseLifecycle(controller, "response.completed", completedResponse, seq);
         controller.close();
       } catch (error) {
-        if (isAbortError(error)) {
+        if (isAbortError(error) || clientCancelled) {
+          recordOnce(() => onAborted(tracker.total()));
           try { controller.close(); } catch {}
           return;
         }
 
+        recordOnce(() => onFailed(tracker.total()));
         const { message, logLevel, logMessage } = classifyStreamError(error);
         log[logLevel]({ err: error, responseId }, logMessage);
 
@@ -247,6 +272,9 @@ export function createResponseStream(params: StreamResponseParams): ReadableStre
           try { controller.error(error as Error); } catch {}
         }
       }
+    },
+    cancel() {
+      clientCancelled = true;
     },
   });
 }

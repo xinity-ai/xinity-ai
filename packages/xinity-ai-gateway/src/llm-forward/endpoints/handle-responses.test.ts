@@ -1,12 +1,13 @@
 import { describe, test, expect, beforeAll, afterAll, afterEach } from "bun:test";
-import { makeChatSseResponse, makeChatJsonResponse, makeChatSseResponseWithInterleavedReasoning, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, makeChatJsonResponseWithReasoning, makeChatSseResponseWithReasoning, MOCK_REASONING_TOKENS, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus, requestWithParams, modelFound } from "./test-helpers";
+import { makeChatSseResponse, makeChatJsonResponse, makeChatSseResponseWithInterleavedReasoning, makeChatJsonResponseWithToolCalls, makeChatSseResponseWithToolCalls, makeChatJsonResponseWithReasoning, makeChatSseResponseWithReasoning, MOCK_REASONING_TOKENS, mockBackendFetch, setupResponseTestMocks, waitForResponseStatus, requestWithParams, modelFound, makeChatSseChunksWithUsage, makeControlledSseStream, makeHoldingBackend, fireIdleTimeout, SSE_PROMPT_TOKENS, type SseStreamEnd } from "./test-helpers";
 
 const mocks = setupResponseTestMocks();
-const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync } = mocks;
+const { checkAuth, getModelInfo, responseStore, saveResponse, logChatSync, recordUsageEvent } = mocks;
 
 mockBackendFetch();
 
-const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest } = await import("./handle-responses");
+const { setSearchProvider } = await import("../tools/response-tools");
+const { handleCreateResponseRequest, handleGetOrDeleteResponseRequest, handleCancelResponseRequest } = await import("./handle-responses");
 const { withMetrics } = await import("../../metrics");
 
 let server: any;
@@ -14,6 +15,8 @@ let lastUpstreamBody: Record<string, unknown> | undefined;
 /** The message list the backend was last asked to complete. */
 let lastChatMessages: Array<{ role: string; content: unknown }> = [];
 let backendAnswers: Promise<void> = Promise.resolve();
+/** Answers for the next backend calls, in order. When it is empty, the default answers apply. */
+let upstreamQueue: Array<(req: Request) => Response | Promise<Response>> = [];
 
 beforeAll(() => {
   server = Bun.serve({
@@ -22,6 +25,10 @@ beforeAll(() => {
       const url = new URL(req.url);
       if (url.pathname === "/v1/chat/completions") {
         await backendAnswers;
+        const queued = upstreamQueue.shift();
+        if (queued) {
+          return queued(req);
+        }
         const body = (await req.json()) as {
           stream?: boolean;
           reasoning_effort?: string;
@@ -65,6 +72,7 @@ afterEach(() => {
   mocks.clearAll();
   lastUpstreamBody = undefined;
   backendAnswers = Promise.resolve();
+  upstreamQueue = [];
 });
 
 afterAll(() => {
@@ -972,5 +980,216 @@ describe("handleResponses, instruction messages", () => {
 
     expect(res.status).toBe(400);
     expect(((await res.json()) as any).error.message).toBe("input[0].content[0]: input_image is not allowed in developer messages. Allowed: input_text");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Usage recording of aborted, failed and cancelled runs
+// ---------------------------------------------------------------------------
+
+describe("handleResponses, usage recording", () => {
+  const STEP1_USAGE = { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 };
+  const webSearchCall = [{ id: "call_ws1", name: "web_search", arguments: '{"query":"Berlin"}' }];
+
+  beforeAll(() => {
+    setSearchProvider({
+      search: async () => [{ title: "Berlin", url: "https://example.com/berlin", content: "Berlin is a city." }],
+    });
+  });
+
+  afterAll(() => {
+    setSearchProvider(null);
+  });
+
+  function rows() {
+    return recordUsageEvent.mock.calls.map(([row]) => row);
+  }
+
+  async function waitForRows(count: number, timeoutMs = 2000) {
+    const deadline = Date.now() + timeoutMs;
+    while (rows().length < count && Date.now() < deadline) {
+      await Bun.sleep(5);
+    }
+    // A short extra wait, so that a second row has time to arrive.
+    await Bun.sleep(20);
+    return rows();
+  }
+
+  function sseBackend(chunks: string[], end: SseStreamEnd, options: { gateAfter?: number } = {}) {
+    return () => new Response(makeControlledSseStream(chunks, end, options).stream, {
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }
+
+  /** A status that the AI SDK does not retry, so the run fails at once. */
+  const backendError = () => Response.json({ error: { message: "bad request" } }, { status: 400 });
+
+  function responsesRequest(body: Record<string, unknown>, signal?: AbortSignal) {
+    return new Request("http://localhost:4000/v1/responses", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", input: "Hi", ...body }),
+      signal,
+    });
+  }
+
+  /** Reads the client stream until it holds `count` text deltas. */
+  async function readTextDeltas(res: Response, count: number) {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    while (text.split("event: response.output_text.delta").length - 1 < count) {
+      const { value, done } = await reader.read();
+      if (done) throw new Error(`stream ended after: ${text}`);
+      text += decoder.decode(value);
+    }
+    return reader;
+  }
+
+  test("stream, client abort in step 1: one successful row with the tokens of the last chunk", async () => {
+    upstreamQueue.push(sseBackend(makeChatSseChunksWithUsage("test-model", ["a", "b", "c"]), "hold", { gateAfter: 2 }));
+    const client = new AbortController();
+
+    const res = await handleCreateResponseRequest(responsesRequest({ stream: true }, client.signal));
+    const reader = await readTextDeltas(res, 2);
+    client.abort();
+    await reader.cancel().catch(() => {});
+
+    const recorded = await waitForRows(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ success: true, logged: false, inputTokens: SSE_PROMPT_TOKENS, outputTokens: 2 });
+  });
+
+  test("stream with a tool, client abort in step 2: the usage of step 1 plus the last chunk of step 2", async () => {
+    upstreamQueue.push(() => makeChatSseResponseWithToolCalls("test-model", webSearchCall, STEP1_USAGE));
+    upstreamQueue.push(sseBackend(makeChatSseChunksWithUsage("test-model", ["a", "b", "c"]), "hold", { gateAfter: 2 }));
+    const client = new AbortController();
+
+    const res = await handleCreateResponseRequest(responsesRequest({ stream: true, tools: [{ type: "web_search" }] }, client.signal));
+    const reader = await readTextDeltas(res, 2);
+    client.abort();
+    await reader.cancel().catch(() => {});
+
+    const recorded = await waitForRows(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({
+      success: true,
+      inputTokens: STEP1_USAGE.prompt_tokens + SSE_PROMPT_TOKENS,
+      outputTokens: STEP1_USAGE.completion_tokens + 2,
+    });
+  });
+
+  test("stream with a tool, backend error in step 2: one failed row with the usage of step 1", async () => {
+    upstreamQueue.push(() => makeChatSseResponseWithToolCalls("test-model", webSearchCall, STEP1_USAGE));
+    upstreamQueue.push(backendError);
+
+    const res = await handleCreateResponseRequest(responsesRequest({ stream: true, tools: [{ type: "web_search" }] }));
+    expect(await res.text()).toContain("response.failed");
+
+    const recorded = await waitForRows(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ success: false, inputTokens: 10, outputTokens: 4 });
+  });
+
+  test("stream, idle timeout: one failed row with the tokens of the last chunk", async () => {
+    upstreamQueue.push(sseBackend(makeChatSseChunksWithUsage("test-model", ["a", "b"]).slice(0, 2), "hold"));
+
+    const res = await handleCreateResponseRequest(responsesRequest({ stream: true }));
+    const reader = await readTextDeltas(res, 2);
+    fireIdleTimeout();
+    let rest = "";
+    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+      rest += new TextDecoder().decode(chunk.value);
+    }
+    expect(rest).toContain("response.failed");
+
+    const recorded = await waitForRows(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ success: false, inputTokens: SSE_PROMPT_TOKENS, outputTokens: 2 });
+  });
+
+  test("blocking run, backend error in step 2: one failed row with the usage of step 1", async () => {
+    upstreamQueue.push(() => makeChatJsonResponseWithToolCalls("test-model", webSearchCall, STEP1_USAGE));
+    upstreamQueue.push(backendError);
+
+    // A blocking run gives its error to the caller, as before.
+    await expect(handleCreateResponseRequest(responsesRequest({ tools: [{ type: "web_search" }] }))).rejects.toThrow("bad request");
+
+    const recorded = await waitForRows(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ success: false, inputTokens: 10, outputTokens: 4 });
+  });
+
+  test("blocking run, client abort in step 2: one successful row with the usage of step 1", async () => {
+    const holding = makeHoldingBackend("headers");
+    upstreamQueue.push(() => makeChatJsonResponseWithToolCalls("test-model", webSearchCall, STEP1_USAGE));
+    upstreamQueue.push(holding.handle);
+    const client = new AbortController();
+
+    const pending = handleCreateResponseRequest(responsesRequest({ tools: [{ type: "web_search" }] }, client.signal));
+    await holding.reached;
+    client.abort();
+    await expect(pending).rejects.toThrow();
+
+    const recorded = await waitForRows(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ success: true, logged: false, inputTokens: 10, outputTokens: 4 });
+  });
+
+  test("background run, cancelled in step 1: one successful row with the run total", async () => {
+    let answer!: () => void;
+    const answered = new Promise<void>((resolve) => { answer = resolve; });
+    let reached!: () => void;
+    const backendReached = new Promise<void>((resolve) => { reached = resolve; });
+    upstreamQueue.push(async () => {
+      reached();
+      await answered;
+      return makeChatJsonResponseWithToolCalls("test-model", webSearchCall, STEP1_USAGE);
+    });
+
+    const res = await handleCreateResponseRequest(responsesRequest({ background: true, tools: [{ type: "web_search" }] }));
+    const { id } = await res.json() as { id: string };
+    await backendReached;
+    const cancel = await handleCancelResponseRequest(requestWithParams(
+      new Request(`http://localhost:4000/v1/responses/${id}/cancel`, { method: "POST", headers: { "Authorization": "Bearer test" } }),
+      { responseId: id },
+    ));
+    expect(cancel.status).toBe(200);
+    answer();
+
+    const recorded = await waitForRows(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ success: true, logged: false, inputTokens: 10, outputTokens: 4 });
+    expect(responseStore.get(id)?.status).toBe("cancelled");
+  });
+
+  test("background run, failure in step 2: one failed row with the usage of step 1", async () => {
+    upstreamQueue.push(() => makeChatJsonResponseWithToolCalls("test-model", webSearchCall, STEP1_USAGE));
+    upstreamQueue.push(backendError);
+
+    const res = await handleCreateResponseRequest(responsesRequest({ background: true, tools: [{ type: "web_search" }] }));
+    const { id } = await res.json() as { id: string };
+    expect(await waitForResponseStatus(responseStore, id, "failed")).not.toBeNull();
+
+    const recorded = await waitForRows(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ success: false, inputTokens: 10, outputTokens: 4 });
+  });
+
+  test("background run: an abort of the request signal after the 202 does not stop the run", async () => {
+    let answer!: () => void;
+    backendAnswers = new Promise((resolve) => { answer = resolve; });
+    const client = new AbortController();
+
+    const res = await handleCreateResponseRequest(responsesRequest({ background: true }, client.signal));
+    expect(res.status).toBe(202);
+    const { id } = await res.json() as { id: string };
+    client.abort();
+    answer();
+
+    expect(await waitForResponseStatus(responseStore, id, "completed")).not.toBeNull();
+    const recorded = await waitForRows(1);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]).toMatchObject({ success: true });
   });
 });

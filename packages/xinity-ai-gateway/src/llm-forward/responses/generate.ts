@@ -2,7 +2,7 @@
 import { generateText } from "ai";
 import type { CallLogFields } from "../usage";
 import { getResponse, saveResponse, type ResponseCreation } from "../response-store";
-import { logChatUsage, isUpstreamError, clientFacingErrorMessage } from "../util";
+import { logChatUsage, recordUsage, recordFailedRequest, isAbortError, isUpstreamError, clientFacingErrorMessage } from "../util";
 import { rootLogger } from "../../logger";
 import { createIdleTimeout } from "../backend-fetch";
 import type { CreateResponseBody, OutputItem, ResponseObject } from "./schemas";
@@ -193,17 +193,35 @@ export async function generateAndPersistCompletedResponse(args: GeneratePersistA
   // A background run has no request to bound it, so each step gets the backend timeout instead.
   const stepDeadline = background ? createIdleTimeout() : undefined;
   const abortSignals = [genParams.abortSignal, stepDeadline?.signal].filter((signal) => signal !== undefined);
-  const result = await generateText({
-    ...genParams,
-    abortSignal: AbortSignal.any(abortSignals),
-    stopWhen: stopConditions as Parameters<typeof generateText>[0]["stopWhen"],
-    onStepFinish: (step) => {
-      stepDeadline?.reset();
-      collector.onStepFinish(step);
-    },
-  }).finally(() => stepDeadline?.clear());
+  // The usage of the finished steps, for a run that stops before generateText returns.
+  const stepUsage = { inputTokens: 0, outputTokens: 0 };
+  let result: Awaited<ReturnType<typeof generateText>>;
+  try {
+    result = await generateText({
+      ...genParams,
+      abortSignal: AbortSignal.any(abortSignals),
+      stopWhen: stopConditions as Parameters<typeof generateText>[0]["stopWhen"],
+      onStepFinish: (step) => {
+        stepDeadline?.reset();
+        stepUsage.inputTokens += step.usage?.inputTokens ?? 0;
+        stepUsage.outputTokens += step.usage?.outputTokens ?? 0;
+        collector.onStepFinish(step);
+      },
+    });
+  } catch (error) {
+    // A blocking run has the request signal, so an AbortError there is a client abort.
+    if (!background && isAbortError(error)) {
+      recordUsage({ ...logFields, usage: stepUsage, logCalls: false, deployment: originalModel });
+    } else {
+      recordFailedRequest(logFields, stepUsage);
+    }
+    throw error;
+  } finally {
+    stepDeadline?.clear();
+  }
 
   if (background && await checkCancelled(orgId, responseId)) {
+    recordUsage({ ...logFields, usage: result.totalUsage, logCalls: false, deployment: originalModel });
     return;
   }
 
