@@ -87,7 +87,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "{{ $labels.job }} on {{ $labels.instance }} has a p99 event loop lag of {{ humanizeDuration $values.A.Value }}."
+          summary: "{{ $labels.job }} on {{ $labels.instance }} has a high p99 event loop lag{{ with $values.A }} of {{ humanizeDuration .Value }}{{ end }}."
           description: "The process is running but responds slowly to every request it serves."
 
   - orgId: 1
@@ -126,7 +126,7 @@ groups:
         labels:
           severity: critical
         annotations:
-          summary: "{{ humanizePercentage $values.A.Value }} of requests on gateway {{ $labels.instance }} fail with a 5xx status."
+          summary: "Gateway {{ $labels.instance }} fails {{ with $values.A }}{{ humanizePercentage .Value }} of {{ end }}requests with a 5xx status."
           description: "More than 5% of gateway requests have failed with a server error for 10 minutes."
 
       - uid: xinity-model-backend-errors
@@ -159,7 +159,7 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "{{ humanizePercentage $values.A.Value }} of requests to model {{ $labels.model }} fail at the backend."
+          summary: "Model {{ $labels.model }} fails {{ with $values.A }}{{ humanizePercentage .Value }} of {{ end }}requests at the backend."
           description: "The inference backends serving this model have answered more than 10% of requests with an error for 10 minutes."
 
   - orgId: 1
