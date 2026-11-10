@@ -66,6 +66,125 @@ export function makeChatSseBody(model: string, contentChunks: string[]): string 
   ].join("");
 }
 
+export const SSE_PROMPT_TOKENS = 5;
+
+function cumulativeUsage(completionTokens: number): MockUsage {
+  return { prompt_tokens: SSE_PROMPT_TOKENS, completion_tokens: completionTokens, total_tokens: SSE_PROMPT_TOKENS + completionTokens };
+}
+
+function sseUsageOnlyChunk(model: string, usage: MockUsage): string {
+  return "data: " + JSON.stringify({ ...chatCompletionEnvelope(model), object: "chat.completion.chunk", choices: [], usage }) + "\n\n";
+}
+
+/**
+ * SSE events as vLLM sends them with `continuous_usage_stats`: content chunk i carries the
+ * cumulative usage of its choice (completion_tokens = i + 1), then a finish chunk. With
+ * `finalUsageChunk`, a usage-only chunk (choices: []) follows. No [DONE].
+ */
+export function makeChatSseChunksWithUsage(
+  model: string,
+  contentChunks: string[],
+  { finalUsageChunk = false }: { finalUsageChunk?: boolean } = {},
+): string[] {
+  const finalUsage = cumulativeUsage(contentChunks.length);
+  return [
+    ...contentChunks.map((c, i) => sseChunk(model, { content: c }, null, cumulativeUsage(i + 1))),
+    sseChunk(model, {}, "stop", finalUsage),
+    ...(finalUsageChunk ? [sseUsageOnlyChunk(model, finalUsage)] : []),
+  ];
+}
+
+/** The events of `makeChatSseChunksWithUsage` as one complete body, ending in [DONE]. */
+export function makeChatSseBodyWithUsage(
+  model: string,
+  contentChunks: string[],
+  options: { finalUsageChunk?: boolean } = {},
+): string {
+  return [...makeChatSseChunksWithUsage(model, contentChunks, options), "data: [DONE]\n\n"].join("");
+}
+
+/**
+ * How a controlled stream ends after its chunks. "abort" and "timeout" error the stream, which
+ * escapes Bun.serve on Linux, so only a Response built in the test can use them.
+ */
+export type SseStreamEnd = "done" | "cut" | "abort" | "timeout" | "hold";
+
+/**
+ * A backend SSE body that sends `chunks`, then ends with `end`. With `gateAfter: n`, chunk n+1
+ * and later chunks wait until the test calls `release()`.
+ */
+export function makeControlledSseStream(
+  chunks: string[],
+  end: SseStreamEnd,
+  { gateAfter }: { gateAfter?: number } = {},
+): { stream: ReadableStream<Uint8Array>; release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const encoder = new TextEncoder();
+  let next = 0;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (next < chunks.length) {
+        if (next === gateAfter) {
+          await gate;
+        }
+        controller.enqueue(encoder.encode(chunks[next++]!));
+        return;
+      }
+      switch (end) {
+        case "done":
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+          return;
+        case "cut":
+          controller.close();
+          return;
+        case "abort":
+          controller.error(new DOMException("aborted", "AbortError"));
+          return;
+        case "timeout":
+          controller.error(new DOMException("timed out", "TimeoutError"));
+          return;
+        case "hold":
+          await new Promise(() => {});
+      }
+    },
+  });
+  return { stream, release };
+}
+
+/**
+ * A backend that holds a request until the gateway leaves. "headers": it does not answer.
+ * "body": it sends the headers and part of a JSON body. `reached` resolves when the gateway
+ * waits in that state, so the test can abort the client request then.
+ */
+export function makeHoldingBackend(stage: "headers" | "body"): {
+  handle: (req: Request) => Promise<Response>;
+  reached: Promise<void>;
+} {
+  let markReached!: () => void;
+  const reached = new Promise<void>((resolve) => { markReached = resolve; });
+  return {
+    reached,
+    async handle(req) {
+      if (stage === "headers") {
+        markReached();
+        await new Promise<void>((resolve) => req.signal.addEventListener("abort", () => resolve(), { once: true }));
+        return new Response(null, { status: 503 });
+      }
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"partial":'));
+          // Gives the gateway time to receive the headers and start to read the body.
+          setTimeout(markReached, 30);
+        },
+      });
+      return new Response(body, { headers: { "Content-Type": "application/json" } });
+    },
+  };
+}
+
 export function makeChatSseResponse(model: string, contentChunks: string[]): Response {
   return sseResponse(makeChatSseBody(model, contentChunks));
 }
