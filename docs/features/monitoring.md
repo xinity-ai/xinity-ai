@@ -264,3 +264,55 @@ Key options:
 | `grafana.alerts.enable` | `true` | Provision the bundled alert rules |
 | `logs.port` | `6122` | Loki port |
 | `logs.retentionPeriod` | `168h` (7 days) | Log retention |
+
+### Existing Prometheus and Grafana
+
+A Prometheus and Grafana you already run can take over everything the bundled setups provide.
+
+Add these jobs to your Prometheus configuration. The dashboards and alert rules select series by these job names, so keep them exactly as shown. The credentials are a `user:pass` pair from the `METRICS_AUTH` of the scraped services. Drop the infoserver job when you use the hosted catalog.
+
+```yaml
+scrape_configs:
+  - job_name: xinity-gateway
+    static_configs:
+      - targets: [gateway.example.internal:4121]
+    basic_auth: &auth 
+      username: prometheus
+      password_file: /etc/prometheus/xinity-metrics-password
+
+  - job_name: xinity-dashboard
+    static_configs:
+      - targets: [dashboard.example.internal:5121]
+    basic_auth: *auth
+
+  - job_name: xinity-tether
+    static_configs:
+      - targets: [tether.example.internal:4020]
+    basic_auth: *auth
+
+  - job_name: xinity-infoserver
+    static_configs:
+      - targets: [infoserver.example.internal:8090]
+    basic_auth: *auth
+
+  - job_name: xinity-daemon
+    http_sd_configs:
+      - url: http://dashboard.example.internal:5121/metrics/sd/daemons
+        refresh_interval: 3m
+        basic_auth: *auth
+    # Only needed when the daemons set METRICS_AUTH.
+    basic_auth: *auth
+```
+
+Import the dashboards from `deployment/monitoring/dashboards/` under Dashboards > New > Import, or point a dashboard provider at that folder. They use whichever Prometheus datasource you pick, so no editing is needed. The Xinity Logs dashboard in `deployment/monitoring/dashboards-loki/` only shows data when Loki holds the services' systemd journal.
+
+The alert rules in `deployment/monitoring/alerting/xinity-rules.yml` name their datasource by uid. Replace `xinity-prometheus` with the uid of your Prometheus datasource, which is the last part of the URL of its settings page, and place the result in Grafana's alerting provisioning folder:
+
+```bash
+sed 's/xinity-prometheus/<your-datasource-uid>/' deployment/monitoring/alerting/xinity-rules.yml \
+  > /etc/grafana/provisioning/alerting/xinity-rules.yml
+```
+
+Do not change the uid of an existing provisioned datasource instead, since Grafana then fails to start. Grafana loads the rules on its next start. Notifications follow your default notification policy, as described in [Grafana Alerts](#grafana-alerts).
+
+Set `PROMETHEUS_URL` in the dashboard's environment to your Prometheus to enable live GPU utilization and energy readings on the Compute page.
