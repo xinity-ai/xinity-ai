@@ -7,6 +7,7 @@ import {
 import type { PageServerLoad } from "./$types";
 import type { ChecklistData, KeyMetrics, ChartsData, TablesData, UsageTrendEntry } from "./dashboard.types";
 import { organizationHasRating, resolveRatingTotals } from "$lib/server/lib/calls/call-ratings";
+import { rollupUsageEvents, dailyUsage, topApplications } from "$lib/server/lib/calls/usage-queries";
 import { rootLogger } from "$lib/server/logging";
 import { hasOrgPermission, type PermissionSpec } from "$lib/server/lib/auth/permissions";
 
@@ -32,41 +33,6 @@ function fillDailyTrendSeries(trendData: UsageTrendEntry[], days: string[]): Usa
       outputTokens: dayData?.outputTokens ?? 0,
     };
   });
-}
-
-/**
- * Moves usageEvent rows older than 30 days into usageSummary. One statement, so overlapping
- * runs cannot both move the same rows. The summary cannot tell failures apart, so they are
- * deleted without being counted.
- */
-async function rollupUsageEvents(db: DB, orgId: string) {
-  await db.execute(sql`
-    WITH moved AS (
-      DELETE FROM "call_data"."usage_event"
-      WHERE "organization_id" = ${orgId} AND "created_at" < CURRENT_DATE - INTERVAL '30 days'
-      RETURNING *
-    )
-    INSERT INTO "call_data"."usage_summary"
-      ("date", "organization_id", "application_id", "api_key_id", "model",
-       "total_calls", "logged_calls", "input_tokens", "output_tokens", "total_duration")
-    SELECT
-      DATE("created_at"), "organization_id", COALESCE("application_id", ${NIL_APP_UUID}::uuid), "api_key_id", "model",
-      COUNT(*)::int,
-      COUNT(*) FILTER (WHERE "logged")::int,
-      COALESCE(SUM("input_tokens"), 0),
-      COALESCE(SUM("output_tokens"), 0),
-      COALESCE(SUM("duration"), 0)
-    FROM moved
-    WHERE "success"
-    GROUP BY DATE("created_at"), "organization_id", "application_id", "api_key_id", "model"
-    ON CONFLICT ("date", "organization_id", "application_id", "api_key_id", "model")
-    DO UPDATE SET
-      "total_calls" = "usage_summary"."total_calls" + EXCLUDED."total_calls",
-      "logged_calls" = "usage_summary"."logged_calls" + EXCLUDED."logged_calls",
-      "input_tokens" = "usage_summary"."input_tokens" + EXCLUDED."input_tokens",
-      "output_tokens" = "usage_summary"."output_tokens" + EXCLUDED."output_tokens",
-      "total_duration" = "usage_summary"."total_duration" + EXCLUDED."total_duration"
-  `);
 }
 
 const succeededInOrg = (orgId: string) => sql`${usageEventT.organizationId} = ${orgId} AND ${usageEventT.success}`;
@@ -184,36 +150,9 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
       ORDER BY day
     `),
 
-    db.select({
-      date: sql<string>`to_char(DATE(${usageEventT.createdAt}), 'YYYY-MM-DD')`,
-      totalCalls: sql<number>`COUNT(*)::int`,
-      loggedCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.logged})::int`,
-      inputTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens}), 0)::int`,
-      outputTokens: sql<number>`COALESCE(SUM(${usageEventT.outputTokens}), 0)::int`,
-    })
-      .from(usageEventT)
-      .where(sql`
-        ${succeededInOrg(orgId)}
-      AND
-        DATE(${usageEventT.createdAt}) >= CURRENT_DATE - INTERVAL '29 days'
-      `)
-      .groupBy(sql`DATE(${usageEventT.createdAt})`)
-      .orderBy(sql`DATE(${usageEventT.createdAt}) ASC`),
+    dailyUsage(db, orgId),
 
-    db.select({
-      applicationId: usageEventT.applicationId,
-      totalCalls: sql<number>`COUNT(*)::int`,
-      totalTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)::int`,
-    })
-      .from(usageEventT)
-      .where(sql`
-        ${succeededInOrg(orgId)}
-      AND
-        ${usageEventT.createdAt} >= CURRENT_DATE - INTERVAL '29 days'
-      `)
-      .groupBy(usageEventT.applicationId)
-      .orderBy(sql`COUNT(*) DESC`)
-      .limit(5),
+    topApplications(db, orgId),
   ]);
 
   const usageTrend = fillDailyTrendSeries(trendData, trendDays.map(row => row.date));

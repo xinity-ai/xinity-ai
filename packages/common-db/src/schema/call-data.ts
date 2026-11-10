@@ -305,8 +305,9 @@ export const usageEventT = callDataSchema.table("usage_event", {
   /** Node that served the request. Null for rows that predate attribution and for
    * requests that failed before a node was selected. */
   nodeId: uuid("node_id").references(() => aiNodeT.id, { onDelete: "set null" }),
-  /** False for requests that errored (upstream failure, timeout, bad response).
-   * Aggregate queries must filter WHERE success = true to avoid over-counting calls. */
+  /** False for requests that failed (upstream failure, timeout, bad response). A failed
+   * request can carry the tokens that the backend produced before the failure. Filter on
+   * success to count calls. Do not filter on it to sum tokens. */
   success: boolean().notNull().default(true),
   createdAt,
 }, table => [
