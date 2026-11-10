@@ -2,7 +2,7 @@ import { describe, test, expect, mock, beforeAll, afterAll, afterEach } from "bu
 import { setupResponseTestMocks, waitForResponseStatus, mockBackendFetch, makeChatJsonResponseWithToolCalls, makeChatJsonResponse, requestWithParams, modelFound } from "./test-helpers";
 
 const mocks = setupResponseTestMocks();
-const { getModelInfo, responseStore } = mocks;
+const { getModelInfo, responseStore, recordUsageEvent } = mocks;
 mockBackendFetch();
 
 mock.module("../tools/url-safety", () => ({
@@ -19,6 +19,15 @@ let server: any;
 let capturedRequests: Array<{ messages: any[]; hasTools: boolean }> = [];
 let serverGate: Promise<void> | null = null;
 let serverUsageOverride: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null = null;
+/** Sum of the usage of every response the mock backend sent. */
+let backendUsageTotal = { inputTokens: 0, outputTokens: 0 };
+
+async function countUsage(res: Response): Promise<Response> {
+  const { usage } = await res.clone().json() as { usage?: { prompt_tokens: number; completion_tokens: number } };
+  backendUsageTotal.inputTokens += usage?.prompt_tokens ?? 0;
+  backendUsageTotal.outputTokens += usage?.completion_tokens ?? 0;
+  return res;
+}
 
 beforeAll(() => {
   setSearchProvider({
@@ -40,7 +49,7 @@ beforeAll(() => {
         capturedRequests.push({ messages: body.messages, hasTools: !!body.tools?.length });
 
         if (!body.tools?.length) {
-          return makeChatJsonResponse("test-model", "Summary of research findings so far.");
+          return countUsage(makeChatJsonResponse("test-model", "Summary of research findings so far."));
         }
 
         const toolResultCount = (body.messages as any[]).filter((m: any) => m.role === "tool").length;
@@ -48,16 +57,16 @@ beforeAll(() => {
         const usage = serverUsageOverride ?? undefined;
 
         if (toolResultCount === 0) {
-          return makeChatJsonResponseWithToolCalls("test-model", [
+          return countUsage(makeChatJsonResponseWithToolCalls("test-model", [
             { id: "call_ws1", name: "web_search", arguments: '{"query":"Berlin weather 2024"}' },
-          ], usage);
+          ], usage));
         }
         if (toolResultCount === 1) {
-          return makeChatJsonResponseWithToolCalls("test-model", [
+          return countUsage(makeChatJsonResponseWithToolCalls("test-model", [
             { id: "call_wf1", name: "web_fetch", arguments: '{"url":"https://weather.example.com/berlin"}' },
-          ], usage);
+          ], usage));
         }
-        return makeChatJsonResponse("test-model", "Berlin is the capital of Germany, with a population of over 3.6 million.");
+        return countUsage(makeChatJsonResponse("test-model", "Berlin is the capital of Germany, with a population of over 3.6 million."));
       }
       return new Response("Not Found", { status: 404 });
     },
@@ -75,6 +84,7 @@ afterEach(() => {
   capturedRequests = [];
   serverGate = null;
   serverUsageOverride = null;
+  backendUsageTotal = { inputTokens: 0, outputTokens: 0 };
 });
 
 describe("deep research", () => {
@@ -216,5 +226,29 @@ describe("deep research", () => {
       m.role === "system" && m.content?.includes("summarizing an in-progress research session"),
     );
     expect(compactionMsg).toBeDefined();
+  });
+
+  test("records each backend token once when compaction runs", async () => {
+    serverUsageOverride = { prompt_tokens: 70000, completion_tokens: 5000, total_tokens: 75000 };
+
+    const res = await handleCreateResponseRequest(new Request("http://localhost:4000/v1/responses", {
+      method: "POST", headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "llama-3.1-8b-instruct-deep-research", input: "Tell me about Berlin" }),
+    }));
+
+    expect(res.status).toBe(202);
+    const body = await res.json() as any;
+    const completed = await waitForResponseStatus(responseStore, body.id, "completed");
+    expect(completed).not.toBeNull();
+    expect(capturedRequests.some((r) => !r.hasTools)).toBe(true);
+
+    const rows = recordUsageEvent.mock.calls.map(([row]) => row as { inputTokens: number; outputTokens: number });
+    const recorded = rows.reduce(
+      (sum, row) => ({ inputTokens: sum.inputTokens + row.inputTokens, outputTokens: sum.outputTokens + row.outputTokens }),
+      { inputTokens: 0, outputTokens: 0 },
+    );
+    expect(recorded).toEqual(backendUsageTotal);
+    expect(completed!.usage.input_tokens).toBe(backendUsageTotal.inputTokens);
+    expect(completed!.usage.output_tokens).toBe(backendUsageTotal.outputTokens);
   });
 });
