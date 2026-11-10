@@ -207,22 +207,24 @@ export async function generateAndPersistCompletedResponse(args: GeneratePersistA
     return;
   }
 
+  const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
+  // Compaction calls record their own rows, so this row holds only the run's own steps.
+  // It goes before any await, so a failed save cannot lose it.
+  logChatUsage({
+    ...logFields,
+    usage: result.totalUsage,
+    outputData: { model: originalModel, choices: [{ index: 0, message: { role: "assistant", content: responseText } }] },
+    stream: false,
+  });
+
   await collector.flush();
 
-  const responseText = resolveResponseText(result.text, () => result.output, outputConfig.usesStructuredOutput);
   const finalUsage = collector.totalUsage(result.totalUsage);
-
   const completedResponse = createResponseObject({
     responseId, createdAt, model: originalModel, status: "completed",
     output: collector.buildOutput(responseText, result.reasoning.map((part) => part.text)), usage: finalUsage, body,
   });
   await saveResponse(orgId, responseId, completedResponse);
-  logChatUsage({
-    ...logFields,
-    usage: finalUsage,
-    outputData: { model: originalModel, choices: [{ index: 0, message: { role: "assistant", content: responseText } }] },
-    stream: false,
-  });
   return completedResponse;
 }
 
