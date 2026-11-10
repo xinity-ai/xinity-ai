@@ -202,7 +202,7 @@ services:
       - metrics_password
 
   grafana:
-    image: grafana/grafana:11.4.0
+    image: grafana/grafana:13.0.7
     restart: unless-stopped
     profiles: [monitoring]
     depends_on:

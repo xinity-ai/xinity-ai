@@ -231,7 +231,7 @@ The deployment Docker Compose file includes a `monitoring` profile:
 docker compose --profile monitoring up -d
 ```
 
-This starts Prometheus (v3.1.0, port 9090) and Grafana (v11.4.0, port 3000) with dashboards and alert rules pre-provisioned. Both bind to `127.0.0.1` by default.
+This starts Prometheus (v3.1.0, port 9090) and Grafana (v13.0.7, port 3000) with dashboards and alert rules pre-provisioned. Both bind to `127.0.0.1` by default.
 
 Set `PROMETHEUS_URL` in the dashboard's environment to enable live GPU utilization and energy readings on the Compute page.
 
