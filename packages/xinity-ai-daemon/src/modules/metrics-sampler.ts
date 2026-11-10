@@ -68,6 +68,16 @@ const GPU_QUERY_FIELDS = [
 // each name independently and remember the one that works.
 const THROTTLE_FIELDS = ["clocks_event_reasons.active", "clocks_throttle_reasons.active"];
 
+// Idle, application and display clock settings and sync boost lower clocks by design.
+const THROTTLING_REASON_BITS = {
+  swPowerCap: 0x4,
+  hwSlowdown: 0x8,
+  swThermalSlowdown: 0x20,
+  hwThermalSlowdown: 0x40,
+  hwPowerBrakeSlowdown: 0x80,
+};
+const THROTTLING_MASK = Object.values(THROTTLING_REASON_BITS).reduce((mask, bit) => mask | bit, 0);
+
 export function parseNvidiaMetricsOutput(csv: string): GpuMetricSample[] {
   return csv
     .split("\n")
@@ -107,7 +117,7 @@ export function parseThrottleOutput(csv: string): Map<number, boolean> {
     const index = parseSmiNumber(idx);
     const bits = parseInt(mask ?? "", 16);
     if (index === null || Number.isNaN(bits)) continue;
-    result.set(index, bits !== 0);
+    result.set(index, (bits & THROTTLING_MASK) !== 0);
   }
   return result;
 }

@@ -138,6 +138,12 @@
             default = null;
             description = "Path to a file holding Grafana's secret_key, which encrypts datasource credentials in its database. Read through Grafana's file provider, so the value never enters the Nix store. Only worth setting once Grafana holds credentials worth encrypting, which the provisioned Prometheus and Loki datasources do not. Changing it on a running instance makes already-encrypted values unreadable.";
           };
+
+          alerts.enable = lib.mkOption {
+            type = lib.types.bool;
+            default = true;
+            description = "Provision the bundled Xinity alert rules into Grafana's \"Xinity\" folder. Rules only fire into Grafana's alert list until a contact point is configured. On by default.";
+          };
         };
 
         logs = {
@@ -209,7 +215,8 @@
           provision.datasources.settings.datasources =
             [
               {
-                name = "Prometheus";
+                name = "Xinity Prometheus";
+                uid = "xinity-prometheus";
                 type = "prometheus";
                 access = "proxy";
                 url = "http://127.0.0.1:${toString cfg.port}";
@@ -249,6 +256,9 @@
               updateIntervalSeconds = 30;
               options.path = ../../deployment/monitoring/dashboards-loki;
             };
+
+          provision.alerting.rules.path = lib.mkIf cfg.grafana.alerts.enable
+            ../../deployment/monitoring/alerting/xinity-rules.yml;
         };
 
         services.loki = lib.mkIf cfg.logs.enable {

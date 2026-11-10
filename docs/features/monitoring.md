@@ -145,7 +145,7 @@ All `daemon_*` metrics carry a `node_id` label, plus `machine_name` when the nod
 | `daemon_gpu_temperature_celsius` | gauge | GPU temperature |
 | `daemon_gpu_power_draw_watts` | gauge | Measured or estimated power draw |
 | `daemon_gpu_power_limit_watts` | gauge | Power limit |
-| `daemon_gpu_throttled` | gauge | 1 when throttling is active |
+| `daemon_gpu_throttled` | gauge | 1 when clocks are held down by the power cap, a thermal slowdown, or a hardware slowdown |
 | `daemon_gpu_ecc_errors_total` | counter | ECC errors (labeled `type`: uncorrected or corrected) |
 | `daemon_gpu_energy_wh_total` | counter | Cumulative energy since daemon start (Wh) |
 
@@ -200,6 +200,27 @@ An Audit trail row adds a breakdown of audit events by action and the audit even
 
 All dashboards are tagged `xinity-ai` and cross-linked via a shared navigation dropdown.
 
+## Grafana Alerts
+
+A set of alert rules lives in `deployment/monitoring/alerting/xinity-rules.yml` and is provisioned into Grafana's Xinity alert folder by both the Docker Compose `monitoring` profile and the NixOS monitoring module. They query the Prometheus datasource with the uid `xinity-prometheus`.
+
+| Rule | Severity | Fires when |
+|---|---|---|
+| Gateway or dashboard down | critical | A gateway or dashboard instance has not been scraped for 5 minutes |
+| Xinity service down | warning | A tether, infoserver, or daemon instance has not been scraped for 5 minutes |
+| Event loop lag high | warning | p99 event loop lag of a service stays above 0.5s for 10 minutes |
+| Gateway server error rate high | critical | More than 5% of a gateway's requests fail with a 5xx status for 10 minutes |
+| Model backend failing | warning | More than 10% of a model's requests fail at the backend for 10 minutes |
+| Daemons on an incompatible version | warning | The tether refuses daemons with a protocol mismatch |
+| Daemons reconnecting repeatedly | warning | Daemon connections closing within a minute outnumber connected nodes over 15 minutes |
+| Uncorrected GPU memory errors | critical | A GPU reports any uncorrected ECC error |
+| GPU telemetry failing | warning | A daemon's GPU sampling keeps failing for 15 minutes |
+| Model catalog refresh failing | warning | Every infoserver catalog refresh in the last 30 minutes failed |
+
+Every rule carries a `severity` label to route on. Firing alerts appear under Alerting > Alert rules right away. To get notified, add a contact point under Alerting > Contact points (Slack, Microsoft Teams, a webhook, and many more) and select it as the default contact point under Alerting > Notification policies. Grafana's default contact point sends email and does nothing without an SMTP server.
+
+The provisioned rules cannot be edited in the Grafana UI. To change a threshold, duplicate the rule, adjust the copy, and pause the original. On NixOS, set `grafana.alerts.enable = false` to skip the whole set. Contact points can also be provisioned from configuration: on NixOS through `services.grafana.provision.alerting.contactPoints`, with Docker Compose by adding a file to `deployment/monitoring/alerting/`.
+
 ## Deployment
 
 ### Docker Compose
@@ -210,7 +231,7 @@ The deployment Docker Compose file includes a `monitoring` profile:
 docker compose --profile monitoring up -d
 ```
 
-This starts Prometheus (v3.1.0, port 9090) and Grafana (v11.4.0, port 3000) with dashboards pre-provisioned. Both bind to `127.0.0.1` by default.
+This starts Prometheus (v3.1.0, port 9090) and Grafana (v13.0.7, port 3000) with dashboards and alert rules pre-provisioned. Both bind to `127.0.0.1` by default.
 
 Set `PROMETHEUS_URL` in the dashboard's environment to enable live GPU utilization and energy readings on the Compute page.
 
@@ -240,5 +261,58 @@ Key options:
 | `tetherTarget` | `localhost:4020` | Tether metrics target |
 | `infoserverTarget` | `null` | Infoserver metrics target, scraped only when set |
 | `grafana.port` | `6121` | Grafana port |
+| `grafana.alerts.enable` | `true` | Provision the bundled alert rules |
 | `logs.port` | `6122` | Loki port |
 | `logs.retentionPeriod` | `168h` (7 days) | Log retention |
+
+### Existing Prometheus and Grafana
+
+A Prometheus and Grafana you already run can take over everything the bundled setups provide.
+
+Add these jobs to your Prometheus configuration. The dashboards and alert rules select series by these job names, so keep them exactly as shown. The credentials are a `user:pass` pair from the `METRICS_AUTH` of the scraped services. Drop the infoserver job when you use the hosted catalog.
+
+```yaml
+scrape_configs:
+  - job_name: xinity-gateway
+    static_configs:
+      - targets: [gateway.example.internal:4121]
+    basic_auth: &auth 
+      username: prometheus
+      password_file: /etc/prometheus/xinity-metrics-password
+
+  - job_name: xinity-dashboard
+    static_configs:
+      - targets: [dashboard.example.internal:5121]
+    basic_auth: *auth
+
+  - job_name: xinity-tether
+    static_configs:
+      - targets: [tether.example.internal:4020]
+    basic_auth: *auth
+
+  - job_name: xinity-infoserver
+    static_configs:
+      - targets: [infoserver.example.internal:8090]
+    basic_auth: *auth
+
+  - job_name: xinity-daemon
+    http_sd_configs:
+      - url: http://dashboard.example.internal:5121/metrics/sd/daemons
+        refresh_interval: 3m
+        basic_auth: *auth
+    # Only needed when the daemons set METRICS_AUTH.
+    basic_auth: *auth
+```
+
+Import the dashboards from `deployment/monitoring/dashboards/` under Dashboards > New > Import, or point a dashboard provider at that folder. They use whichever Prometheus datasource you pick, so no editing is needed. The Xinity Logs dashboard in `deployment/monitoring/dashboards-loki/` only shows data when Loki holds the services' systemd journal.
+
+The alert rules in `deployment/monitoring/alerting/xinity-rules.yml` name their datasource by uid. Replace `xinity-prometheus` with the uid of your Prometheus datasource, which is the last part of the URL of its settings page, and place the result in Grafana's alerting provisioning folder:
+
+```bash
+sed 's/xinity-prometheus/<your-datasource-uid>/' deployment/monitoring/alerting/xinity-rules.yml \
+  > /etc/grafana/provisioning/alerting/xinity-rules.yml
+```
+
+Do not change the uid of an existing provisioned datasource instead, since Grafana then fails to start. Grafana loads the rules on its next start. Notifications follow your default notification policy, as described in [Grafana Alerts](#grafana-alerts).
+
+Set `PROMETHEUS_URL` in the dashboard's environment to your Prometheus to enable live GPU utilization and energy readings on the Compute page.

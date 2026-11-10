@@ -68,6 +68,13 @@ describe("parseThrottleOutput", () => {
     expect(map.get(1)).toBe(true);
   });
 
+  test("does not count clock reductions that happen by design", () => {
+    const map = parseThrottleOutput("0, 0x0000000000000001\n1, 0x0000000000000112\n2, 0x0000000000000041\n");
+    expect(map.get(0)).toBe(false);
+    expect(map.get(1)).toBe(false);
+    expect(map.get(2)).toBe(true);
+  });
+
   test("ignores unparseable lines (e.g. an nvidia-smi error)", () => {
     const map = parseThrottleOutput("Field 'x' is not a valid field to query.\n");
     expect(map.size).toBe(0);
