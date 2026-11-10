@@ -77,15 +77,25 @@ export type FailedRequestContext = {
   callStartTime: number;
 };
 
-export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRequestContext): void {
+/**
+ * Records a call that failed. `usage` holds the tokens the backend produced before the failure,
+ * when it reported them. The token metrics get no deployment, so a failed call does not count
+ * toward the generation speed.
+ */
+export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRequestContext, usage?: UsageData | null): void {
+  const tokens = usage
+    ? { inputTokens: normalizeInputTokens(usage), outputTokens: normalizeOutputTokens(usage) }
+    : { inputTokens: 0, outputTokens: 0 };
+  if (usage) {
+    recordTokenUsage(modelInfo.model, auth.keyId, auth.orgId, tokens);
+  }
   recordModelRequest(modelInfo.model, false, auth.orgId);
   recordUsageEvent({
     organizationId: auth.orgId,
     applicationId: auth.applicationId,
     apiKeyId: auth.keyId,
     model: modelInfo.model,
-    inputTokens: 0,
-    outputTokens: 0,
+    ...tokens,
     duration: Date.now() - callStartTime,
     logged: false,
     nodeId: modelInfo.nodeId ?? null,

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test, jest } from "bun:test";
-import { mockBackendFetch, modelFound } from "./test-helpers";
+import { makeHoldingBackend, mockBackendFetch, modelFound } from "./test-helpers";
 
 import type { checkAuth as checkAuthT } from "../auth";
 import type { getModelInfo as getModelInfoT } from "../model-data";
@@ -47,21 +47,31 @@ const { handleRerank } = await import("./handle-rerank");
 
 let server: ReturnType<typeof Bun.serve>;
 let upstreamUsage: unknown;
+// Answers the next upstream request in place of the default logic, for tests that hold it.
+let nextUpstreamHandler: ((req: Request) => Promise<Response>) | null = null;
 
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
-    fetch: () => Response.json({
-      id: "rerank-1",
-      results: [{ index: 0, relevance_score: 0.9 }],
-      usage: upstreamUsage,
-    }),
+    fetch: (req) => {
+      if (nextUpstreamHandler) {
+        const handle = nextUpstreamHandler;
+        nextUpstreamHandler = null;
+        return handle(req);
+      }
+      return Response.json({
+        id: "rerank-1",
+        results: [{ index: 0, relevance_score: 0.9 }],
+        usage: upstreamUsage,
+      });
+    },
   });
   mockPort = server.port!;
 });
 
 afterEach(() => {
   recordUsageEvent.mockClear();
+  nextUpstreamHandler = null;
 });
 
 afterAll(() => {
@@ -102,4 +112,28 @@ describe("handleRerank", () => {
     expect(recordUsageEvent).toHaveBeenCalledTimes(1);
     expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ inputTokens: 0, outputTokens: 0, success: true });
   });
+});
+
+describe("handleRerank, client abort", () => {
+  for (const stage of ["headers", "body"] as const) {
+    test(`a client abort while the gateway waits for the backend ${stage} gives 499 and one 0-token row`, async () => {
+      const backend = makeHoldingBackend(stage);
+      nextUpstreamHandler = backend.handle;
+      const client = new AbortController();
+
+      const pending = handleRerank(new Request("http://localhost:4000/v1/rerank", {
+        method: "POST",
+        headers: { "Authorization": "Bearer test" },
+        body: JSON.stringify({ model: "test-rerank", query: "q", documents: ["a"] }),
+        signal: client.signal,
+      }));
+      await backend.reached;
+      client.abort();
+      const res = await pending;
+
+      expect(res.status).toBe(499);
+      expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+      expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ success: true, logged: false, inputTokens: 0, outputTokens: 0 });
+    });
+  }
 });
