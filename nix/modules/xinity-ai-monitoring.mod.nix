@@ -215,7 +215,7 @@
           provision.datasources.settings.datasources =
             [
               {
-                name = "Prometheus";
+                name = "Xinity Prometheus";
                 uid = "xinity-prometheus";
                 type = "prometheus";
                 access = "proxy";
