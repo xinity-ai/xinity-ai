@@ -100,7 +100,7 @@ Pass an `instructions` field in the request body to append guidance to the resea
 
 ### Context compaction
 
-Long research sessions can exceed the model's context window. When accumulated token usage crosses a configurable fraction of the context limit (`DEEP_RESEARCH_COMPACTION_THRESHOLD`, default: 0.70), the gateway summarizes the conversation so far and replaces the message history with the summary. Research then continues from the summary with a fresh context budget. Token usage from compaction calls is included in the final usage totals.
+Long research sessions can exceed the model's context window. When accumulated token usage crosses a configurable fraction of the context limit (`DEEP_RESEARCH_COMPACTION_THRESHOLD`, default: 0.70), the gateway summarizes the conversation so far and replaces the message history with the summary. Research then continues from the summary with a fresh context budget. The `usage` of the finished response includes the compaction calls. Usage recording counts each compaction call as its own call, so the usage of the research run itself does not include them again.
 
 ### Configuration
 
