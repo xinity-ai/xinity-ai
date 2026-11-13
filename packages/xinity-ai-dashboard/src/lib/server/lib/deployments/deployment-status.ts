@@ -43,6 +43,14 @@ const WANTED: VariantHandlers<DeploymentOutput, Wanted> = {
 
 export const wantedOf = (deployment: DeploymentOutput) => handleVariant(WANTED, deployment);
 
+type Placed = Pick<ReplicaStatus, "phase" | "specifier" | "side">;
+
+const replicasOf = <Replica extends Placed>({ specifier, side }: WantedModel, replicas: Replica[]) =>
+  replicas.filter((replica) => (side ? replica.side === side : replica.specifier === specifier));
+
+export const modelsNotServing = ({ wanted, replicas = [] }: Pick<DeploymentStatus, "wanted" | "replicas">) =>
+  wanted.filter((model) => !replicasOf(model, replicas).some(({ phase }) => phase === "ready"));
+
 /**
  * Folds the status join into one deployment per id, with a replica per installation, or per group
  * for one served across machines.
@@ -101,12 +109,11 @@ export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): Deploymen
       return { ...deployment, status: { phase: "down" as const, wanted, progress: null, error: null, failureLogs: null } };
     }
     if (!phaseInfo) return deployment;
-    const ofWanted = ({ specifier, side }: WantedModel) =>
-      replicas.filter(({ members }) => (side ? members[0]!.side === side : members[0]!.specifier === specifier));
+    const placed = replicas.map(({ info, members }) => replicaStatus(info.phase, info.error, members));
     const phase = toDisplayPhase(phaseInfo) as StatusPhase;
-    const short = wanted.some(({ replicas: count, ...model }) => ofWanted(model).length < count);
+    const short = wanted.some(({ replicas: count, ...model }) => replicasOf(model, placed).length < count);
     // A rollout with one side not serving sends all traffic to the other, whatever its share says.
-    const sideDown = wanted.some((model) => !ofWanted(model).some(({ info }) => info.phase === "ready"));
+    const sideDown = modelsNotServing({ wanted, replicas: placed }).length > 0;
     return {
       ...deployment,
       status: {
@@ -115,7 +122,7 @@ export function foldDeploymentStatusRows(rows: DeploymentStatusRow[]): Deploymen
         progress: phaseInfo.progress,
         error: phaseInfo.error,
         failureLogs: phaseInfo.failureLogs,
-        replicas: replicas.length > 0 ? replicas.map(({ info, members }) => replicaStatus(info.phase, info.error, members)) : undefined,
+        replicas: placed.length > 0 ? placed : undefined,
       },
     };
   });

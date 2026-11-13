@@ -7,8 +7,10 @@ The dashboard sends email notifications for deployment lifecycle events, system 
 | Event | Subject | Trigger |
 |---|---|---|
 | `welcome` | Welcome to Xinity! | User completes email verification |
-| `deployment_ready` | Deployment "{name}" is ready | Model deployment reaches ready state |
+| `deployment_ready` | Deployment "{name}" is ready | Model deployment starts serving, with at least one replica |
 | `deployment_failed` | Deployment "{name}" has failed | Model deployment fails |
+| `deployment_degraded` | Deployment "{name}" is degraded | One model of a rollout has no serving replica, so the other one takes all traffic |
+| `deployment_down` | Deployment "{name}" is down | The machines a deployment ran on went offline and no other machine can take it |
 | `deployment_created` | New deployment "{name}" created | New deployment is created |
 | `node_offline` | Node {host} went offline | Compute node becomes unavailable |
 | `node_online` | Node {host} is back online | Compute node comes back online |
@@ -27,7 +29,7 @@ Each user controls four notification categories in Settings > Notifications:
 | Toggle | Controls |
 |---|---|
 | **Email Notifications** | Master switch for all categories below, plus organization events (member joined, role changed, member removed) |
-| **Model Training Alerts** | Deployment lifecycle events (ready, failed, created) |
+| **Model Training Alerts** | Deployment lifecycle events (ready, failed, degraded, down, created) |
 | **Weekly Reports** | Weekly usage summaries |
 | **API Usage Alerts** | System health events (node offline/online, capacity warning) |
 

@@ -6,19 +6,20 @@ import {
   usageEventT,
   organizationT,
   count,
+  inArray,
   type SQL,
   nodeIsLive,
   installationOnLiveNode,
 } from "common-db";
+import type { DeploymentOutput, DeploymentStatus, StatusPhase } from "$lib/orpc/dtos/model.dto";
 import { config } from "$lib/server/config";
 import { getDB } from "$lib/server/db";
 import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/env";
 import { notifyOrgMembers } from "./notification.service";
 import { NotificationType } from "./events";
-import { type DeploymentPhase, type DisplayPhase, type ReplicaMember, foldDeployment, foldReplicas, toDisplayPhase } from "$lib/server/lib/deployments/deployment-phase";
+import { modelsNotServing } from "$lib/server/lib/deployments/deployment-status";
 import { byType, enabledDeployments } from "$lib/server/lib/deployments/deployment-types";
-import type { InstallationGroup } from "common-env";
 
 const log = rootLogger.child({ name: "notification.scheduler" });
 
@@ -32,7 +33,7 @@ const MODELHUB_URL = `${config.origin}/modelhub/`;
 
 /** Lives for one scheduler run, so re-enabling notifications starts from a fresh snapshot. */
 type SchedulerState = {
-  deploymentPhases: Map<string, DisplayPhase>;
+  deploymentPhases: Map<string, TrackedPhase>;
   nodeAvailability: Map<string, boolean>;
   /** False until the first snapshot is taken, which sends no notifications. */
   initialized: boolean;
@@ -70,125 +71,104 @@ async function notifyAllOrgs(
 
 // ── Deployment status check ─────────────────────────────────────────
 
-export type DeploymentInfo = {
-  phase: DisplayPhase;
-  orgId: string;
-  orgName: string;
-  name: string;
-  model: string;
-  error: string | null;
-  /** Replicas placed, which can fall short of `desiredReplicas`. */
-  observedReplicas: number;
-  desiredReplicas: number;
+// A deployment with nothing placed yet has no status.
+export type TrackedPhase = StatusPhase | "pending";
+
+type DeploymentNotice = {
+  type: NotificationType;
+  label: string;
+  data: (status: DeploymentStatus | undefined) => Record<string, unknown>;
 };
 
-export type DeploymentPhaseRow = {
-  deploymentId: string;
-  deploymentName: string;
-  organizationId: string;
-  orgName: string | null;
-  publicSpecifier: string;
-  desiredReplicas: number;
-  installationId: string | null;
-  installationGroup: InstallationGroup | null;
-  liveNodeId: string | null;
-  lifecycleState: string | null;
-  errorMessage: string | null;
+const SERVING: TrackedPhase[] = ["ready", "partial"];
+
+const READY_NOTICE: DeploymentNotice = {
+  type: NotificationType.deployment_ready,
+  label: "ready",
+  data: (status) => ({
+    observedReplicas: status?.replicas?.length ?? 0,
+    desiredReplicas: status?.wanted.reduce((sum, { replicas }) => sum + replicas, 0) ?? 0,
+  }),
 };
 
-/**
- * Folds the installation join into one aggregate per deployment.
- *
- * A deployment with no installations still yields a row with a null `installationId`, so the
- * observed count keys off that column rather than the row count.
- */
-export function foldDeploymentPhaseRows(rows: DeploymentPhaseRow[]): Map<string, DeploymentInfo> {
-  const deployments = new Map<string, { first: DeploymentPhaseRow; orgName: string; members: ReplicaMember[] }>();
+// A deployment short of replicas still answers every request, so only its page shows it.
+const NOTICE_ON_ENTERING: Partial<Record<TrackedPhase, DeploymentNotice>> = {
+  ready: READY_NOTICE,
+  partial: READY_NOTICE,
+  degraded: {
+    type: NotificationType.deployment_degraded,
+    label: "degraded",
+    data: (status) => ({ notServing: status ? modelsNotServing(status).map(({ specifier }) => specifier) : [] }),
+  },
+  down: { type: NotificationType.deployment_down, label: "down", data: () => ({}) },
+  failed: {
+    type: NotificationType.deployment_failed,
+    label: "failed",
+    data: (status) => ({ errorMessage: status?.error ?? "An unknown error occurred during installation" }),
+  },
+};
 
-  for (const row of rows) {
-    const deployment = deployments.get(row.deploymentId) ?? { first: row, orgName: "", members: [] };
-    deployment.orgName = row.orgName ?? deployment.orgName;
-    if (row.installationId !== null && row.liveNodeId !== null) {
-      deployment.members.push({
-        installationId: row.installationId,
-        group: row.installationGroup,
-        phase: (row.lifecycleState as DeploymentPhase | null) ?? "scheduling",
-        progress: null,
-        error: row.errorMessage,
-        failureLogs: null,
-      });
-    }
-    deployments.set(row.deploymentId, deployment);
+export function noticeOnChange(previous: TrackedPhase, current: TrackedPhase): DeploymentNotice | undefined {
+  if (previous === current || (SERVING.includes(previous) && SERVING.includes(current))) {
+    return undefined;
   }
-
-  const result = new Map<string, DeploymentInfo>();
-  for (const [id, { first, orgName, members }] of deployments) {
-    const replicas = foldReplicas(members);
-    const info = foldDeployment(replicas.map(({ info }) => info));
-    result.set(id, {
-      phase: info ? toDisplayPhase(info) : "pending",
-      orgId: first.organizationId,
-      orgName,
-      name: first.deploymentName,
-      model: first.publicSpecifier,
-      error: info?.error ?? null,
-      observedReplicas: replicas.length,
-      desiredReplicas: first.desiredReplicas,
-    });
-  }
-  return result;
+  return NOTICE_ON_ENTERING[current];
 }
 
-async function getDeploymentPhases(): Promise<Map<string, DeploymentInfo>> {
-  const rows = await byType(await enabledDeployments(), (type, entries) => type.phases(entries));
-  return foldDeploymentPhaseRows(rows.flat());
+type WatchedDeployment = { deployment: DeploymentOutput; orgId: string; orgName: string };
+
+async function watchedDeployments(): Promise<Map<string, WatchedDeployment>> {
+  const entries = await enabledDeployments();
+  if (entries.length === 0) {
+    return new Map();
+  }
+  const [deployments, orgs] = await Promise.all([
+    byType(entries, (type, ofType) => type.withStatus(ofType)),
+    getDB().select({ id: organizationT.id, name: organizationT.name }).from(organizationT)
+      .where(inArray(organizationT.id, [...new Set(entries.map(({ organizationId }) => organizationId))])),
+  ]);
+  const orgIdOf = new Map(entries.map(({ id, organizationId }) => [id, organizationId]));
+  const orgNameOf = new Map(orgs.map(({ id, name }) => [id, name]));
+  return new Map(deployments.flat().map((deployment) => {
+    const orgId = orgIdOf.get(deployment.id)!;
+    return [deployment.id, { deployment, orgId, orgName: orgNameOf.get(orgId) ?? "" }];
+  }));
 }
 
-function dispatchDeploymentPhaseNotification(
-  deploymentId: string,
-  info: DeploymentInfo,
-  type: NotificationType,
-  label: string,
-  extraData: Record<string, unknown> = {},
-): void {
+function dispatchDeploymentNotice({ deployment, orgId, orgName }: WatchedDeployment, notice: DeploymentNotice): void {
   void notifyOrgMembers({
-    type,
-    organizationId: info.orgId,
+    type: notice.type,
+    organizationId: orgId,
     data: {
-      deploymentName: info.name,
-      publicSpecifier: info.model,
-      orgName: info.orgName,
-      dashboardUrl: `${MODELHUB_URL}${deploymentId}`,
-      ...extraData,
+      deploymentName: deployment.name,
+      publicSpecifier: deployment.publicSpecifier,
+      orgName,
+      dashboardUrl: `${MODELHUB_URL}${deployment.id}`,
+      ...notice.data(deployment.status),
     },
-  }).catch((err: unknown) => log.error({ err }, `Failed to send deployment ${label} notification`));
-  log.info({ deploymentId, name: info.name }, `Deployment ${label} notification sent`);
+  }).catch((err: unknown) => log.error({ err }, `Failed to send deployment ${notice.label} notification`));
+  log.info({ deploymentId: deployment.id, name: deployment.name }, `Deployment ${notice.label} notification sent`);
 }
 
 async function checkDeploymentStatus(state: SchedulerState) {
   try {
-    const currentPhases = await getDeploymentPhases();
+    const current = await watchedDeployments();
 
-    for (const [deploymentId, info] of currentPhases) {
+    for (const [deploymentId, watched] of current) {
+      const phase = watched.deployment.status?.phase ?? "pending";
       const previousPhase = state.deploymentPhases.get(deploymentId);
-      state.deploymentPhases.set(deploymentId, info.phase);
+      state.deploymentPhases.set(deploymentId, phase);
 
-      if (!state.initialized || previousPhase === undefined) continue;
-      if (previousPhase === info.phase) continue;
-
-      if (info.phase === "ready") {
-        dispatchDeploymentPhaseNotification(deploymentId, info, NotificationType.deployment_ready, "ready", {
-          observedReplicas: info.observedReplicas,
-          desiredReplicas: info.desiredReplicas,
-        });
-      } else if (info.phase === "failed") {
-        dispatchDeploymentPhaseNotification(deploymentId, info, NotificationType.deployment_failed, "failed", {
-          errorMessage: info.error ?? "An unknown error occurred during installation",
-        });
+      if (!state.initialized || previousPhase === undefined) {
+        continue;
+      }
+      const notice = noticeOnChange(previousPhase, phase);
+      if (notice) {
+        dispatchDeploymentNotice(watched, notice);
       }
     }
 
-    pruneStaleCacheEntries(state.deploymentPhases, currentPhases.keys());
+    pruneStaleCacheEntries(state.deploymentPhases, current.keys());
   } catch (err) {
     log.error({ err }, "Failed to check deployment status");
   }

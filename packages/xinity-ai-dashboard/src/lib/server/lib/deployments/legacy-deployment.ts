@@ -4,7 +4,7 @@ import { MIN_CANARY_REPLICAS, type DeploymentOutput, type LegacyDeploymentInput 
 import { getDB } from "$lib/server/db";
 import { resolvesOnlyAsLegacy } from "$lib/server/lib/models/model-catalog";
 import { modelTypeMismatch } from "./canary-deployment";
-import { markMissingFromCatalog, phasesOf, uninstallOwnedBy, withInstallationStatus } from "./deployment-reads";
+import { markMissingFromCatalog, uninstallOwnedBy, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType, Transaction } from "./deployment-types";
 import { createManaged } from "./managed-deployment";
 import { requirementsForDeployments } from "./requirements";
@@ -106,11 +106,6 @@ export const legacyDeployment: DashboardDeploymentType = {
   async requirements(entries) {
     const rows = await withLegacyRows(entries);
     return requirementsForDeployments(rows.map(({ deployment_legacy }) => deployment_legacy));
-  },
-
-  async phases(entries) {
-    const rows = await withLegacyRows(entries);
-    return phasesOf(entries, new Map(rows.map(({ deployment, deployment_legacy }) => [deployment.id, deployment_legacy.replicas])));
   },
 
   async reviewUpdate(entry, input) {

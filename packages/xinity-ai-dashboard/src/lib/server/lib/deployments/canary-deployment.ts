@@ -3,7 +3,7 @@ import type { RolloutAdvance } from "common-env";
 import { MIN_CANARY_REPLICAS, type DeploymentOutput, type RolloutAdvanceInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
-import { markMissingFromCatalog, phasesOf, withInstallationStatus } from "./deployment-reads";
+import { markMissingFromCatalog, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType } from "./deployment-types";
 import { hasChanges, rejectWhileEnabled, restrictedChanges } from "./managed-deployment";
 import { requirementsForCanaries, type CanaryPlan } from "./requirements";
@@ -101,11 +101,6 @@ export const canaryDeployment: DashboardDeploymentType = {
 
   async requirements(entries) {
     return requirementsForCanaries((await withCanaryRows(entries)).map(({ canary, from, to }) => ({ ...canary, from, to })));
-  },
-
-  async phases(entries) {
-    const rows = await withCanaryRows(entries);
-    return phasesOf(entries, new Map(rows.map(({ entry, canary }) => [entry.id, canary.replicas])));
   },
 
   async reviewUpdate(entry, input) {

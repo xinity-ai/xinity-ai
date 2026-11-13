@@ -1,7 +1,7 @@
 import { deploymentManagedT, deploymentT, inArray, managedOfDeployment, sql, type Deployment, type DeploymentManaged } from "common-db";
 import type { CanaryMemberInput, DeploymentOutput, ManagedDeploymentInput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
-import { markMissingFromCatalog, phasesOf, withInstallationStatus } from "./deployment-reads";
+import { markMissingFromCatalog, withInstallationStatus } from "./deployment-reads";
 import type { DashboardDeploymentType, Transaction } from "./deployment-types";
 import { requirementsForManaged } from "./requirements";
 
@@ -52,11 +52,6 @@ export const managedDeployment: DashboardDeploymentType = {
   async requirements(entries) {
     const rows = await withManagedRows(entries);
     return requirementsForManaged(rows.map(({ deployment_managed }) => deployment_managed));
-  },
-
-  async phases(entries) {
-    const rows = await withManagedRows(entries);
-    return phasesOf(entries, new Map(rows.map(({ deployment, deployment_managed }) => [deployment.id, deployment_managed.replicas])));
   },
 
   async reviewUpdate(entry, input) {

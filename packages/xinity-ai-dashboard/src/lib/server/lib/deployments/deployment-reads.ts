@@ -8,7 +8,6 @@ import {
   installationOnLiveNode,
   modelInstallationStateT,
   modelInstallationT,
-  organizationT,
   sql,
   stateOfInstallation,
   type Deployment,
@@ -16,7 +15,6 @@ import {
 import { CANARY_MEMBERS, type DeploymentOutput } from "$lib/orpc/dtos/model.dto";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable } from "$lib/server/lib/models/model-catalog";
-import type { DeploymentPhaseRow } from "$lib/server/notifications/scheduler";
 import { foldDeploymentStatusRows, wantedOf } from "./deployment-status";
 import type { Transaction } from "./deployment-types";
 
@@ -47,30 +45,6 @@ export async function withInstallationStatus(deployments: DeploymentOutput[]): P
     const side = CANARY_MEMBERS.find((member) => ownerId && ownerId === { from: fromId, to: toId }[member]);
     return deployment ? [{ ...installation, deployment, side }] : [];
   }));
-}
-
-export async function phasesOf(entries: Deployment[], desiredReplicas: ReadonlyMap<string, number>): Promise<DeploymentPhaseRow[]> {
-  const rows = await getDB()
-    .select({
-      deploymentId: deploymentT.id,
-      deploymentName: deploymentT.name,
-      organizationId: deploymentT.organizationId,
-      orgName: organizationT.name,
-      publicSpecifier: deploymentT.publicSpecifier,
-      installationId: modelInstallationT.id,
-      installationGroup: modelInstallationT.group,
-      liveNodeId: aiNodeT.id,
-      lifecycleState: modelInstallationStateT.lifecycleState,
-      errorMessage: modelInstallationStateT.errorMessage,
-    })
-    .from(deploymentT)
-    .leftJoin(deploymentCanaryT, canaryOfDeployment)
-    .leftJoin(organizationT, sql`${organizationT.id} = ${deploymentT.organizationId}`)
-    .leftJoin(modelInstallationT, liveInstallation)
-    .leftJoin(modelInstallationStateT, stateOfInstallation)
-    .leftJoin(aiNodeT, installationOnLiveNode)
-    .where(inArray(deploymentT.id, idsOf(entries)));
-  return rows.map((row) => ({ ...row, desiredReplicas: desiredReplicas.get(row.deploymentId) ?? 0 }));
 }
 
 async function isMissingFromCatalog(specifier: string): Promise<boolean> {
