@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeAll, afterAll, jest, afterEach } from "bun:test";
-import { mockBackendFetch, modelFound } from "./test-helpers";
+import { makeHoldingBackend, mockBackendFetch, modelFound } from "./test-helpers";
 
 
 import type { checkAuth as checkAuthT } from "../auth";
@@ -46,8 +46,9 @@ mock.module("../../callLogger", () => ({
   logChatSync: mockLogChatSync,
 }));
 
+const recordUsageEvent = mock((_record: Record<string, unknown>) => {});
 mock.module("../../usageRecorder", () => ({
-  recordUsageEvent: mock(() => {}),
+  recordUsageEvent,
 }));
 
 const { handleCompletion } = await import("./handle-completions");
@@ -87,6 +88,8 @@ function makeCompletionJsonResponse(model: string, text: string): Response {
 let server: ReturnType<typeof Bun.serve>;
 let nextUpstreamResponse: Response | null = null;
 let lastUpstreamBody: Record<string, unknown> | null = null;
+// Answers the next upstream request in place of the default logic, for tests that hold it.
+let nextUpstreamHandler: ((req: Request) => Promise<Response>) | null = null;
 
 beforeAll(() => {
   server = Bun.serve({
@@ -94,6 +97,11 @@ beforeAll(() => {
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/v1/completions") {
+        if (nextUpstreamHandler) {
+          const handle = nextUpstreamHandler;
+          nextUpstreamHandler = null;
+          return handle(req);
+        }
         if (nextUpstreamResponse) {
           const r = nextUpstreamResponse;
           nextUpstreamResponse = null;
@@ -115,8 +123,10 @@ afterEach(() => {
   getModelInfo.mockClear();
   mockLogChatStream.mockClear();
   mockLogChatSync.mockClear();
+  recordUsageEvent.mockClear();
   nextUpstreamResponse = null;
   lastUpstreamBody = null;
+  nextUpstreamHandler = null;
 });
 
 afterAll(() => {
@@ -211,4 +221,39 @@ describe("handleCompletion", () => {
     expect(mockLogChatSync).not.toHaveBeenCalled();
   });
 
+});
+
+describe("handleCompletion, usage recording", () => {
+  function completionRequest(body: Record<string, unknown>, signal?: AbortSignal): Request {
+    return new Request("http://localhost:4000/v1/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", prompt: "Hi", ...body }),
+      signal,
+    });
+  }
+
+  test("asks the backend for per-chunk usage on a streaming call", async () => {
+    const res = await handleCompletion(completionRequest({ stream: true }));
+    await res.text();
+
+    expect(lastUpstreamBody?.stream_options).toEqual({ include_usage: true, continuous_usage_stats: true });
+  });
+
+  for (const stream of [true, false]) {
+    test(`a client abort before the backend headers gives 499 and one 0-token row (stream: ${stream})`, async () => {
+      const backend = makeHoldingBackend("headers");
+      nextUpstreamHandler = backend.handle;
+      const client = new AbortController();
+
+      const pending = handleCompletion(completionRequest({ stream }, client.signal));
+      await backend.reached;
+      client.abort();
+      const res = await pending;
+
+      expect(res.status).toBe(499);
+      expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+      expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ success: true, logged: false, inputTokens: 0, outputTokens: 0 });
+    });
+  }
 });

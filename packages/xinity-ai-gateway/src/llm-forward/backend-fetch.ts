@@ -1,6 +1,7 @@
 import { createOpenAICompatible, type OpenAICompatibleProvider } from "@ai-sdk/openai-compatible";
 import { signRequest } from "common-env";
 import { config } from "../config";
+import { addStreamUsageOptions } from "./stream-usage-options";
 
 const customCa = config.inference.ca;
 const tlsOptions = customCa ? { ca: customCa } : undefined;
@@ -69,6 +70,7 @@ export function nodeProvider(target: BackendTarget & { driver: string }): OpenAI
     baseURL: backendUrl(target.host, target.installationId, "/v1", target.tls),
     includeUsage: true,
     supportsStructuredOutputs: target.driver === "vllm",
+    transformRequestBody: addStreamUsageOptions,
     fetch: ((url, init) => backendFetch(url, { ...init, authToken })) as typeof globalThis.fetch,
   });
 }

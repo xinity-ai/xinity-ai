@@ -6,6 +6,7 @@ import type { ApiCallInputMessage } from "common-db";
 import { rootLogger } from "../../logger";
 import { config } from "../../config";
 import { backendPostJson, createIdleTimeout } from "../backend-fetch";
+import { STREAM_USAGE_OPTIONS } from "../stream-usage-options";
 import {
   forwardOpenAIResponse,
   type NonStreamSpec,
@@ -121,7 +122,7 @@ export const handleCompletion = withEndpointGuards({
       stream: body.stream,
     };
     if (body.stream) {
-      fetchBody.stream_options = { include_usage: true };
+      fetchBody.stream_options = STREAM_USAGE_OPTIONS;
     }
 
     const idle = body.stream ? createIdleTimeout() : undefined;

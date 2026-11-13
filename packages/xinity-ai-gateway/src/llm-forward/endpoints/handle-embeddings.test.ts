@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, mock, test, jest } from "bun:test";
-import { makeRawJsonResponse, mockBackendFetch, modelFound } from "./test-helpers";
+import { makeHoldingBackend, makeRawJsonResponse, mockBackendFetch, modelFound } from "./test-helpers";
 
 
 import type { checkAuth as checkAuthT } from "../auth";
@@ -39,14 +39,17 @@ mock.module("../model-data", () => ({
 
 mockBackendFetch();
 
+const recordUsageEvent = mock((_record: Record<string, unknown>) => {});
 mock.module("../../usageRecorder", () => ({
-  recordUsageEvent: mock(() => {}),
+  recordUsageEvent,
 }));
 
 const { handleEmbeddingGeneration } = await import("./handle-embeddings");
 
 let server: ReturnType<typeof Bun.serve>;
 let nextUpstreamResponse: Response | null = null;
+// Answers the next upstream request in place of the default logic, for tests that hold it.
+let nextUpstreamHandler: ((req: Request) => Promise<Response>) | null = null;
 
 beforeAll(() => {
   server = Bun.serve({
@@ -54,6 +57,11 @@ beforeAll(() => {
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/v1/embeddings") {
+        if (nextUpstreamHandler) {
+          const handle = nextUpstreamHandler;
+          nextUpstreamHandler = null;
+          return handle(req);
+        }
         if (nextUpstreamResponse) {
           const r = nextUpstreamResponse;
           nextUpstreamResponse = null;
@@ -85,7 +93,9 @@ beforeAll(() => {
 afterEach(() => {
   checkAuth.mockClear();
   getModelInfo.mockClear();
+  recordUsageEvent.mockClear();
   nextUpstreamResponse = null;
+  nextUpstreamHandler = null;
 });
 
 afterAll(() => {
@@ -297,4 +307,28 @@ describe("handleEmbeddingGeneration, backend response resilience", () => {
     const res = await handleEmbeddingGeneration(makeRequest());
     expect(res.status).toBe(502);
   });
+});
+
+describe("handleEmbeddingGeneration, client abort", () => {
+  for (const stage of ["headers", "body"] as const) {
+    test(`a client abort while the gateway waits for the backend ${stage} gives 499 and one 0-token row`, async () => {
+      const backend = makeHoldingBackend(stage);
+      nextUpstreamHandler = backend.handle;
+      const client = new AbortController();
+
+      const pending = handleEmbeddingGeneration(new Request("http://localhost:4000/v1/embeddings", {
+        method: "POST",
+        headers: { "Authorization": "Bearer test" },
+        body: JSON.stringify({ model: "test-model", input: "hello" }),
+        signal: client.signal,
+      }));
+      await backend.reached;
+      client.abort();
+      const res = await pending;
+
+      expect(res.status).toBe(499);
+      expect(recordUsageEvent).toHaveBeenCalledTimes(1);
+      expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ success: true, logged: false, inputTokens: 0, outputTokens: 0 });
+    });
+  }
 });
