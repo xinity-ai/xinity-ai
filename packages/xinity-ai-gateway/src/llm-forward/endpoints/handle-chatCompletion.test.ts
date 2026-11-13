@@ -6,6 +6,9 @@ import {
   makeChatSseResponseWithToolCalls,
   makeChatSseResponseWithReasoning,
   makeRawJsonResponse,
+  makeChatSseChunksWithUsage,
+  makeControlledSseStream,
+  makeHoldingBackend,
   mockBackendFetch,
   modelFound,
 } from "./test-helpers";
@@ -81,6 +84,8 @@ let lastUpstreamBody: Record<string, unknown> | null = null;
 // Mock upstream server that returns tool call responses when tools are in the request
 let server: any;
 let nextUpstreamResponse: Response | null = null;
+// Answers the next upstream request in place of the default logic, for tests that hold it.
+let nextUpstreamHandler: ((req: Request) => Promise<Response>) | null = null;
 
 beforeAll(() => {
   server = Bun.serve({
@@ -88,6 +93,11 @@ beforeAll(() => {
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/v1/chat/completions") {
+        if (nextUpstreamHandler) {
+          const handle = nextUpstreamHandler;
+          nextUpstreamHandler = null;
+          return handle(req);
+        }
         if (nextUpstreamResponse) {
           const r = nextUpstreamResponse;
           nextUpstreamResponse = null;
@@ -126,6 +136,7 @@ afterEach(() => {
   recordUsageEvent.mockClear();
   lastUpstreamBody = null;
   nextUpstreamResponse = null;
+  nextUpstreamHandler = null;
 })
 
 afterAll(() => {
@@ -1281,5 +1292,105 @@ describe("handleChatCompletion, developer messages", () => {
 
     expect(res.status).toBe(200);
     expect((lastUpstreamBody!.messages as unknown[])[0]).toEqual({ role: "developer", content: "answer in French" });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// usage recording for streams and client aborts
+// ---------------------------------------------------------------------------
+
+describe("handleChatCompletion, usage recording", () => {
+  function chatRequest(body: Record<string, unknown>, signal?: AbortSignal): Request {
+    return new Request("http://localhost:4000/v1/chat/completions", {
+      method: "POST",
+      headers: { "Authorization": "Bearer test" },
+      body: JSON.stringify({ model: "test-model", messages: [{ role: "user", content: "Hi" }], ...body }),
+      signal,
+    });
+  }
+
+  function rows(): Record<string, unknown>[] {
+    return recordUsageEvent.mock.calls.map(([row]) => row);
+  }
+
+  test("asks the backend for per-chunk usage on a streaming call", async () => {
+    const res = await handleChatCompletion(chatRequest({ stream: true }));
+    await res.text();
+
+    expect(lastUpstreamBody?.stream_options).toEqual({ include_usage: true, continuous_usage_stats: true });
+  });
+
+  test("a model's requestParams cannot turn off continuous_usage_stats", async () => {
+    getModelInfo.mockImplementationOnce(async () => modelFound({
+      installationId: "inst-1",
+      nodeId: "node-1",
+      host: `localhost:${mockPort}`,
+      specifier: "test-model",
+      model: "test-model",
+      driver: "vllm",
+      authToken: null,
+      tls: false,
+      tags: ["tools"],
+      requestParams: { "stream_options.continuous_usage_stats": "boolean" },
+      maxContextLength: 131072,
+      release: () => {},
+    }));
+
+    const res = await handleChatCompletion(chatRequest({ stream: true, stream_options: { continuous_usage_stats: false } }));
+    await res.text();
+
+    expect(lastUpstreamBody?.stream_options).toEqual({ include_usage: true, continuous_usage_stats: true });
+  });
+
+  for (const stream of [true, false]) {
+    test(`a client abort before the backend headers gives 499 and one 0-token row (stream: ${stream})`, async () => {
+      const backend = makeHoldingBackend("headers");
+      nextUpstreamHandler = backend.handle;
+      const client = new AbortController();
+
+      const pending = handleChatCompletion(chatRequest({ stream }, client.signal));
+      await backend.reached;
+      client.abort();
+      const res = await pending;
+
+      expect(res.status).toBe(499);
+      expect(rows()).toHaveLength(1);
+      expect(rows()[0]).toMatchObject({ success: true, logged: false, inputTokens: 0, outputTokens: 0 });
+    });
+  }
+
+  test("a client abort while the non-stream body arrives gives 499 and one 0-token row", async () => {
+    const backend = makeHoldingBackend("body");
+    nextUpstreamHandler = backend.handle;
+    const client = new AbortController();
+
+    const pending = handleChatCompletion(chatRequest({ stream: false }, client.signal));
+    await backend.reached;
+    client.abort();
+    const res = await pending;
+
+    expect(res.status).toBe(499);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ success: true, inputTokens: 0, outputTokens: 0 });
+  });
+
+  test("a client abort after the 200 gives exactly one row, with the usage seen so far", async () => {
+    const chunks = makeChatSseChunksWithUsage("test-model", ["a", "b", "c", "d"]).slice(0, 2);
+    nextUpstreamHandler = async () => new Response(makeControlledSseStream(chunks, "hold").stream, {
+      headers: { "Content-Type": "text/event-stream" },
+    });
+    const client = new AbortController();
+
+    const res = await handleChatCompletion(chatRequest({ stream: true }, client.signal));
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    await reader.read();
+    await reader.read();
+    client.abort();
+    // The stream ends once the aborted backend read throws.
+    while (!(await reader.read()).done) {}
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ success: true, logged: false, inputTokens: 5, outputTokens: 2 });
   });
 });

@@ -12,6 +12,7 @@ import { config } from "../../config";
 import { processMessageMedia, mediaStore } from "../../media-store";
 import { callWillBeLogged } from "../usage";
 import { backendPostJson, createIdleTimeout } from "../backend-fetch";
+import { STREAM_USAGE_OPTIONS } from "../stream-usage-options";
 import {
   forwardOpenAIResponse,
   type NonStreamSpec,
@@ -262,15 +263,16 @@ export const handleChatCompletion = withEndpointGuards({
       tools: body.tools,
       tool_choice: body.tool_choice,
     };
-    if (body.stream) {
-      fetchBody.stream_options = { include_usage: true };
-    }
     if (body.structured_outputs) {
       fetchBody.structured_outputs = body.structured_outputs;
     }
     const extraParams = extractAllowedRequestParams(rawBody, modelInfo.requestParams);
     if (extraParams) {
       Object.assign(fetchBody, extraParams);
+    }
+    // After the merge, so a model's request params cannot turn off the usage that recording needs.
+    if (body.stream) {
+      fetchBody.stream_options = STREAM_USAGE_OPTIONS;
     }
 
     const logFields = {

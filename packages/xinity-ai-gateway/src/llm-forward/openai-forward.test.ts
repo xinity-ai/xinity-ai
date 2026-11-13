@@ -1,7 +1,15 @@
-import { describe, test, expect, spyOn } from "bun:test";
+import { describe, test, expect, spyOn, afterEach, afterAll } from "bun:test";
 
 import { rootLogger } from "../logger";
+import * as usageRecorder from "../usageRecorder";
 import { BackendChatChunkSchema } from "./backend-schemas";
+import { makeChatSseChunksWithUsage, makeControlledSseStream, SSE_PROMPT_TOKENS, type SseStreamEnd } from "./endpoints/test-helpers";
+
+// One mock call is one usage_event row.
+const recordUsageEvent = spyOn(usageRecorder, "recordUsageEvent").mockImplementation(() => {});
+afterEach(() => recordUsageEvent.mockClear());
+afterAll(() => recordUsageEvent.mockRestore());
+
 const { isStandardStreamingChunk, forwardOpenAIStream } = await import("./openai-forward");
 
 describe("isStandardStreamingChunk fast-path shape check", () => {
@@ -200,5 +208,167 @@ describe("forwardOpenAIStream", () => {
 
     expect(text).toMatch(/"type":"server_error"/);
     expect(text).not.toContain("something internal");
+  });
+});
+
+describe("forwardOpenAIStream usage recording", () => {
+  const log = rootLogger.child({ name: "openai-forward-usage-test" });
+
+  const logFields = {
+    auth: { keyId: "k", orgId: "o", applicationId: null, collectData: false },
+    modelInfo: { model: "m" },
+    publicSpecifier: "pub-m",
+    endpoint: "chat_completions" as const,
+    inputMessages: [],
+    callStartTime: Date.now(),
+  };
+
+  const chatSpec = {
+    chunkSchema: BackendChatChunkSchema,
+    initAcc: () => ({ text: "" }),
+    applyChoice: (acc: { text: string }, choice: any) => {
+      if (choice.delta?.content) acc.text += choice.delta.content;
+    },
+    toLogEntry: (acc: { text: string }, index: number, model: string) => ({
+      model,
+      choices: [{ index, delta: { role: "assistant", content: acc.text } }],
+    }),
+  };
+
+  const CONTENT = ["a", "b", "c", "d", "e"];
+
+  function forward(stream: ReadableStream<Uint8Array>, includeUsage = false): Response {
+    return forwardOpenAIStream({
+      backendResponse: new Response(stream, { headers: { "Content-Type": "text/event-stream" } }),
+      originalModel: "public-model",
+      includeUsage,
+      spec: chatSpec,
+      logFields,
+      log,
+    });
+  }
+
+  function forwardChunks(chunks: string[], end: SseStreamEnd, includeUsage = false): Promise<string> {
+    return forward(makeControlledSseStream(chunks, end).stream, includeUsage).text();
+  }
+
+  function rows() {
+    return recordUsageEvent.mock.calls.map(([row]) => row);
+  }
+
+  async function waitForRows(count: number): Promise<void> {
+    const deadline = Date.now() + 1000;
+    while (recordUsageEvent.mock.calls.length < count && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+
+  function dataEvents(text: string): any[] {
+    return text.split("\n\n")
+      .filter((event) => event.startsWith("data: ") && event !== "data: [DONE]")
+      .map((event) => JSON.parse(event.slice("data: ".length)));
+  }
+
+  test("client abort after 3 chunks records the usage of chunk 3 as a success", async () => {
+    const chunks = makeChatSseChunksWithUsage("backend-model", CONTENT).slice(0, 3);
+    await forwardChunks(chunks, "abort");
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ success: true, logged: false, inputTokens: SSE_PROMPT_TOKENS, outputTokens: 3 });
+  });
+
+  test("client cancel records exactly one row when the next enqueue fails", async () => {
+    const chunks = makeChatSseChunksWithUsage("backend-model", CONTENT);
+    const { stream, release } = makeControlledSseStream(chunks, "done", { gateAfter: 2 });
+    const reader = forward(stream).body!.getReader();
+
+    await reader.read();
+    await reader.read();
+    await reader.cancel();
+    release();
+    await waitForRows(1);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ success: true, inputTokens: SSE_PROMPT_TOKENS, outputTokens: 3 });
+  });
+
+  test("a stream without [DONE] records a failure with the usage of the last chunk", async () => {
+    const chunks = makeChatSseChunksWithUsage("backend-model", CONTENT).slice(0, 4);
+    await forwardChunks(chunks, "cut");
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ success: false, inputTokens: SSE_PROMPT_TOKENS, outputTokens: 4 });
+  });
+
+  test("a backend error event mid-stream records a failure with the last usage", async () => {
+    const chunks = [
+      ...makeChatSseChunksWithUsage("backend-model", CONTENT).slice(0, 2),
+      `data: ${JSON.stringify({ error: { message: "engine died", code: 500 } })}\n\n`,
+    ];
+    await forwardChunks(chunks, "done");
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ success: false, inputTokens: SSE_PROMPT_TOKENS, outputTokens: 2 });
+  });
+
+  test("an idle timeout records a failure with the last usage", async () => {
+    const chunks = makeChatSseChunksWithUsage("backend-model", CONTENT).slice(0, 2);
+    await forwardChunks(chunks, "timeout");
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ success: false, inputTokens: SSE_PROMPT_TOKENS, outputTokens: 2 });
+  });
+
+  test("[DONE] records the usage of the final usage-only chunk", async () => {
+    const chunks = makeChatSseChunksWithUsage("backend-model", CONTENT, { finalUsageChunk: true });
+    chunks[chunks.length - 1] = chunks.at(-1)!.replace(`"completion_tokens":${CONTENT.length}`, `"completion_tokens":9`);
+    await forwardChunks(chunks, "done");
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ success: true, inputTokens: SSE_PROMPT_TOKENS, outputTokens: 9 });
+  });
+
+  test("without include_usage, no forwarded chunk has usage", async () => {
+    const chunks = makeChatSseChunksWithUsage("backend-model", CONTENT, { finalUsageChunk: true });
+    const events = dataEvents(await forwardChunks(chunks, "done", false));
+
+    expect(events.length).toBeGreaterThan(0);
+    expect(events.some((event) => "usage" in event)).toBe(false);
+    expect(events.some((event) => event.choices.length === 0)).toBe(false);
+  });
+
+  test("with include_usage, only the one usage-only chunk has usage", async () => {
+    const chunks = makeChatSseChunksWithUsage("backend-model", CONTENT, { finalUsageChunk: true });
+    const events = dataEvents(await forwardChunks(chunks, "done", true));
+
+    const withUsage = events.filter((event) => "usage" in event);
+    expect(withUsage).toHaveLength(1);
+    expect(withUsage[0].choices).toEqual([]);
+    expect(withUsage[0].usage.completion_tokens).toBe(CONTENT.length);
+  });
+
+  test("usage on the finish_reason chunk gives the client one usage-only chunk with that usage", async () => {
+    const chunks = makeChatSseChunksWithUsage("backend-model", CONTENT);
+    const events = dataEvents(await forwardChunks(chunks, "done", true));
+
+    const withUsage = events.filter((event) => "usage" in event);
+    expect(withUsage).toHaveLength(1);
+    expect(withUsage[0]).toMatchObject({ id: "test-id", model: "public-model", choices: [] });
+    expect(withUsage[0].usage).toEqual({
+      prompt_tokens: SSE_PROMPT_TOKENS,
+      completion_tokens: CONTENT.length,
+      total_tokens: SSE_PROMPT_TOKENS + CONTENT.length,
+    });
+    expect(events.at(-1)).toBe(withUsage[0]);
+  });
+
+  test("a backend without per-chunk usage records 0/0 on abort", async () => {
+    const chunks = CONTENT.slice(0, 3).map((content) =>
+      `data: ${JSON.stringify({ id: "c", object: "chat.completion.chunk", created: 1, model: "backend-model", choices: [{ index: 0, delta: { content } }] })}\n\n`);
+    await forwardChunks(chunks, "abort");
+
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0]).toMatchObject({ success: true, inputTokens: 0, outputTokens: 0 });
   });
 });

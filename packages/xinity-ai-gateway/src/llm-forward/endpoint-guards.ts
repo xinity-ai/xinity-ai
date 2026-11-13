@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { resolveModel, type ResolvedModel } from "./ai-sdk";
-import { errorResponse, handleEndpointError, recordFailedRequest, validateModelType, validationError } from "./util";
+import { errorResponse, handleEndpointError, recordFailedRequest, recordUsage, validateModelType, validationError } from "./util";
 import { checkAuth, type AuthResult } from "./auth";
 import type { Logger } from "common-log";
 
@@ -72,9 +72,22 @@ export function withEndpointGuards<TBody>(
     let resolved: ResolvedModel | undefined;
 
     // Once a node was selected, any error response counts against it on the
-    // Compute page. 499 (client disconnect) is not a backend failure.
+    // Compute page. 499 (client disconnect) is not a backend failure: the call
+    // is recorded as finished, with 0 tokens, since no response reached the client.
     const noteFailedRequest = (res: Response): Response => {
-      if (resolved && res.status >= 400 && res.status !== 499) {
+      if (!resolved) {
+        return res;
+      }
+      if (res.status === 499) {
+        recordUsage({
+          usage: undefined,
+          auth: resolved.auth,
+          modelInfo: resolved.modelInfo,
+          callStartTime,
+          logCalls: false,
+          deployment: resolved.originalModel,
+        });
+      } else if (res.status >= 400) {
         recordFailedRequest({ auth: resolved.auth, modelInfo: resolved.modelInfo, callStartTime });
       }
       return res;
