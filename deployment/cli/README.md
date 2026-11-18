@@ -64,6 +64,8 @@ Key properties:
 
 Host addresses are anything ssh accepts; use `root@ip` for zero prompts, or a sudo-capable user (one password prompt per host, asked up front).
 
+**Writing the stack file directly.** A stack is one JSON file, which you or a coding agent can write instead of going through `stack init` and `stack edit`. [Stack Files](stack-file.md) describes its layers, required values and validation, and [`stack.schema.json`](stack.schema.json) is its JSON Schema.
+
 **Bring your own infrastructure.** A stack deploys and reconciles Xinity's own components; it deliberately does not provision the infrastructure underneath them. `stack init` asks for your PostgreSQL connection URL, and optionally a Redis one for a cache the gateways share, as given facts (migrations are then handled for you). If you need that infrastructure created first, the assistants under `xinity up infra-*` do exactly that, and the URLs they produce go straight into the stack's shared settings.
 
 ## Deploy on a Single Machine

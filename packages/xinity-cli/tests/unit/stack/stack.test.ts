@@ -120,6 +120,16 @@ describe("stack persistence", () => {
     });
   });
 
+  test("keeps the schema reference of a hand-written file when saving it", () => {
+    const schema = "https://raw.githubusercontent.com/xinity-ai/xinity-ai/main/deployment/cli/stack.schema.json";
+    tmp.write("xinity/stacks/written.json", JSON.stringify({ $schema: schema, name: "written" }));
+
+    saveStack(loadStack("written")!);
+
+    const written = JSON.parse(readFileSync(definitionPath("written"), "utf-8")) as Record<string, unknown>;
+    expect(written.$schema).toBe(schema);
+  });
+
   test("loadStack moves a stored HF_TOKEN onto the key the daemon actually reads", () => {
     tmp.write(
       "xinity/stacks/old.json",
