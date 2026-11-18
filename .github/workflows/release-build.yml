@@ -46,7 +46,7 @@ jobs:
           - package: xinity-ai-daemon
             entry: src/index.ts
             workdir: packages/xinity-ai-daemon
-            targets: "bun-linux-x64 bun-linux-x64-baseline bun-linux-arm64 bun-darwin-arm64"
+            targets: "bun-linux-x64 bun-linux-x64-baseline bun-linux-arm64 bun-darwin-x64 bun-darwin-arm64"
           - package: xinity-infoserver
             entry: server.ts
             workdir: packages/xinity-infoserver

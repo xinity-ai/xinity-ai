@@ -7,7 +7,7 @@
  * rest return inert defaults so the Host interface is satisfied.
  */
 import type { Host, RunResult, ElevationResult, TunnelResult } from "../../src/lib/core/host.ts";
-import type { HostArch } from "../../src/lib/core/platform.ts";
+import type { HostArch, HostOs } from "../../src/lib/core/platform.ts";
 
 type RunHandler = (args: string[]) => Partial<RunResult> | undefined;
 type ShellHandler = (command: string) => Partial<RunResult> | undefined;
@@ -22,6 +22,7 @@ export type FakeHostConfig = {
   withElevation?: ElevationHandler;
   /** Virtual filesystem for readFile/fileExists. */
   files?: Record<string, string>;
+  os?: HostOs;
 }
 
 const FAIL: RunResult = { ok: false, output: "", exitCode: 1 };
@@ -31,7 +32,11 @@ export class FakeHost implements Host {
   /** Every command string seen, in order, for assertions. */
   readonly calls: string[] = [];
 
-  constructor(private readonly config: FakeHostConfig = {}) {}
+  readonly os: HostOs;
+
+  constructor(private readonly config: FakeHostConfig = {}) {
+    this.os = config.os ?? "linux";
+  }
 
   async run(args: string[]): Promise<RunResult> {
     this.calls.push(args.join(" "));

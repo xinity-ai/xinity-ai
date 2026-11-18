@@ -18,6 +18,7 @@ function updateAction(): ComponentAction {
     secretFiles: { remove: [], keptForOtherComponents: [] },
     hardReset: true,
     serviceRunning: true,
+    hostOs: "linux",
   };
 }
 
@@ -50,5 +51,15 @@ describe("applyComponentAction on an update", () => {
     expect(stop).toBeGreaterThan(backup);
     expect(restore).toBeGreaterThan(stop);
     expect(start).toBeGreaterThan(restore);
+  });
+
+  test("keeps the backup of a launchd job out of the directory launchd loads", async () => {
+    const host = new FakeHost({ os: "darwin", run: (args) => (args[1] === "print" ? { ...RUN_OK, output: "\tstate = running" } : undefined) });
+
+    await applyComponentAction({ ...updateAction(), kind: "reconfigure", hostOs: "darwin" }, host, createSilentProgress());
+
+    const backup = host.calls.find((c) => c.startsWith("rm -rf") && c.includes(".bak"))!;
+    expect(backup).toContain("cp -a /Library/LaunchDaemons/ai.xinity.gateway.plist /etc/xinity-ai/ai.xinity.gateway.plist.bak");
+    expect(backup).not.toContain("/Library/LaunchDaemons/ai.xinity.gateway.plist.bak");
   });
 });

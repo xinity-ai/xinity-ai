@@ -501,7 +501,7 @@ async function applyStackPlan(
         const cacheKey = `${action.component}:${arch}`;
         if (!buildCache.has(cacheKey)) {
           log.info(`Building ${cyan(action.component)} for ${arch}…`);
-          const result = await runSteps(buildLocalArtifact(action.component, action.localRepoPath!, arch), createSilentProgress());
+          const result = await runSteps(buildLocalArtifact(action.component, action.localRepoPath!, host!.os, arch), createSilentProgress());
           if (!result) {
             fail(action.component, `Local build failed for ${arch}`);
             return false;

@@ -74,6 +74,11 @@ describe("github", () => {
       expect(pickReleaseAsset(release, "gateway", "arm64")).toBe("xinity-ai-gateway-linux-arm64.tar.gz");
     });
 
+    test("picks the build matching the host os", () => {
+      const release = makeRelease(["xinity-ai-daemon-linux-arm64.tar.gz", "xinity-ai-daemon-darwin-arm64.tar.gz"]);
+      expect(pickReleaseAsset(release, "daemon", "arm64", "darwin")).toBe("xinity-ai-daemon-darwin-arm64.tar.gz");
+    });
+
     test("uses the local arch when arch is omitted", () => {
       const expected = localArch();
       const release = makeRelease([`xinity-ai-gateway-linux-${expected}.tar.gz`]);

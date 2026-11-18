@@ -7,8 +7,8 @@
  */
 import { COMMAND_FALLBACK_BIN_DIRS, type Host, type RunResult } from "../core/host.ts";
 import type { Manifest } from "../up/manifest.ts";
-import { unitName } from "../up/systemd.ts";
-import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR } from "../core/component-meta.ts";
+import { serviceManagerOf } from "../up/service-manager.ts";
+import { type Component, ENV_DIR, SECRETS_DIR } from "../core/component-meta.ts";
 import { componentFields, categorizeFields } from "../config/env-prompt.ts";
 
 export type RemoteState = {
@@ -31,7 +31,7 @@ export async function collectRemoteState(
 ): Promise<RemoteState> {
   const filesToCheck: string[] = [];
   const filesToRead: string[] = [];
-  const commandsToCheck: string[] = ["systemctl", "ollama", "docker", "nvidia-smi"];
+  const commandsToCheck: string[] = ["systemctl", "launchctl", "ollama", "docker", "nvidia-smi"];
   const unitsToCheck: string[] = ["ollama.service", "ollama"];
 
   // Per component
@@ -41,8 +41,8 @@ export async function collectRemoteState(
     if (!entry) continue;
 
     filesToCheck.push(entry.binaryPath);
-    filesToCheck.push(`${UNIT_DIR}/${unitName(comp)}`);
-    unitsToCheck.push(unitName(comp));
+    filesToCheck.push(serviceManagerOf(host).definitionPath(comp));
+    unitsToCheck.push(serviceManagerOf(host).serviceName(comp));
 
     const envPath = `${ENV_DIR}/${comp}.env`;
     filesToCheck.push(envPath);
@@ -174,6 +174,7 @@ export function createCachedHost(realHost: Host, state: RemoteState): Host {
     downloadFile: realHost.downloadFile.bind(realHost),
     verifySha256: realHost.verifySha256.bind(realHost),
     computeSha256: realHost.computeSha256.bind(realHost),
+    os: realHost.os,
     getArch: realHost.getArch.bind(realHost),
     openTunnel: realHost.openTunnel.bind(realHost),
     dispose: realHost.dispose.bind(realHost),

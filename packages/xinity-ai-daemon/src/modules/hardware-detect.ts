@@ -517,7 +517,7 @@ async function readAppleGpuWiredLimitMb(): Promise<number> {
 }
 
 export async function detectHardwareProfile(): Promise<HardwareProfile> {
-  if (process.platform === "darwin") {
+  if (process.platform === "darwin" && process.arch === "arm64") {
     return buildAppleSiliconProfile(getSystemRamMb(), await readAppleGpuWiredLimitMb());
   }
   const gpus = await detectAllGpus();
