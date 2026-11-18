@@ -498,12 +498,13 @@ async function applyStackPlan(
         const hostForAction = active.find((hp) => hp.actions.includes(action));
         const host = hosts.get(hostForAction!.address) ?? orphanHosts.get(hostForAction!.address);
         const arch = await host!.getArch();
-        const cacheKey = `${action.component}:${arch}`;
+        const target = `${host!.os}/${arch}`;
+        const cacheKey = `${action.component}:${target}`;
         if (!buildCache.has(cacheKey)) {
-          log.info(`Building ${cyan(action.component)} for ${arch}…`);
+          log.info(`Building ${cyan(action.component)} for ${target}…`);
           const result = await runSteps(buildLocalArtifact(action.component, action.localRepoPath!, host!.os, arch), createSilentProgress());
           if (!result) {
-            fail(action.component, `Local build failed for ${arch}`);
+            fail(action.component, `Local build failed for ${target}`);
             return false;
           }
           buildCache.set(cacheKey, { archivePath: result.archivePath, version: result.version });
