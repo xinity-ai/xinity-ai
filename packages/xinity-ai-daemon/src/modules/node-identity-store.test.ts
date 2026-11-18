@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterAll } from "bun:test";
 import { mkdtempSync } from "node:fs";
-import { rm, mkdir } from "node:fs/promises";
+import { chmod, mkdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadOrCreateIdentity, readNodeId, rotateIdentity } from "./node-identity-store";
@@ -62,6 +62,22 @@ describe("loadOrCreateIdentity", () => {
     expect(rotated.keypair.publicKey).not.toBe(before.keypair.publicKey);
     expect(await readNodeId(stateDir)).toBe(rotated.nodeId);
     expect((await loadOrCreateIdentity(stateDir)).keypair.publicKey).toBe(rotated.keypair.publicKey);
+  });
+
+  test("keeps the private key readable by its owner only", async () => {
+    await loadOrCreateIdentity(stateDir);
+    expect((await stat(keyFile)).mode & 0o777).toBe(0o600);
+
+    await rotateIdentity(stateDir);
+    expect((await stat(keyFile)).mode & 0o777).toBe(0o600);
+  });
+
+  test("restricts a key an earlier version left readable to everyone", async () => {
+    const { keypair } = await loadOrCreateIdentity(stateDir);
+    await chmod(keyFile, 0o644);
+
+    expect((await loadOrCreateIdentity(stateDir)).keypair.publicKey).toBe(keypair.publicKey);
+    expect((await stat(keyFile)).mode & 0o777).toBe(0o600);
   });
 });
 
