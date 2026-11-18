@@ -15,6 +15,7 @@ const {
   amdRocrUuidField,
   amdCardName,
   buildHardwareProfile,
+  buildAppleSiliconProfile,
 } = await import("./hardware-detect");
 type DetectedGpu = import("./hardware-detect").DetectedGpu;
 
@@ -353,5 +354,25 @@ describe("buildHardwareProfile", () => {
 
   test("reports no host memory when the RAM could not be read", () => {
     expect(buildHardwareProfile([], 0).hostMemoryGb).toBeUndefined();
+  });
+});
+
+describe("buildAppleSiliconProfile", () => {
+  test("schedules against the macOS default GPU limit, 3/4 of RAM above 36 GiB", () => {
+    expect(buildAppleSiliconProfile(131072, 0)).toMatchObject({
+      detectedCapacityGb: 103,
+      physicalCapacityGb: 137,
+      source: "unified-memory",
+      gpuCount: 0,
+    });
+  });
+
+  test("schedules against 2/3 of RAM up to 36 GiB", () => {
+    expect(buildAppleSiliconProfile(36864, 0).detectedCapacityGb).toBe(25);
+  });
+
+  test("follows a wired limit the operator raised, but never beyond RAM", () => {
+    expect(buildAppleSiliconProfile(131072, 120000).detectedCapacityGb).toBe(125);
+    expect(buildAppleSiliconProfile(131072, 999999).detectedCapacityGb).toBe(137);
   });
 });
