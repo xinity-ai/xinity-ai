@@ -134,20 +134,30 @@ function agreedShape(field: EnvField): string {
   return JSON.stringify([field.description, field.isSecret, field.isBoolean, field.enumValues, field.defaultValue]);
 }
 
+/** A stack without any placed component is still being set up, so it is shaped for all of them. */
+export function stackComponents(stack: StackDefinition): readonly Component[] {
+  const placed = COMPONENTS.filter((component) => stack.hosts.some((host) => host.components.includes(component)));
+  return placed.length > 0 ? placed : COMPONENTS;
+}
+
 /** The shared keys as their components declare them, so nothing restates their descriptions. */
-export function sharedFields(): EnvField[] {
-  const declared = COMPONENTS.flatMap((component) => componentFields(component));
+export function sharedFields(stack: StackDefinition): EnvField[] {
+  const present = stackComponents(stack);
+  const declared = COMPONENTS.flatMap((component) =>
+    componentFields(component).map((field) => ({ field, present: present.includes(component) })),
+  );
 
   return SHARED_KEYS.map((key) => {
-    const matches = declared.filter((field) => field.key === key);
-    const first = matches[0];
+    const matches = declared.filter(({ field }) => field.key === key);
+    const first = matches[0]?.field;
     if (!first) {
       throw new Error(`The stack offers ${key}, which no component declares`);
     }
-    if (matches.some((field) => agreedShape(field) !== agreedShape(first))) {
+    if (matches.some(({ field }) => agreedShape(field) !== agreedShape(first))) {
       throw new Error(`Components declare ${key} differently, so the stack cannot offer one of them`);
     }
-    const wanted = REQUIRED_IN_EVERY_STACK.has(key) || matches.some((field) => field.isRequiredBySchema);
+    const wanted = REQUIRED_IN_EVERY_STACK.has(key)
+      || matches.some(({ field, present }) => present && field.isRequiredBySchema);
     return { ...first, requiredOverride: wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key) };
   });
 }
@@ -159,7 +169,7 @@ export function sharedLayerProblems(
   const problems: ConfigProblem[] = [];
   const seen = new Set<string>();
 
-  for (const component of COMPONENTS) {
+  for (const component of stackComponents(stack)) {
     const env = {
       ...getAutoDefaults(component),
       ...stack.derivedEnv,
@@ -187,7 +197,7 @@ export function applySharedResult(
   stack: StackDefinition,
   result: { config: Record<string, string>; secrets: Record<string, string> },
 ): void {
-  for (const field of sharedFields()) {
+  for (const field of sharedFields(stack)) {
     const bucket = field.isSecret ? stack.secrets : stack.env;
     const value = field.isSecret ? result.secrets[field.key] : result.config[field.key];
     if (value === undefined) {
