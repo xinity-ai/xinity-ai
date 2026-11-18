@@ -490,7 +490,36 @@ export function cardCapacityGib(
   return Math.min(...cardMb) / 1024;
 }
 
+// macOS caps GPU-wired memory at about 2/3 of RAM up to 36 GiB and 3/4 above, unless the operator raised it.
+const APPLE_DEFAULT_LIMIT_THRESHOLD_MB = 36 * 1024;
+
+function appleDefaultGpuLimitMb(systemRamMb: number): number {
+  return Math.floor(systemRamMb * (systemRamMb > APPLE_DEFAULT_LIMIT_THRESHOLD_MB ? 3 / 4 : 2 / 3));
+}
+
+export function buildAppleSiliconProfile(systemRamMb: number, wiredLimitMb: number): HardwareProfile {
+  const gpuLimitMb = wiredLimitMb > 0 ? Math.min(wiredLimitMb, systemRamMb) : appleDefaultGpuLimitMb(systemRamMb);
+  return {
+    gpus: [],
+    gpuCount: 0,
+    detectedCapacityGb: mbToGb(gpuLimitMb),
+    physicalCapacityGb: mbToGb(systemRamMb),
+    systemRamMb,
+    hostMemoryGb: usableRamGb(systemRamMb),
+    source: "unified-memory",
+  };
+}
+
+async function readAppleGpuWiredLimitMb(): Promise<number> {
+  const result = await $`sysctl -n iogpu.wired_limit_mb`.quiet().nothrow();
+  const limit = Number.parseInt(result.stdout.toString().trim(), 10);
+  return result.exitCode === 0 && Number.isFinite(limit) ? limit : 0;
+}
+
 export async function detectHardwareProfile(): Promise<HardwareProfile> {
+  if (process.platform === "darwin") {
+    return buildAppleSiliconProfile(getSystemRamMb(), await readAppleGpuWiredLimitMb());
+  }
   const gpus = await detectAllGpus();
   return buildHardwareProfile(gpus, getSystemRamMb());
 }
