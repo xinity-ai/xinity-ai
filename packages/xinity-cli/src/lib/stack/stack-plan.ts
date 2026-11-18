@@ -27,7 +27,7 @@ import {
   type StackDefinition, type StackHost, type FleetDefinition,
   resolveEnv, saveStack, getFleetForHost, hostLabel,
   componentLayerSeed, fleetLayerSeed, hostLayerBase,
-  sharedFields,
+  sharedFields, stackComponents,
   inStackComponentUrl,
 } from "./stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer, editHostLayer } from "./stack-layers.ts";
@@ -70,6 +70,12 @@ type StackPlanOutcome =
   | { status: "failed" };
 
 function stackMigrateUrl(stack: StackDefinition): string | undefined {
+  const usesDatabase = stackComponents(stack).some((component) =>
+    componentFields(component).some((field) => field.key === "DB_CONNECTION_URL"),
+  );
+  if (!usesDatabase) {
+    return undefined;
+  }
   return stack.secrets.DB_CONNECTION_URL ?? stack.env.DB_CONNECTION_URL;
 }
 
@@ -123,7 +129,7 @@ function deriveTetherUrl(stack: StackDefinition): void {
  * values are missing; edits are stored as diffs against the layer below.
  */
 async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deployment[]): Promise<boolean> {
-  if (missingRequiredFields(sharedFields(), { ...stack.env, ...stack.secrets }).length > 0) {
+  if (missingRequiredFields(sharedFields(stack),{ ...stack.env, ...stack.secrets }).length > 0) {
     heading("shared settings");
     if (!(await editSharedLayer(stack, "Shared stack settings (new required values)"))) {
       return false;
