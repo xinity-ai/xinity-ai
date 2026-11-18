@@ -5,7 +5,7 @@ import { cancel, log } from "../core/clack.ts";
 import { cyan, dim } from "picocolors";
 import { SudoSession, checkPasswordlessSudo } from "./sudo-session.ts";
 import { quoteShellArg, quoteShellArgv } from "common-env";
-import { hostArch, sshSocketPath, SUPPORTS_SSH_MULTIPLEXING, type HostArch } from "../core/platform.ts";
+import { hostArch, hostOs, sshSocketPath, SUPPORTS_SSH_MULTIPLEXING, type HostArch, type HostOs } from "../core/platform.ts";
 
 async function findAvailableLoopbackPort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -198,6 +198,7 @@ export class RemoteHost implements Host {
 
   private sudoSession: SudoSession | null = null;
   private isRootCached: boolean | null = null;
+  os: HostOs = "linux";
   private elevationDenied = false;
 
   constructor(hostname: string) {
@@ -234,13 +235,15 @@ export class RemoteHost implements Host {
       );
     }
 
-    const os = await this.runShell("uname -s");
-    if (!os.ok || os.output.trim() !== "Linux") {
+    const uname = await this.runShell("uname -s");
+    const os = uname.ok ? hostOs(uname.output.trim()) : undefined;
+    if (!os) {
       throw new Error(
-        `${this.hostname} is not a Linux host (uname: ${os.output.trim() || "unknown"}). ` +
-        `Xinity services require Linux.`,
+        `${this.hostname} is neither a Linux nor a macOS host (uname: ${uname.output.trim() || "unknown"}). ` +
+        `Xinity services require Linux, or macOS for the daemon.`,
       );
     }
+    this.os = os;
   }
 
   async run(args: string[]): Promise<RunResult> {
@@ -405,16 +408,17 @@ export class RemoteHost implements Host {
   }
 
   async computeSha256(filePath: string): Promise<string | null> {
-    const result = await this.runShell(`sha256sum ${quoteShellArg(filePath)}`);
+    const quoted = quoteShellArg(filePath);
+    const result = await this.runShell(`sha256sum ${quoted} 2>/dev/null || shasum -a 256 ${quoted}`);
     if (!result.ok) return null;
-    // sha256sum output format: "hash  filename"
+    // Both tools print "hash  filename"
     const hash = result.output.split(/\s+/)[0];
     return hash || null;
   }
 
   async getArch(): Promise<HostArch> {
     const result = await this.runShell(
-      `echo "xinity-arch=$(uname -m) avx2=$(grep -qw avx2 /proc/cpuinfo 2>/dev/null && echo yes)"`,
+      `echo "xinity-arch=$(uname -m) avx2=$({ grep -qw avx2 /proc/cpuinfo || sysctl -n machdep.cpu.leaf7_features | grep -qw AVX2; } 2>/dev/null && echo yes)"`,
     );
     // Matched by marker because shell startup files on the host may print to stdout.
     const probe = result.output.match(/^xinity-arch=(\S*) avx2=(\S*)$/m);

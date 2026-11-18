@@ -3,7 +3,8 @@ import { expectedMigrationCount } from "common-db";
 import { z } from "zod";
 import { groupMemberHealthSchema, interconnectPortSchema, parseMetricsAuth, reachableLocalHost, tetherConnectionSchema, type DeprecationReport, type GroupMemberHealth, type InterconnectPort, type TetherConnection } from "common-env";
 import { type Component, DAEMON_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "../core/component-meta.ts";
-import { getUnitStatusOn, type Host } from "../core/host.ts";
+import type { Host } from "../core/host.ts";
+import { serviceManagerOf, serviceStatusOn } from "../up/service-manager.ts";
 import { defaultPortForProtocol } from "../remote/remote-host.ts";
 
 export type CheckStatus = "pass" | "warn" | "fail" | "skip";
@@ -368,13 +369,10 @@ export async function fileExistsCheck(
     : { label, status: "fail", message: missingMessage };
 }
 
-export async function serviceActiveCheck(host: Host, unit: string, hasSystemd: boolean): Promise<CheckResult> {
-  if (!hasSystemd) {
-    return { label: "Service", status: "skip", message: "systemd not available" };
+export async function serviceActiveCheck(host: Host, component: Component, hasServiceManager: boolean): Promise<CheckResult> {
+  if (!hasServiceManager) {
+    return { label: "Service", status: "skip", message: `${serviceManagerOf(host).name} not available` };
   }
-  const status = await getUnitStatusOn(host, unit);
-  if (status === "active") {
-    return { label: "Service", status: "pass", message: "active" };
-  }
-  return { label: "Service", status: "fail", message: status || "inactive" };
+  const { active, state } = await serviceStatusOn(host, component);
+  return { label: "Service", status: active ? "pass" : "fail", message: state };
 }

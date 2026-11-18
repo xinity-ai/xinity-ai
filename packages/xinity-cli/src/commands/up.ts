@@ -1,7 +1,8 @@
 import type { CommandModule } from "yargs";
 import { confirm, intro, isCancel, log, note, outro } from "../lib/core/clack.ts";
 import { bold, cyan, dim, yellow } from "picocolors";
-import { type Component, ENV_DIR } from "../lib/core/component-meta.ts";
+import { COMPONENTS_BY_OS, type Component, ENV_DIR } from "../lib/core/component-meta.ts";
+import { serviceManagerOf } from "../lib/up/service-manager.ts";
 import { discoverConnectionUrl } from "../lib/up/migrator.ts";
 import {
   planUp,
@@ -67,10 +68,10 @@ async function preflightCheck(
     }
   };
 
-  // systemd is required for any service component
   const serviceComponents: string[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
   if (components.some((c) => serviceComponents.includes(c) || c === "all")) {
-    await check("systemctl", "systemd is required to manage services");
+    const { tool } = serviceManagerOf(host);
+    await check(tool, `${tool} is required to manage services`);
   }
 
   const needsExtractor = components.some(
@@ -219,6 +220,13 @@ export const upCommand: CommandModule = {
     const host = await connectHost(targetHostArg);
 
     try {
+      const supported: readonly string[] = COMPONENTS_BY_OS[host.os];
+      if (!supported.includes(component)) {
+        log.error(`${component} is not available on ${host.os} hosts (supported: ${supported.join(", ")})`);
+        outro("Failed");
+        process.exit(1);
+      }
+
       if (!(await host.prepareElevation())) {
         outro("Aborted");
         return;

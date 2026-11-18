@@ -1,8 +1,8 @@
-import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR } from "../core/component-meta.ts";
+import { type Component, ENV_DIR, SECRETS_DIR } from "../core/component-meta.ts";
 import { serializeEnvFile } from "../config/env-file.ts";
-import { generateUnit, getComponentConfig, unitName, type UnitConfig } from "./systemd.ts";
-import { type Host, isUnitActiveOn, getUnitStatusOn } from "../core/host.ts";
+import type { Host } from "../core/host.ts";
 import type { StepEvent } from "../term/step-event.ts";
+import { type ServiceEnv, type ServiceManager, isServiceActiveOn, serviceManagerOf, serviceStatusOn } from "./service-manager.ts";
 
 export type ServiceResult = {
   success: boolean;
@@ -38,12 +38,9 @@ export function buildSecretsRemoveCommand(keys: string[]): string | null {
   return `rm -f ${keys.map((key) => `${SECRETS_DIR}/${key}`).join(" ")}`;
 }
 
-export function buildUnitWriteCommand(component: Component, secretKeys: string[]): string {
-  const baseConfig = getComponentConfig(component);
-  const config: UnitConfig = { ...baseConfig, secretKeys };
-  const unitContent = generateUnit(config);
-  const unitPath = `${UNIT_DIR}/${unitName(component)}`;
-  return `cat > ${unitPath} ${heredoc("UNITEOF", unitContent)}\nsystemctl daemon-reload`;
+export function buildServiceDefinitionCommand(manager: ServiceManager, component: Component, env: ServiceEnv): string {
+  const content = manager.definitionContent(component, env);
+  return `cat > ${manager.definitionPath(component)} ${heredoc("UNITEOF", content)}\n${manager.afterDefinitionWrite(component)}`;
 }
 
 export async function writeEnvConfig(
@@ -80,54 +77,49 @@ export async function writeEnvConfig(
   return { success: true };
 }
 
-export async function writeSystemdUnit(
-  component: Component,
-  secretKeys: string[],
-  host: Host,
-): Promise<ServiceResult> {
+export async function writeServiceDefinition(component: Component, env: ServiceEnv, host: Host): Promise<ServiceResult> {
+  const manager = serviceManagerOf(host);
   const result = await host.withElevation(
-    buildUnitWriteCommand(component, secretKeys),
-    `Install ${component} systemd unit`,
+    buildServiceDefinitionCommand(manager, component, env),
+    `Install ${component} ${manager.definitionKind}`,
   );
-
-  if (!result.success) {
-    return { success: false, error: result.output };
-  }
-
-  return { success: true };
+  return result.success ? { success: true } : { success: false, error: result.output };
 }
 
 export async function stopService(component: Component, host: Host): Promise<void> {
-  const unit = unitName(component);
-  if (await isUnitActiveOn(host, unit)) {
-    await host.withElevation(`systemctl stop ${unit}`, `Stop ${unit}`);
+  const manager = serviceManagerOf(host);
+  if (await isServiceActiveOn(host, component)) {
+    await host.withElevation(manager.stopCommand(component), `Stop ${manager.serviceName(component)}`);
   }
 }
 
-const UNIT_ACTIVE_POLL_INTERVAL_MS = 500;
-const UNIT_ACTIVE_POLL_ATTEMPTS = 10;
+const SERVICE_ACTIVE_POLL_INTERVAL_MS = 500;
+const SERVICE_ACTIVE_POLL_ATTEMPTS = 10;
 
-export async function waitForUnitActive(host: Host, unit: string): Promise<boolean> {
-  for (let i = 0; i < UNIT_ACTIVE_POLL_ATTEMPTS; i++) {
-    await Bun.sleep(UNIT_ACTIVE_POLL_INTERVAL_MS);
-    if (await isUnitActiveOn(host, unit)) {
+async function waitForServiceActive(host: Host, component: Component): Promise<boolean> {
+  for (let i = 0; i < SERVICE_ACTIVE_POLL_ATTEMPTS; i++) {
+    await Bun.sleep(SERVICE_ACTIVE_POLL_INTERVAL_MS);
+    if (await isServiceActiveOn(host, component)) {
       return true;
     }
   }
   return false;
 }
 
-async function collectJournalLines(host: Host, unit: string): Promise<string | null> {
-  const journal = await host.run(["journalctl", "-u", unit, "--no-pager", "-n", "20"]);
-  return journal.ok ? journal.output : null;
+async function* reportInactive(host: Host, component: Component, suffix: string): AsyncGenerator<StepEvent> {
+  const manager = serviceManagerOf(host);
+  const { state } = await serviceStatusOn(host, component);
+  yield { type: "fail", label: "Service", detail: `${manager.serviceName(component)} is ${state}${suffix}` };
+  const logs = await host.run(manager.logArgs(component));
+  if (logs.ok && logs.output) {
+    yield { type: "log", message: logs.output };
+  }
 }
 
 export async function* startService(component: Component, host: Host): AsyncGenerator<StepEvent, boolean> {
-  const unit = unitName(component);
-  const result = await host.withElevation(
-    `systemctl enable --now ${unit}`,
-    `Enable and start ${unit}`,
-  );
+  const manager = serviceManagerOf(host);
+  const name = manager.serviceName(component);
+  const result = await host.withElevation(manager.startCommand(component), `Enable and start ${name}`);
 
   if (!result.success) {
     yield { type: "fail", label: "Service", detail: result.output };
@@ -135,61 +127,43 @@ export async function* startService(component: Component, host: Host): AsyncGene
   }
 
   yield { type: "spinner", id: "service-start", message: "Waiting for service to start…" };
-  const active = await waitForUnitActive(host, unit);
+  const active = await waitForServiceActive(host, component);
   yield { type: "spinner", id: "service-start", message: active ? "Service running" : "Service failed to start", done: true };
 
   if (active) {
-    yield { type: "pass", label: "Service", detail: `${unit} is active` };
+    yield { type: "pass", label: "Service", detail: `${name} is active` };
     return true;
   }
 
-  const status = await getUnitStatusOn(host, unit);
-  yield { type: "fail", label: "Service", detail: `${unit} is ${status}` };
-  const journal = await collectJournalLines(host, unit);
-  if (journal) {
-    yield { type: "log", message: journal };
-  }
+  yield* reportInactive(host, component, "");
   return false;
 }
 
 export async function* restartService(component: Component, host: Host): AsyncGenerator<StepEvent, boolean> {
-  const unit = unitName(component);
-  if (!(await isUnitActiveOn(host, unit))) {
-    const status = await getUnitStatusOn(host, unit);
-    yield { type: "fail", label: "Service", detail: `${unit} is ${status} (cannot restart)` };
-    const journal = await collectJournalLines(host, unit);
-    if (journal) {
-      yield { type: "log", message: journal };
-    }
+  const manager = serviceManagerOf(host);
+  const name = manager.serviceName(component);
+  if (!(await isServiceActiveOn(host, component))) {
+    yield* reportInactive(host, component, " (cannot restart)");
     return false;
   }
 
-  yield { type: "info", label: "Service", detail: `Restarting ${unit} to apply new configuration…` };
+  yield { type: "info", label: "Service", detail: `Restarting ${name} to apply new configuration…` };
 
-  const result = await host.withElevation(
-    `systemctl restart ${unit}`,
-    `Restart ${unit}`,
-  );
-
+  const result = await host.withElevation(manager.restartCommand(component), `Restart ${name}`);
   if (!result.success) {
     yield { type: "fail", label: "Service", detail: result.output };
     return false;
   }
 
   yield { type: "spinner", id: "service-restart", message: "Waiting for service to restart…" };
-  const active = await waitForUnitActive(host, unit);
+  const active = await waitForServiceActive(host, component);
   yield { type: "spinner", id: "service-restart", message: active ? "Service restarted" : "Service failed to restart", done: true };
 
   if (active) {
-    yield { type: "pass", label: "Service", detail: `${unit} restarted with new configuration` };
+    yield { type: "pass", label: "Service", detail: `${name} restarted with new configuration` };
     return true;
   }
 
-  const status = await getUnitStatusOn(host, unit);
-  yield { type: "fail", label: "Service", detail: `${unit} is ${status} after restart` };
-  const journal = await collectJournalLines(host, unit);
-  if (journal) {
-    yield { type: "log", message: journal };
-  }
+  yield* reportInactive(host, component, " after restart");
   return false;
 }

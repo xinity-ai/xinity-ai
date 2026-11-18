@@ -11,11 +11,17 @@ import { gatewayConfig } from "xinity-ai-gateway/src/config-schema.ts";
 import { tetherConfig } from "xinity-tether/src/config-schema.ts";
 import { infoserverConfig } from "xinity-infoserver/config-schema.ts";
 import { daemonConfig } from "xinity-ai-daemon/src/config-schema.ts";
+import type { HostOs } from "./platform.ts";
 import { dashboardConfig } from "xinity-ai-dashboard/src/lib/server/config-schema.ts";
 
 export type Component = "gateway" | "dashboard" | "daemon" | "infoserver" | "tether";
 
 export const COMPONENTS: readonly Component[] = ["gateway", "dashboard", "daemon", "infoserver", "tether"];
+
+export const COMPONENTS_BY_OS: Record<HostOs, readonly Component[]> = {
+  linux: COMPONENTS,
+  darwin: ["daemon"],
+};
 
 export const COMPONENT_CONFIGS: Record<Component, AnyConfig> = {
   gateway: gatewayConfig,

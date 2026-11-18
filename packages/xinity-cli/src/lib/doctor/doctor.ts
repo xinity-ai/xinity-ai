@@ -1,12 +1,13 @@
 import { green, yellow, red, dim } from "picocolors";
 import { readManifest, type ComponentEntry } from "../up/manifest.ts";
-import { commandExistsOn, isUnitActiveOn, readSecrets, type Host } from "../core/host.ts";
+import { commandExistsOn, readSecrets, type Host } from "../core/host.ts";
+import { hostOs } from "../core/platform.ts";
 import { isOllamaRunning } from "../infra/ollama-setup.ts";
 import { componentFields, categorizeFields, isRequired } from "../config/env-prompt.ts";
 import { reachableLocalHost, type EnvField, type GroupMemberHealth, type InterconnectPort } from "common-env";
 import { parseEnvString } from "../config/env-file.ts";
-import { unitName } from "../up/systemd.ts";
-import { type Component, ENV_DIR, SECRETS_DIR, UNIT_DIR, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "../core/component-meta.ts";
+import { isServiceActiveOn, serviceManagerOf } from "../up/service-manager.ts";
+import { type Component, ENV_DIR, SECRETS_DIR, INFOSERVER_DEFAULT_PORT, DASHBOARD_DEFAULT_PORT, DEFAULT_OLLAMA_URL } from "../core/component-meta.ts";
 import { collectRemoteState, createCachedHost } from "../remote/remote-probe.ts";
 import {
   type CheckResult,
@@ -91,8 +92,8 @@ async function checkSystem(host: Host): Promise<ComponentReport> {
   // Platform: check on the target host, not the local CLI machine
   const unameResult = await host.run(["uname", "-s"]);
   const platform = unameResult.ok ? unameResult.output.trim() : "unknown";
-  if (platform === "Linux") {
-    checks.push({ label: "Platform", status: "pass", message: "Linux" });
+  if (hostOs(platform)) {
+    checks.push({ label: "Platform", status: "pass", message: platform });
   } else {
     checks.push({
       label: "Platform",
@@ -101,17 +102,18 @@ async function checkSystem(host: Host): Promise<ComponentReport> {
     });
   }
 
-  if (await commandExistsOn(host, "systemctl")) {
+  const { name, tool } = serviceManagerOf(host);
+  if (await commandExistsOn(host, tool)) {
     checks.push({
-      label: "systemd",
+      label: name,
       status: "pass",
-      message: "systemctl found",
+      message: `${tool} found`,
     });
   } else {
     checks.push({
-      label: "systemd",
+      label: name,
       status: "fail",
-      message: "systemctl not found, service checks will be skipped",
+      message: `${tool} not found, service checks will be skipped`,
     });
   }
 
@@ -145,18 +147,19 @@ async function checkInstallation(
   host: Host,
 ): Promise<CheckResult[]> {
   const checks: CheckResult[] = [];
-  const hasSystemd = await commandExistsOn(host, "systemctl");
+  const manager = serviceManagerOf(host);
+  const hasServiceManager = await commandExistsOn(host, manager.tool);
 
   checks.push(await fileExistsCheck(host, "Binary", entry.binaryPath));
 
-  const unitPath = `${UNIT_DIR}/${unitName(component)}`;
+  const definitionPath = manager.definitionPath(component);
   checks.push(await fileExistsCheck(
-    host, "Systemd unit", unitPath,
-    unitName(component),
-    `Unit file not found at ${unitPath}`,
+    host, manager.definitionKind[0]!.toUpperCase() + manager.definitionKind.slice(1), definitionPath,
+    manager.serviceName(component),
+    `${manager.definitionKind} not found at ${definitionPath}`,
   ));
 
-  checks.push(await serviceActiveCheck(host, unitName(component), hasSystemd));
+  checks.push(await serviceActiveCheck(host, component, hasServiceManager));
 
   return checks;
 }
@@ -424,18 +427,11 @@ async function checkDaemonDrivers(
       message: "Found",
     });
 
-    if (await isOllamaRunning(host)) {
-      checks.push({
-        label: "Ollama service",
-        status: "pass",
-        message: "Running",
-      });
-    } else {
-      checks.push({
-        label: "Ollama service",
-        status: "warn",
-        message: "Not running",
-      });
+    // On macOS Ollama is an app rather than a service, so only its endpoint says it runs.
+    if (host.os === "linux") {
+      checks.push(await isOllamaRunning(host)
+        ? { label: "Ollama service", status: "pass", message: "Running" }
+        : { label: "Ollama service", status: "warn", message: "Not running" });
     }
 
     // Endpoint reachable: check via host since Ollama runs on the target machine
@@ -566,7 +562,7 @@ async function checkComponent(
   const configResult = await checkConfiguration(component, opts);
   checks.push(...configResult.checks);
 
-  const serviceActive = await isUnitActiveOn(host, unitName(component)).catch(() => false);
+  const serviceActive = await isServiceActiveOn(host, component).catch(() => false);
 
   switch (component) {
     case "gateway":

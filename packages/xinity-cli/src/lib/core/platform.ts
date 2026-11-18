@@ -18,6 +18,17 @@ const PLATFORM_LABELS: Record<string, string> = {
   win32: "Windows",
 };
 
+export type HostOs = "linux" | "darwin";
+
+const HOST_OS_BY_UNAME: Record<string, HostOs> = {
+  Linux: "linux",
+  Darwin: "darwin",
+};
+
+export function hostOs(uname: string): HostOs | undefined {
+  return HOST_OS_BY_UNAME[uname];
+}
+
 // x64 release builds need AVX2 (Haswell or newer). x64-baseline runs on any x86-64 CPU.
 export type HostArch = "x64" | "x64-baseline" | "arm64";
 

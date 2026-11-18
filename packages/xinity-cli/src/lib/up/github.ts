@@ -7,7 +7,7 @@
 import { join } from "node:path";
 import { loadConfig } from "../config/config.ts";
 import { localRun } from "../core/host.ts";
-import { cliAssetSuffix, localArch, platformLabel, type HostArch } from "../core/platform.ts";
+import { cliAssetSuffix, localArch, platformLabel, type HostArch, type HostOs } from "../core/platform.ts";
 import { trustedRoot, verifyChecksumSignature, type TrustSource } from "./release-signature.ts";
 
 const DEFAULT_PROJECT_URL = "https://github.com/xinity-ai/xinity-ai";
@@ -277,19 +277,19 @@ function productSlug(component: string): string {
   return `xinity-ai-${component}`;
 }
 
-export function assetPrefix(component: string, arch?: HostArch): string {
+export function assetPrefix(component: string, arch?: HostArch, os: HostOs = "linux"): string {
   if (component === "cli") {
     return `${productSlug(component)}-${cliAssetSuffix()}`;
   }
-  return `${productSlug(component)}-linux-${arch ?? localArch()}`;
+  return `${productSlug(component)}-${os}-${arch ?? localArch()}`;
 }
 
-export function pickReleaseAsset(release: Release, component: string, arch?: HostArch): string {
+export function pickReleaseAsset(release: Release, component: string, arch?: HostArch, os?: HostOs): string {
   if (component === "db") {
     return "db-migrations.tar.gz";
   }
 
-  const prefix = assetPrefix(component, arch);
+  const prefix = assetPrefix(component, arch, os);
   const tarName = `${prefix}.tar.gz`;
   const zipName = `${prefix}.zip`;
   const names = new Set(release.assets.map((a) => a.name));

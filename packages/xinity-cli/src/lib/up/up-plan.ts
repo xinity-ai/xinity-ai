@@ -10,14 +10,15 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { cancel, confirm, intro, isCancel, log, note, outro, select, spinner } from "../core/clack.ts";
 import { bold, cyan, dim } from "picocolors";
-import { attentionKeysFor, checkComponentConfig, type Component, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "../core/component-meta.ts";
-import { type Host, isUnitActiveOn } from "../core/host.ts";
+import { attentionKeysFor, checkComponentConfig, COMPONENTS_BY_OS, type Component, ENV_DIR, getAutoDefaults, GATEWAY_DEFAULT_PORT, INFOSERVER_DEFAULT_PORT, TETHER_DEFAULT_PORT } from "../core/component-meta.ts";
+import type { Host } from "../core/host.ts";
+import type { HostOs } from "../core/platform.ts";
 import { pass, fail, warn, info, heading } from "../core/output.ts";
 import { parseEnvString } from "../config/env-file.ts";
-import { unitName } from "./systemd.ts";
+import { SERVICE_MANAGERS, isServiceActiveOn, serviceManagerOf, type ServiceManager } from "./service-manager.ts";
 import { fetchRelease, pickReleaseAsset, resolveDirectUrl, getProjectUrl, type Release } from "./github.ts";
 import { assetSizeMb, buildInstallBinaryCommand } from "./install-download.ts";
-import { buildEnvWriteCommand, buildSecretsWriteCommand, buildSecretsRemoveCommand, buildUnitWriteCommand, writeEnvConfig, writeSystemdUnit, restartService } from "./service.ts";
+import { buildEnvWriteCommand, buildSecretsWriteCommand, buildSecretsRemoveCommand, buildServiceDefinitionCommand, writeEnvConfig, writeServiceDefinition, restartService } from "./service.ts";
 import { runSteps, createProgress } from "../term/step-runner.ts";
 import { applyComponentAction } from "./installer.ts";
 import { componentFields, collectEnv, menuEditEnv, readExistingEnvState, diffEnv, planSecretFileRemoval, type EnvBundle, type EnvChange, type SecretFilePlan } from "../config/env-prompt.ts";
@@ -46,6 +47,7 @@ export type ComponentAction = {
   secretFiles: SecretFilePlan;
   hardReset: boolean;
   serviceRunning: boolean;
+  hostOs: HostOs;
 }
 
 export type UpPlan = {
@@ -122,6 +124,7 @@ async function buildComponentAction(
     component: Component;
     hardReset: boolean;
     serviceRunning: boolean;
+    hostOs: HostOs;
     env: EnvBundle;
     envChanges: EnvChange[];
   },
@@ -142,7 +145,7 @@ async function buildComponentAction(
 
   let assetName: string;
   try {
-    assetName = pickReleaseAsset(version.release, base.component, await host.getArch());
+    assetName = pickReleaseAsset(version.release, base.component, await host.getArch(), host.os);
   } catch (err) {
     fail("Download", `${base.component}: ${(err as Error).message}`);
     return null;
@@ -167,10 +170,16 @@ export async function planComponentAction(
   host: Host,
   collect: () => Promise<{ env: EnvBundle; envChanges: EnvChange[] } | null>,
 ): Promise<ComponentAction | null> {
+  if (!COMPONENTS_BY_OS[host.os].includes(component)) {
+    fail(component, `${component} does not run on ${host.os} hosts (supported: ${COMPONENTS_BY_OS[host.os].join(", ")})`);
+    return null;
+  }
+
   const base = {
     component,
     hardReset: opts.hardReset,
-    serviceRunning: await isUnitActiveOn(host, unitName(component)),
+    serviceRunning: await isServiceActiveOn(host, component),
+    hostOs: host.os,
   };
 
   if (opts.targetVersion.startsWith("local:")) {
@@ -326,7 +335,7 @@ function envChangeLines(changes: EnvChange[], secretFiles: SecretFilePlan): stri
 }
 
 function serviceLine(action: ComponentAction): string {
-  const unit = unitName(action.component);
+  const unit = SERVICE_MANAGERS[action.hostOs].serviceName(action.component);
   return action.serviceRunning ? `restart ${unit}` : `enable and start ${unit}`;
 }
 
@@ -344,7 +353,7 @@ export function describeComponentAction(action: ComponentAction): string[] {
       return [
         `Reconfigure ${cyan(component)} (binary ${action.toVersion} stays)`,
         ...configLines.map((l) => `  ${l}`),
-        `  update systemd unit, ${serviceLine(action)}`,
+        `  update ${SERVICE_MANAGERS[action.hostOs].definitionKind}, ${serviceLine(action)}`,
       ];
     }
     case "install":
@@ -361,7 +370,7 @@ export function describeComponentAction(action: ComponentAction): string[] {
         ...(action.kind === "update" ? ["  back up current binary and configuration"] : []),
         ...(action.hardReset && action.kind === "update" ? ["  hard reset: clean service state"] : []),
         ...configLines.map((l) => `  ${l}`),
-        `  update systemd unit, ${serviceLine(action)}`,
+        `  update ${SERVICE_MANAGERS[action.hostOs].definitionKind}, ${serviceLine(action)}`,
       ];
     }
   }
@@ -434,6 +443,7 @@ const SCRIPT_HEADER = [
 ];
 
 function scriptConfigSection(
+  manager: ServiceManager,
   component: Component,
   env: EnvBundle,
   serviceRunning: boolean,
@@ -445,8 +455,8 @@ function scriptConfigSection(
     buildEnvWriteCommand(component, env.config),
     ...(secretsCommand ? [secretsCommand] : []),
     ...(removeCommand ? [removeCommand] : []),
-    buildUnitWriteCommand(component, Object.keys(env.secrets)),
-    serviceRunning ? `systemctl restart ${unitName(component)}` : `systemctl enable --now ${unitName(component)}`,
+    buildServiceDefinitionCommand(manager, component, { config: env.config, secretKeys: Object.keys(env.secrets) }),
+    serviceRunning ? manager.restartCommand(component) : manager.startCommand(component),
   ];
 }
 
@@ -458,7 +468,7 @@ export async function scriptComponentSection(action: ComponentAction): Promise<s
     return [`# ── ${component}: ${action.toVersion} already current, nothing to do ──`];
   }
   if (action.kind === "reconfigure") {
-    return [header, ...scriptConfigSection(component, action.env, action.serviceRunning, action.secretFiles)];
+    return [header, ...scriptConfigSection(SERVICE_MANAGERS[action.hostOs], component, action.env, action.serviceRunning, action.secretFiles)];
   }
   if (action.localRepoPath) {
     return [
@@ -475,7 +485,7 @@ export async function scriptComponentSection(action: ComponentAction): Promise<s
     `mkdir -p /tmp/xinity-script-install`,
     `curl -fsSL -o '${archivePath}' '${url}'`,
     buildInstallBinaryCommand(component, archivePath),
-    ...scriptConfigSection(component, action.env, action.serviceRunning, action.secretFiles),
+    ...scriptConfigSection(SERVICE_MANAGERS[action.hostOs], component, action.env, action.serviceRunning, action.secretFiles),
   ];
 }
 
@@ -664,21 +674,23 @@ export async function configureComponentFlow(component: Component, host: Host): 
     return;
   }
 
-  const serviceRunning = await isUnitActiveOn(host, unitName(component));
+  const manager = serviceManagerOf(host);
+  const serviceName = manager.serviceName(component);
+  const serviceRunning = await isServiceActiveOn(host, component);
   const secretFiles = await planSecretFileRemoval(component, changes, host);
 
   note(
     [
       ...envChangeLines(changes, secretFiles),
       dim(serviceRunning
-        ? `update systemd unit, restart ${unitName(component)}`
-        : `update systemd unit (${unitName(component)} is not running, takes effect on next start)`),
+        ? `update ${manager.definitionKind}, restart ${serviceName}`
+        : `update ${manager.definitionKind} (${serviceName} is not running, takes effect on next start)`),
     ].join("\n"),
     bold("Planned changes"),
   );
 
   const proceed = await reviewGate(async () =>
-    [...SCRIPT_HEADER, ...scriptConfigSection(component, result, serviceRunning, secretFiles)].join("\n"),
+    [...SCRIPT_HEADER, ...scriptConfigSection(manager, component, result, serviceRunning, secretFiles)].join("\n"),
   );
   if (!proceed) return;
 
@@ -686,14 +698,14 @@ export async function configureComponentFlow(component: Component, host: Host): 
   const configResult = await writeEnvConfig(component, result.config, result.secrets, host, secretFiles.remove);
   if (configResult.success) {
     progress.update("Environment configured");
-    const unitResult = await writeSystemdUnit(component, Object.keys(result.secrets), host);
+    const unitResult = await writeServiceDefinition(component, { config: result.config, secretKeys: Object.keys(result.secrets) }, host);
     if (unitResult.success) {
       const restarted = await runSteps(restartService(component, host), progress);
       progress.done(restarted
         ? `${component} reconfigured, service restarted`
         : `${component} reconfigured (service not running, takes effect on next start)`);
     } else {
-      progress.fail("Systemd", `${unitResult.error || "failed to update the unit"}. The service was not restarted.`);
+      progress.fail("Service", `${unitResult.error || `failed to update the ${manager.definitionKind}`}. The service was not restarted.`);
     }
   } else if (configResult.error) {
     progress.fail("Config", configResult.error);

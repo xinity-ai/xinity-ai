@@ -4,7 +4,7 @@ import { $ } from "bun";
 import { binaryBaseName, type Component } from "../core/component-meta.ts";
 import { isDirectory } from "../core/fs.ts";
 import type { StepEvent } from "../term/step-event.ts";
-import type { HostArch } from "../core/platform.ts";
+import type { HostArch, HostOs } from "../core/platform.ts";
 
 const BUILDABLE_COMPONENTS = ["daemon", "gateway", "dashboard", "infoserver", "tether"] as const;
 type BuildableComponent = (typeof BUILDABLE_COMPONENTS)[number];
@@ -28,8 +28,8 @@ const BUN_BUILD_ENTRYPOINTS: Record<Exclude<BuildableComponent, "dashboard">, st
   tether: "./src/index.ts",
 };
 
-function buildCommand(component: BuildableComponent, arch: HostArch): string[] {
-  const target = `bun-linux-${arch}`;
+function buildCommand(component: BuildableComponent, os: HostOs, arch: HostArch): string[] {
+  const target = `bun-${os}-${arch}`;
   const binName = binaryBaseName(component);
 
   if (component === "dashboard") {
@@ -65,6 +65,7 @@ export async function localVersionString(repoPath: string): Promise<string> {
 export async function* buildLocalArtifact(
   component: Component,
   repoPath: string,
+  targetOs: HostOs,
   targetArch: HostArch,
 ): AsyncGenerator<StepEvent, { archivePath: string; version: string; sha256: string } | null> {
   if (!isBuildable(component)) {
@@ -84,11 +85,11 @@ export async function* buildLocalArtifact(
     return null;
   }
 
-  const cmd = buildCommand(component, targetArch);
+  const cmd = buildCommand(component, targetOs, targetArch);
   const binName = binaryBaseName(component);
   const binPath = join(pkgDir, binName);
 
-  yield { type: "spinner", id: "build", message: `Building ${component} for linux/${targetArch}...` };
+  yield { type: "spinner", id: "build", message: `Building ${component} for ${targetOs}/${targetArch}...` };
 
   const result = await $`${cmd}`.cwd(pkgDir).nothrow().quiet();
   if (result.exitCode !== 0) {

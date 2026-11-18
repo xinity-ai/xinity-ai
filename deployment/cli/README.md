@@ -4,7 +4,7 @@ The Xinity CLI is the recommended way to deploy Xinity on any Linux server with 
 
 ## Prerequisites
 
-- Linux with systemd
+- Linux with systemd, or macOS for the daemon (see [macOS](#macos))
 - `curl` and `tar`
 - For the daemon: a machine with GPU capacity and either Ollama or vLLM available
 
@@ -91,6 +91,19 @@ xinity up daemon
 ```
 
 The daemon connects to the tether via SSE and receives deployment instructions through it. It needs Ollama or vLLM available on the same machine to actually serve models: `xinity up infra-ollama` installs Ollama, which the daemon finds on its own, or point the daemon at an existing vLLM install with `VLLM_PATH`/`VLLM_DOCKER_IMAGE`. The daemon deletes every model in its Ollama instance that is not deployed to the node, so do not share that instance with models you want to keep.
+
+### macOS
+
+The daemon also runs on Macs, Apple Silicon and Intel, as the only component there. Install and start [Ollama for macOS](https://ollama.com/download/mac) first, then run `xinity up daemon` as on Linux. On a Mac the daemon runs as a launchd job instead of a systemd unit:
+
+| What | Path |
+|---|---|
+| Job | `/Library/LaunchDaemons/ai.xinity.daemon.plist` |
+| Config | `/etc/xinity-ai/daemon.env`, copied into the job on every change |
+| State | `/var/lib/xinity-ai-daemon` |
+| Log | `/var/log/xinity-ai-daemon.log` |
+
+Check the job with `sudo launchctl print system/ai.xinity.daemon`. Like every other host, the Mac is reached over SSH, so installing on the Mac itself needs Remote Login (System Settings, General, Sharing).
 
 ## Infrastructure Utilities
 

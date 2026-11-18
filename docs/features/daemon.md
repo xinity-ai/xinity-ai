@@ -16,7 +16,7 @@ On startup, the daemon detects available GPU hardware:
 
 Unified memory systems (e.g., DGX Spark) are detected when GPUs report zero VRAM, allocating 90% of system RAM as usable capacity. When no GPUs are found at all, system RAM is used as the capacity figure for CPU-only inference.
 
-On Apple Silicon Macs, memory is shared between CPU and GPU, but macOS only lets the GPU use part of it. The daemon reports that limit as the node's capacity: about 2/3 of RAM on Macs with up to 36 GB, about 3/4 above that, or the value of `iogpu.wired_limit_mb` if you raised it. A Mac node serves Ollama models only, see the [daemon README](../../packages/xinity-ai-daemon/README.md#macos-apple-silicon).
+On Apple Silicon Macs, memory is shared between CPU and GPU, but macOS only lets the GPU use part of it. The daemon reports that limit as the node's capacity: about 2/3 of RAM on Macs with up to 36 GB, about 3/4 above that, or the value of `iogpu.wired_limit_mb` if you raised it. On an Intel Mac, Ollama runs on the CPU and the capacity is the system RAM. A Mac node serves Ollama models only, see the [daemon README](../../packages/xinity-ai-daemon/README.md#macos).
 
 The detected hardware profile is sent to the tether at registration (which writes it to the database) and visible on the [dashboard's Compute page](dashboard.md#compute-dashboard).
 
