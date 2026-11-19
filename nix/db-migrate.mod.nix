@@ -19,31 +19,34 @@
         );
         SQL
 
-        # Read migration tags in order from the drizzle journal
-        TAGS=$(${pkgs.jq}/bin/jq -r '.entries[].tag' "$MIGRATION_DIR/meta/_journal.json")
+        # Drizzle's own migrator records the journal's "when" and skips every migration older than
+        # the newest recorded one, so rows must carry that value and never the time of applying
+        ENTRIES=$(${pkgs.jq}/bin/jq -r '.entries[] | "\(.tag) \(.when)"' "$MIGRATION_DIR/meta/_journal.json")
 
-        for TAG in $TAGS; do
+        while read -r TAG WHEN; do
           HASH=$(${pkgs.coreutils}/bin/sha256sum "$MIGRATION_DIR/$TAG.sql" | cut -d' ' -f1)
 
           APPLIED=$(${pkgs.postgresql_17}/bin/psql "$DB_URL" -tAc \
             "SELECT COUNT(*) FROM \"drizzle\".\"__drizzle_migrations\" WHERE hash = '$HASH';")
 
           if [ "$APPLIED" -gt 0 ]; then
+            # Rows written by earlier versions of this script hold the apply time
+            ${pkgs.postgresql_17}/bin/psql -v ON_ERROR_STOP=1 -q "$DB_URL" -c \
+              "UPDATE \"drizzle\".\"__drizzle_migrations\" SET created_at = $WHEN WHERE hash = '$HASH' AND created_at IS DISTINCT FROM $WHEN;"
             echo "  skip: $TAG (already applied)"
             continue
           fi
 
           echo "  apply: $TAG"
           # The migration and its tracking row commit together, so a failed migration is never recorded as applied
-          TIMESTAMP=$(date +%s%3N)
           {
             ${pkgs.gnused}/bin/sed 's/--> statement-breakpoint//' "$MIGRATION_DIR/$TAG.sql"
             echo
-            echo "INSERT INTO \"drizzle\".\"__drizzle_migrations\" (hash, created_at) VALUES ('$HASH', $TIMESTAMP);"
+            echo "INSERT INTO \"drizzle\".\"__drizzle_migrations\" (hash, created_at) VALUES ('$HASH', $WHEN);"
           } | ${pkgs.postgresql_17}/bin/psql -v ON_ERROR_STOP=1 --single-transaction "$DB_URL"
 
           echo "  done: $TAG"
-        done
+        done <<< "$ENTRIES"
 
         echo "All migrations up to date."
       '';
