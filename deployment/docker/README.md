@@ -7,7 +7,7 @@ Single Compose file that brings up the full Xinity control plane (gateway, dashb
 
 Optional services live behind their own profiles:
 
-- `--profile searxng` adds web search.
+- `--profile searxng` adds web search. The gateway uses it once `.env` sets `WEB_SEARCH_PROVIDER=searxng` and `WEB_SEARCH_CREDENTIAL=http://searxng:8080`, which `setup.sh` offers to do.
 - `--profile infoserver` adds a self-hosted model registry (the dashboard otherwise uses the public one at `https://sysinfo.xinity.ai`).
 - `--profile monitoring` adds Prometheus + Grafana.
 - `--profile redis` adds Redis, which the gateway uses once `REDIS_URL_FILE=/run/secrets/redis_url` is set in `.env`. Without it the gateway keeps its cache in process. Redis only pays off when several gateways share one cache, for even load balancing and a cache that stays warm across them.
@@ -32,7 +32,7 @@ Daemons (the GPU inference workers) are not in this stack. Install them per infe
 Roughly, the script:
 
 - creates `.env` from `example.env` and generates `POSTGRES_PASSWORD` and `SEARXNG_SECRET` in it,
-- asks for the instance admin email(s) and whether anyone may sign up on their own,
+- asks for the instance admin email(s), whether anyone may sign up on their own, and whether the gateway should use the bundled SearXNG for web search,
 - optionally asks for a domain for the `caddy` profile, and derives `DOMAIN`, `ORIGIN`, `HTTP_OVERRIDE_ORIGIN` and `GATEWAY_URL` from it,
 - generates the app secrets, the Redis password and the connection URLs into `secrets/` as Docker secrets.
 

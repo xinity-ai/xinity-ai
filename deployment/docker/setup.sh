@@ -84,6 +84,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     set_env MULTI_TENANT_MODE true
 fi
 
+echo -n "Enable web search through the bundled SearXNG (--profile searxng)? (y/N): "
+read -r REPLY
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    set_env WEB_SEARCH_PROVIDER searxng
+    set_env WEB_SEARCH_CREDENTIAL "http://searxng:8080"
+fi
+
 echo
 echo "Caddy / HTTPS deployment is optional (activated with --profile caddy)."
 echo -n "Configure it now? (y/N): "

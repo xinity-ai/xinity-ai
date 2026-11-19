@@ -1,0 +1,6 @@
+# The gateway's web search reads the json format, which SearXNG leaves off by default.
+use_default_settings: true
+search:
+  formats:
+    - html
+    - json
