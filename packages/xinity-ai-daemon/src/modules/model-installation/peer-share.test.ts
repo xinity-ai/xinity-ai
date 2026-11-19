@@ -80,6 +80,31 @@ describe("peerShareHandler", () => {
     expect((await get("/../../etc/passwd")).status).toBe(404);
     expect((await handle(new Request(`http://192.168.100.1:29400/blobs/${model}/${finished}`, { method: "DELETE" }))).status).toBe(404);
   });
+
+  test("turns away a scanner's request without a Host header", async () => {
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: handle });
+    try {
+      const { promise: reply, resolve } = Promise.withResolvers<string>();
+      let received = "";
+      await Bun.connect({
+        hostname: "127.0.0.1",
+        port: server.port!,
+        socket: {
+          open: (socket) => {
+            socket.write("GET /nice%20ports%2C/Tri%6Eity.txt%2ebak HTTP/1.0\r\n\r\n");
+          },
+          data: (_socket, chunk) => {
+            received += chunk.toString();
+          },
+          close: () => resolve(received),
+        },
+      });
+
+      expect((await reply).split("\r\n")[0]).toBe("HTTP/1.1 400 Bad Request");
+    } finally {
+      await server.stop(true);
+    }
+  });
 });
 
 describe("peerSourceFor", () => {
