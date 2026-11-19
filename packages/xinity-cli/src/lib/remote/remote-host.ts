@@ -279,8 +279,7 @@ export class RemoteHost implements Host {
       return { success: false, output: "sudo authentication was declined" };
     }
 
-    log.step(dim(description));
-    return this.ensureSudoSessionAndExecute(command);
+    return this.ensureSudoSessionAndExecute(command, description);
   }
 
   async dispose(): Promise<void> {
@@ -292,9 +291,13 @@ export class RemoteHost implements Host {
 
   // -- sudo session helpers ---------------------------------------------------
 
-  private async ensureSudoSessionAndExecute(command: string): Promise<ElevationResult> {
+  // Output between commands breaks progress displays drawn in place, so only a possible password prompt gets context.
+  private async ensureSudoSessionAndExecute(command: string, description?: string): Promise<ElevationResult> {
     if (!this.sudoSession || !this.sudoSession.isAlive) {
       this.sudoSession = null;
+      if (description) {
+        log.step(dim(description));
+      }
 
       // Check if passwordless sudo is available.
       const passwordless = await checkPasswordlessSudo(this.ctrlArgs, this.hostname);
@@ -339,13 +342,13 @@ export class RemoteHost implements Host {
       }
     }
 
-    return this.executeViaSudoSession(command);
+    return this.executeViaSudoSession(command, description);
   }
 
-  private async executeViaSudoSession(command: string): Promise<ElevationResult> {
+  private async executeViaSudoSession(command: string, description?: string): Promise<ElevationResult> {
     if (!this.sudoSession || !this.sudoSession.isAlive) {
       // Session died, try to re-establish.
-      return this.ensureSudoSessionAndExecute(command);
+      return this.ensureSudoSessionAndExecute(command, description);
     }
 
     try {
