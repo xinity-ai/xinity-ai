@@ -88,7 +88,6 @@ function makeCompletionJsonResponse(model: string, text: string): Response {
 let server: ReturnType<typeof Bun.serve>;
 let nextUpstreamResponse: Response | null = null;
 let lastUpstreamBody: Record<string, unknown> | null = null;
-// Answers the next upstream request in place of the default logic, for tests that hold it.
 let nextUpstreamHandler: ((req: Request) => Promise<Response>) | null = null;
 
 beforeAll(() => {

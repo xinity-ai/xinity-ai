@@ -10,6 +10,7 @@ import {
   readSSEStream,
   recordFailedRequest,
   recordUsage,
+  rethrowIfAborted,
   TRUNCATED_STREAM_MESSAGE,
   sseEncoder,
   sseResponse,
@@ -17,7 +18,7 @@ import {
 } from "./util";
 import { recordBackendError, recordTimeToFirstToken } from "../metrics";
 import { BackendUsageSchema } from "./backend-schemas";
-import { createUsageTracker, observeParsedChunk, type BackendUsage } from "./usage-tracker";
+import { createUsageTracker, observeParsedChunk } from "./usage-tracker";
 import type { CallLogFields } from "./usage";
 import type { ChatStreamData, ChatSyncData } from "../callLogger";
 import type { Logger } from "common-log";
@@ -105,12 +106,6 @@ function isCausedByRequest(error: BackendStreamError): boolean {
   return error.code !== undefined && error.code >= 400 && error.code < 500;
 }
 
-/** The backend's own usage of a chunk, or undefined when the chunk has none. */
-function chunkUsage(json: unknown): BackendUsage | undefined {
-  const parsed = BackendUsageSchema.safeParse((json as { usage?: unknown } | null)?.usage);
-  return parsed.success ? parsed.data ?? undefined : undefined;
-}
-
 export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   backendResponse,
   originalModel,
@@ -131,9 +126,6 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   onStreamEnd?: () => void;
 }): Response {
   const tracker = createUsageTracker();
-  /** The last usage object the backend sent, kept unchanged for the client. */
-  let lastBackendUsage: BackendUsage | undefined;
-  let sawUsageOnlyChunk = false;
   let backendError: BackendStreamError | undefined;
   let sawDone = false;
   let ttftRecorded = false;
@@ -141,7 +133,6 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   let clientCancelled = false;
   const accumByChoice = new Map<number, Acc>();
 
-  // A call gets exactly one usage row, whichever way the stream ends.
   let recorded = false;
   const recordOnce = (record: () => void) => {
     if (!recorded) {
@@ -175,7 +166,6 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           }
 
           observeParsedChunk(tracker, json);
-          lastBackendUsage = chunkUsage(json) ?? lastBackendUsage;
 
           let chunk: Chunk;
           // Fast-path: Standard SSE chunk envelope with verified choices shape
@@ -215,9 +205,7 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
             spec.applyChoice(acc, choice);
           }
 
-          // The client sees usage only on the usage-only chunk, and only when it asked for usage.
           if (chunk.choices.length === 0 && chunk.usage) {
-            sawUsageOnlyChunk = true;
             if (includeUsage) {
               controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             }
@@ -252,7 +240,6 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           return;
         }
 
-        // Record before the last writes: a client that leaves now must not lose the row.
         const sortedAccs = [...accumByChoice.entries()].sort(([a], [b]) => a - b);
         const outputData: ChatStreamData = sortedAccs.map(([idx, acc]) => spec.toLogEntry(acc, idx, originalModel));
         recordOnce(() => logChatUsage({
@@ -269,17 +256,11 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
             if (extra) controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(extra)}\n\n`));
           }
         }
-        // A backend that put its usage on a chunk with choices still owes the client a usage-only chunk.
-        if (includeUsage && !sawUsageOnlyChunk && lastBackendUsage && lastChunk) {
-          const { id, object, created } = lastChunk as unknown as { id: string; object: string; created: number };
-          const usageChunk = { id, object, created, model: originalModel, choices: [], usage: lastBackendUsage };
-          controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(usageChunk)}\n\n`));
-        }
         controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch (e) {
         // The 200 header is already sent, so the endpoint guard can't see this
-        // failure; record it here. A client abort is a finished call, not a failed one.
+        // failure; record it here. Client aborts don't count against the node.
         if (isAbortError(e) || clientCancelled) {
           recordOnce(() => recordUsage({ ...logFields, usage: tracker.total(), logCalls: false, deployment: logFields.publicSpecifier }));
           log.info({ err: e }, "Client disconnected during stream");
@@ -322,10 +303,7 @@ export async function forwardOpenAINonStream<Choice>({
   try {
     raw = await backendResponse.json() as Record<string, unknown>;
   } catch (e) {
-    // A client abort while the body arrives goes to the endpoint guard, which answers 499.
-    if (isAbortError(e)) {
-      throw e;
-    }
+    rethrowIfAborted(e);
     return errorResponse("Backend returned an invalid response", 502);
   }
   raw.model = originalModel;

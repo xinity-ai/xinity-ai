@@ -61,7 +61,8 @@ export function makeChatSseBody(model: string, contentChunks: string[]): string 
   return [
     sseChunk(model, { role: "assistant", content: "" }),
     ...contentChunks.map((c) => sseChunk(model, { content: c })),
-    sseChunk(model, {}, "stop", MOCK_USAGE),
+    sseChunk(model, {}, "stop"),
+    sseUsageOnlyChunk(model, MOCK_USAGE),
     "data: [DONE]\n\n",
   ].join("");
 }
@@ -76,11 +77,6 @@ function sseUsageOnlyChunk(model: string, usage: MockUsage): string {
   return "data: " + JSON.stringify({ ...chatCompletionEnvelope(model), object: "chat.completion.chunk", choices: [], usage }) + "\n\n";
 }
 
-/**
- * SSE events as vLLM sends them with `continuous_usage_stats`: content chunk i carries the
- * cumulative usage of its choice (completion_tokens = i + 1), then a finish chunk. With
- * `finalUsageChunk`, a usage-only chunk (choices: []) follows. No [DONE].
- */
 export function makeChatSseChunksWithUsage(
   model: string,
   contentChunks: string[],
@@ -94,7 +90,6 @@ export function makeChatSseChunksWithUsage(
   ];
 }
 
-/** The events of `makeChatSseChunksWithUsage` as one complete body, ending in [DONE]. */
 export function makeChatSseBodyWithUsage(
   model: string,
   contentChunks: string[],
@@ -103,16 +98,8 @@ export function makeChatSseBodyWithUsage(
   return [...makeChatSseChunksWithUsage(model, contentChunks, options), "data: [DONE]\n\n"].join("");
 }
 
-/**
- * How a controlled stream ends after its chunks. "abort" and "timeout" error the stream, which
- * escapes Bun.serve on Linux, so only a Response built in the test can use them.
- */
 export type SseStreamEnd = "done" | "cut" | "abort" | "timeout" | "hold";
 
-/**
- * A backend SSE body that sends `chunks`, then ends with `end`. With `gateAfter: n`, chunk n+1
- * and later chunks wait until the test calls `release()`.
- */
 export function makeControlledSseStream(
   chunks: string[],
   end: SseStreamEnd,
@@ -154,11 +141,6 @@ export function makeControlledSseStream(
   return { stream, release };
 }
 
-/**
- * A backend that holds a request until the gateway leaves. "headers": it does not answer.
- * "body": it sends the headers and part of a JSON body. `reached` resolves when the gateway
- * waits in that state, so the test can abort the client request then.
- */
 export function makeHoldingBackend(stage: "headers" | "body"): {
   handle: (req: Request) => Promise<Response>;
   reached: Promise<void>;
@@ -176,7 +158,6 @@ export function makeHoldingBackend(stage: "headers" | "body"): {
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(new TextEncoder().encode('{"partial":'));
-          // Gives the gateway time to receive the headers and start to read the body.
           setTimeout(markReached, 30);
         },
       });

@@ -1,10 +1,3 @@
-/**
- * Counts the tokens of a streamed generation from the usage the backend reports on its chunks,
- * so a stream that ends early is still recorded with what it used. With `continuous_usage_stats`,
- * vLLM puts a cumulative usage on every chunk: `prompt_tokens` for the call and
- * `completion_tokens` for the one choice of that chunk. A chunk with no choices carries the
- * final usage of the call.
- */
 import type { z } from "zod";
 import { BackendUsageSchema } from "./backend-schemas";
 
@@ -13,12 +6,9 @@ export type BackendUsage = NonNullable<z.infer<typeof BackendUsageSchema>>;
 export type TrackedUsage = { inputTokens: number; outputTokens: number };
 
 export type UsageTracker = {
-  /** Starts the entry of the next backend call, for a run of several steps. */
   startCall(): void;
   observeChunk(usage: BackendUsage, choiceIndex: number): void;
-  /** Takes the usage as final for the current backend call; later chunk usage of it is ignored. */
   observeFinal(usage: BackendUsage): void;
-  /** Sum over all backend calls, or undefined when no call reported usage. */
   total(): TrackedUsage | undefined;
 };
 
@@ -49,7 +39,6 @@ export function createUsageTracker(): UsageTracker {
       if (entry.final) {
         return;
       }
-      // The counts only grow, so a smaller value is a stale or reordered report.
       entry.promptTokens = Math.max(entry.promptTokens, usage.prompt_tokens);
       const previous = entry.completionByChoice.get(choiceIndex) ?? 0;
       entry.completionByChoice.set(choiceIndex, Math.max(previous, usage.completion_tokens));
@@ -79,7 +68,6 @@ export function createUsageTracker(): UsageTracker {
   };
 }
 
-/** Gives the usage of one parsed backend chunk to the tracker. Ignores anything without usage. */
 export function observeParsedChunk(tracker: UsageTracker, chunk: unknown): void {
   if (typeof chunk !== "object" || chunk === null) {
     return;
@@ -89,7 +77,6 @@ export function observeParsedChunk(tracker: UsageTracker, chunk: unknown): void 
   if (!parsed.success || !parsed.data) {
     return;
   }
-  // vLLM sends at most one choice per chunk.
   const firstChoice = Array.isArray(choices) ? choices[0] as { index?: unknown } | undefined : undefined;
   if (!firstChoice) {
     tracker.observeFinal(parsed.data);

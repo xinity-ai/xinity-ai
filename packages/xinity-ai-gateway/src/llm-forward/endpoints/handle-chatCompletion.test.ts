@@ -84,7 +84,6 @@ let lastUpstreamBody: Record<string, unknown> | null = null;
 // Mock upstream server that returns tool call responses when tools are in the request
 let server: any;
 let nextUpstreamResponse: Response | null = null;
-// Answers the next upstream request in place of the default logic, for tests that hold it.
 let nextUpstreamHandler: ((req: Request) => Promise<Response>) | null = null;
 
 beforeAll(() => {
@@ -1387,7 +1386,6 @@ describe("handleChatCompletion, usage recording", () => {
     await reader.read();
     await reader.read();
     client.abort();
-    // The stream ends once the aborted backend read throws.
     while (!(await reader.read()).done) {}
 
     expect(rows()).toHaveLength(1);

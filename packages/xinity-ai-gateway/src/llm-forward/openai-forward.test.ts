@@ -5,7 +5,6 @@ import * as usageRecorder from "../usageRecorder";
 import { BackendChatChunkSchema } from "./backend-schemas";
 import { makeChatSseChunksWithUsage, makeControlledSseStream, SSE_PROMPT_TOKENS, type SseStreamEnd } from "./endpoints/test-helpers";
 
-// One mock call is one usage_event row.
 const recordUsageEvent = spyOn(usageRecorder, "recordUsageEvent").mockImplementation(() => {});
 afterEach(() => recordUsageEvent.mockClear());
 afterAll(() => recordUsageEvent.mockRestore());
@@ -346,21 +345,6 @@ describe("forwardOpenAIStream usage recording", () => {
     expect(withUsage).toHaveLength(1);
     expect(withUsage[0].choices).toEqual([]);
     expect(withUsage[0].usage.completion_tokens).toBe(CONTENT.length);
-  });
-
-  test("usage on the finish_reason chunk gives the client one usage-only chunk with that usage", async () => {
-    const chunks = makeChatSseChunksWithUsage("backend-model", CONTENT);
-    const events = dataEvents(await forwardChunks(chunks, "done", true));
-
-    const withUsage = events.filter((event) => "usage" in event);
-    expect(withUsage).toHaveLength(1);
-    expect(withUsage[0]).toMatchObject({ id: "test-id", model: "public-model", choices: [] });
-    expect(withUsage[0].usage).toEqual({
-      prompt_tokens: SSE_PROMPT_TOKENS,
-      completion_tokens: CONTENT.length,
-      total_tokens: SSE_PROMPT_TOKENS + CONTENT.length,
-    });
-    expect(events.at(-1)).toBe(withUsage[0]);
   });
 
   test("a backend without per-chunk usage records 0/0 on abort", async () => {

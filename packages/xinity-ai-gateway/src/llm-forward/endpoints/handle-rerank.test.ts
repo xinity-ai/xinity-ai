@@ -47,7 +47,6 @@ const { handleRerank } = await import("./handle-rerank");
 
 let server: ReturnType<typeof Bun.serve>;
 let upstreamUsage: unknown;
-// Answers the next upstream request in place of the default logic, for tests that hold it.
 let nextUpstreamHandler: ((req: Request) => Promise<Response>) | null = null;
 
 beforeAll(() => {
