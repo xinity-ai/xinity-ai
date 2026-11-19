@@ -37,7 +37,11 @@ export async function startServer() {
     },
     websocket: createProxySocketHandler(),
     async fetch(req: Request, server: Server<ProxySocketData>) {
-      const url = new URL(req.url);
+      // Without a Host header Bun leaves req.url relative, which the RPC handler cannot parse either.
+      const url = URL.parse(req.url);
+      if (!url) {
+        return new Response("Bad Request", { status: 400 });
+      }
       if (url.pathname === "/metrics") {
         return handleDaemonMetrics(req);
       }

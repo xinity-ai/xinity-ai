@@ -40,7 +40,10 @@ function rangeResponse(file: BunFile, size: number, range: string | null): Respo
 export function peerShareHandler(sharedModels: () => ReadonlySet<string>, secret: () => string): (req: Request) => Promise<Response> {
   const verify = createRequestVerifier();
   return async (req) => {
-    const url = new URL(req.url);
+    const url = URL.parse(req.url);
+    if (!url) {
+      return new Response("Bad Request", { status: 400 });
+    }
     const match = req.method === "GET" ? BLOB_PATH.exec(url.pathname) : null;
     if (!match) {
       return new Response("Not found", { status: 404 });
