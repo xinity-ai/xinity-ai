@@ -39,7 +39,7 @@ async function main() {
     process.exit(1);
   }
 
-  await startServer();
+  startServer();
   const registration = await buildRegistration();
   reportedInterconnect = registration.interconnect;
   const coordinator = dbSync();

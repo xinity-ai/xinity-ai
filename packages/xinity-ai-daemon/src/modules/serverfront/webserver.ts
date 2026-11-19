@@ -1,11 +1,8 @@
 import type { Server } from "bun";
 import { createHealthHandler, parseMetricsAuth, withoutConnectionTimeout } from "common-env";
-import { OpenAPIHandler } from "@orpc/openapi/fetch";
 
-import { router } from "../../rpc/router";
 import { config } from "../../config";
 import { rootLogger } from "../../logger";
-import { createOpenapiSpec, createScalarPage } from "./openai";
 import { createProxySocketHandler, handleProxyRequest, handleProxyUpgrade, type ProxySocketData } from "./proxy";
 import { handleDaemonMetrics, httpMetrics } from "./metrics";
 import { tetherConnection } from "../tether-client";
@@ -19,25 +16,17 @@ const handleHealth = createHealthHandler({
   credentials: parseMetricsAuth(config.metrics.auth),
 });
 
-export async function startServer() {
-  const handler = new OpenAPIHandler(router, {
-    plugins: [],
-  });
-
-  const spec = await createOpenapiSpec();
-
+export function startServer() {
   const tls = config.tls && { cert: config.tls.cert, key: config.tls.key };
   const serveOptions = {
     tls,
     idleTimeout: config.server.idleTimeout,
     routes: {
-      "/": httpMetrics.route("/", () => createScalarPage()),
-      "/openapi.json": httpMetrics.route("/openapi.json", () => Response.json(spec)),
       "/health": httpMetrics.route("/health", handleHealth),
     },
     websocket: createProxySocketHandler(),
     async fetch(req: Request, server: Server<ProxySocketData>) {
-      // Without a Host header Bun leaves req.url relative, which the RPC handler cannot parse either.
+      // Without a Host header Bun leaves req.url relative.
       const url = URL.parse(req.url);
       if (!url) {
         return new Response("Bad Request", { status: 400 });
@@ -53,13 +42,7 @@ export async function startServer() {
         return withoutConnectionTimeout(httpMetrics.route("/proxy/*", (r) => handleProxyRequest(r, url)))(req, server);
       }
 
-      return httpMetrics.route("/rpc", async (r) => {
-        const { matched, response } = await handler.handle(r, {
-          prefix: "/",
-          context: { headers: r.headers },
-        });
-        return matched ? response : new Response("Not found", { status: 404 });
-      })(req);
+      return httpMetrics.route("<unmatched>", () => new Response("Not found", { status: 404 }))(req);
     },
   } as const;
 
