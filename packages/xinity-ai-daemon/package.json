@@ -3,9 +3,6 @@
   "license": "Apache-2.0",
   "main": "src/index.ts",
   "devDependencies": {
-    "@orpc/openapi": "catalog:orpc",
-    "@orpc/server": "catalog:orpc",
-    "@orpc/zod": "catalog:orpc",
     "@types/bun": "catalog:",
     "common-env": "workspace:*",
     "common-log": "workspace:*",

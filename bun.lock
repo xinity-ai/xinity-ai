@@ -48,9 +48,6 @@
     "packages/xinity-ai-daemon": {
       "name": "xinity-ai-daemon",
       "devDependencies": {
-        "@orpc/openapi": "catalog:orpc",
-        "@orpc/server": "catalog:orpc",
-        "@orpc/zod": "catalog:orpc",
         "@types/bun": "catalog:",
         "common-env": "workspace:*",
         "common-log": "workspace:*",
