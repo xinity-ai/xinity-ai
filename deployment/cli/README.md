@@ -107,6 +107,16 @@ The daemon also runs on Macs, Apple Silicon and Intel, as the only component the
 
 Check the job with `sudo launchctl print system/ai.xinity.daemon`. Like every other host, the Mac is reached over SSH, so installing on the Mac itself needs Remote Login (System Settings, General, Sharing).
 
+The CLI does not configure the macOS firewall, which is off by default. With the firewall on, allow the daemon to accept connections, then restart it, because the firewall applies an exception only to processes started after it:
+
+```bash
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /opt/xinity/bin/xinity-ai-daemon
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /opt/xinity/bin/xinity-ai-daemon
+sudo launchctl kickstart -k system/ai.xinity.daemon
+```
+
+On an Intel Mac, sign the binary first with `sudo codesign --force --sign - /opt/xinity/bin/xinity-ai-daemon`. The release binary for Intel carries a signature that the firewall rejects. Repeat these steps after every daemon update, since an update replaces the binary.
+
 ## Infrastructure Utilities
 
 Infrastructure dependencies are managed with `xinity up infra-<tool>`:
