@@ -4,7 +4,7 @@ import { z } from "zod";
 import { analyzeConfig, deprecations, removals, type EnvField } from "common-env";
 import { COMPONENTS, COMPONENT_CONFIGS, getAutoDefaults, type Component } from "../packages/xinity-cli/src/lib/core/component-meta.ts";
 import { componentFields } from "../packages/xinity-cli/src/lib/config/env-prompt.ts";
-import { REQUIRED_IN_EVERY_STACK, STACK_SHARED_KEYS, sharedFields, stackDefinitionT } from "../packages/xinity-cli/src/lib/stack/stack.ts";
+import { REQUIRED_IN_EVERY_STACK, STACK_SHARED_KEYS, stackDefinitionT } from "../packages/xinity-cli/src/lib/stack/stack.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const START_MARKER = "<!-- [sync:config] - generated from the config declaration, do not edit -->";
@@ -173,8 +173,12 @@ const DERIVED_NOTES: Record<string, string> = {
 };
 
 function sharedKeyProperties(secret: boolean): Record<string, JsonSchema> {
-  return Object.fromEntries(sharedFields().filter((field) => field.isSecret === secret).map((field) => {
-    const declaring = COMPONENTS.filter((component) => componentFields(component).some((f) => f.key === field.key));
+  return Object.fromEntries([...STACK_SHARED_KEYS].flatMap((key) => {
+    const declaring = COMPONENTS.filter((component) => componentFields(component).some((f) => f.key === key));
+    const field = componentFields(declaring[0]!).find((f) => f.key === key)!;
+    if (field.isSecret !== secret) {
+      return [];
+    }
     const requiring = declaring.filter((component) =>
       requirement(componentFields(component).find((f) => f.key === field.key)!, undefined) !== "");
     const notes = [
@@ -183,7 +187,7 @@ function sharedKeyProperties(secret: boolean): Record<string, JsonSchema> {
       !REQUIRED_IN_EVERY_STACK.has(field.key) && requiring.length > 0 ? `Required by ${requiring.join(", ")}.` : "",
       DERIVED_NOTES[field.key] ?? "",
     ];
-    return [field.key, keyProperty(field, notes, defaultOf(field, undefined))];
+    return [[field.key, keyProperty(field, notes, defaultOf(field, undefined))]];
   }));
 }
 

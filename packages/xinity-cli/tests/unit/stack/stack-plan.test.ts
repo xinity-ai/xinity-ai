@@ -89,6 +89,7 @@ mock.module("../../../src/lib/up/up-plan.ts", () => ({
     secretFiles: { remove: [], keptForOtherComponents: [] },
     hardReset: false,
     serviceRunning: true,
+    hostOs: "linux",
   }),
 }));
 

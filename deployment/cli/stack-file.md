@@ -60,11 +60,6 @@ The schema marks each key that a component needs: `Required.` for a component ke
 
 `stack up` asks for every required value that is missing before it plans anything, so an incomplete file still deploys, but the run then waits for someone to answer.
 
-Two things currently apply to every stack, including one whose hosts only run the daemon:
-
-- `stack up` asks for `DB_CONNECTION_URL` even though the daemon never receives it.
-- When `DB_CONNECTION_URL` is set, `stack up` runs database migrations against it before it touches any host, and stops if they fail.
-
 ## Validation Rules
 
 Besides the schema, `stack show` and `stack up` check:
