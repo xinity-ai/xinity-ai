@@ -49,6 +49,8 @@ Canary deployments are configured through the [dashboard's Model Hub](dashboard.
 
 Usage is recorded for every call: model, duration, token counts, API key, application and organization. The call's content, meaning its input and output messages, is recorded only on the endpoints below.
 
+A call that does not finish normally is still recorded. On `/v1/chat/completions` and `/v1/completions`, a stream that the client aborts is recorded with the tokens that the backend reported until the abort. A stream that ends without `[DONE]` is recorded as a failed call, with its tokens. A call that the client aborts before the response starts is recorded with 0 tokens. On `ollama`, which does not report usage on each chunk, an aborted stream is recorded with 0 tokens. The dashboard counts only successful calls, but its token totals include the tokens of failed calls.
+
 | Endpoint | Content recorded |
 |---|---|
 | `/v1/chat/completions` | Yes |
