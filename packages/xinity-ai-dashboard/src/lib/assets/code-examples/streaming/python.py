@@ -17,7 +17,26 @@ response = client.chat.completions.create(
     stream=True  # Enable streaming
 )
 
+section = None
+
+def enter_section(name):
+    global section
+    if section != name:
+        separator = "\n\n" if section else ""
+        print(f"{separator}[{name}]", flush=True)
+        section = name
+
 # Print tokens as they arrive
 for chunk in response:
-    if chunk.choices[0].delta.get("content"):
-        print(chunk.choices[0].delta.content, end="", flush=True)
+    if not chunk.choices:
+        continue
+    delta = chunk.choices[0].delta
+    # Reasoning models stream their thinking separately from the answer
+    reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+    if reasoning:
+        enter_section("reasoning")
+        print(reasoning, end="", flush=True)
+    if delta.content:
+        enter_section("answer")
+        print(delta.content, end="", flush=True)
+print()
