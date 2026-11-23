@@ -17,7 +17,7 @@
   },
   "simple-git-hooks": {
     "commit-msg": "bunx --no-install commitlint --edit $1",
-    "pre-commit": "git diff --cached --name-only --diff-filter=ACM -z | grep -zE '\\.(ts|tsx|js|jsx|mjs|cjs|svelte)$' | xargs -0 -r bun --bun oxlint"
+    "pre-commit": "git diff --cached --name-only --diff-filter=ACM -z | grep -zE '\\.(ts|tsx|js|jsx|mjs|cjs|svelte)$' | xargs -0 -r bun --bun oxlint --no-error-on-unmatched-pattern"
   },
   "type": "module",
   "workspaces": {
