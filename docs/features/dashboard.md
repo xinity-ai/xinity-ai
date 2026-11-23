@@ -44,11 +44,15 @@ A single replica shows Serving, Failed, Scheduling, Downloading or Installing, o
 
 ### Creating a deployment
 
-The deployment modal walks through: model selection from the catalog, public specifier and display name, optional canary configuration (canary model, initial traffic split, manual or time-based advancement), and expert settings (replicas, KV cache size, preferred driver). A capacity check runs before submission. Models with `custom_code` require explicit consent.
+"Deploy a model" takes two steps. First a model is chosen from the catalog. Then it is set up: a name and the public name requests use, the replicas and KV cache, and settings such as what to optimize for. The page shows where the deployment would run, against the memory free on the machines and the room left under the license. A deployment that does not fit now can be saved disabled and enabled later. Models with a restricted license or with `custom_code` need explicit consent.
+
+### Changing the model
+
+The model of a running deployment changes on the deployment's page. Switching at once stops serving until the new model is installed. A rollout instead runs both models side by side and splits traffic between them, moving it by hand or evenly over a number of hours. A rollout runs on at least two replicas, one per model. A rollout never ends on its own. At 100%, Promote finishes it with the new model, and Roll back returns all traffic to the old one and removes the new model.
 
 ### Inline testing
 
-Three test modals are available from deployment cards:
+While a deployment serves, its page has a Test button that opens the test fitting its model:
 
 - **Chat:** Multi-turn streaming conversation with reasoning content display.
 - **Embedding:** Single text input returning the vector with dimensions and token stats.
