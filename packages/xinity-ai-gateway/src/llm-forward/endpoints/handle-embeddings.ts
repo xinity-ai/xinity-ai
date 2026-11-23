@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { errorResponse, forwardBackendError, recordUsage } from "../util";
+import { errorResponse, forwardBackendError, recordUsage, rethrowIfAborted } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
 import { rootLogger } from "../../logger";
 import { config } from "../../config";
@@ -49,7 +49,8 @@ export const handleEmbeddingGeneration = withEndpointGuards({
     let raw: Record<string, unknown>;
     try {
       raw = await backendResponse.json() as Record<string, unknown>;
-    } catch {
+    } catch (e) {
+      rethrowIfAborted(e);
       return errorResponse("Backend returned an invalid response", 502);
     }
 

@@ -36,8 +36,7 @@ function fillDailyTrendSeries(trendData: UsageTrendEntry[], days: string[]): Usa
 
 /**
  * Moves usageEvent rows older than 30 days into usageSummary. One statement, so overlapping
- * runs cannot both move the same rows. The summary cannot tell failures apart, so they are
- * deleted without being counted.
+ * runs cannot both move the same rows.
  */
 async function rollupUsageEvents(db: DB, orgId: string) {
   await db.execute(sql`
@@ -51,13 +50,12 @@ async function rollupUsageEvents(db: DB, orgId: string) {
        "total_calls", "logged_calls", "input_tokens", "output_tokens", "total_duration")
     SELECT
       DATE("created_at"), "organization_id", COALESCE("application_id", ${NIL_APP_UUID}::uuid), "api_key_id", "model",
-      COUNT(*)::int,
-      COUNT(*) FILTER (WHERE "logged")::int,
+      COUNT(*) FILTER (WHERE "success")::int,
+      COUNT(*) FILTER (WHERE "success" AND "logged")::int,
       COALESCE(SUM("input_tokens"), 0),
       COALESCE(SUM("output_tokens"), 0),
-      COALESCE(SUM("duration"), 0)
+      COALESCE(SUM("duration") FILTER (WHERE "success"), 0)
     FROM moved
-    WHERE "success"
     GROUP BY DATE("created_at"), "organization_id", "application_id", "api_key_id", "model"
     ON CONFLICT ("date", "organization_id", "application_id", "api_key_id", "model")
     DO UPDATE SET
@@ -186,14 +184,14 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
 
     db.select({
       date: sql<string>`to_char(DATE(${usageEventT.createdAt}), 'YYYY-MM-DD')`,
-      totalCalls: sql<number>`COUNT(*)::int`,
-      loggedCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.logged})::int`,
+      totalCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.success})::int`,
+      loggedCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.success} AND ${usageEventT.logged})::int`,
       inputTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens}), 0)::int`,
       outputTokens: sql<number>`COALESCE(SUM(${usageEventT.outputTokens}), 0)::int`,
     })
       .from(usageEventT)
       .where(sql`
-        ${succeededInOrg(orgId)}
+        ${usageEventT.organizationId} = ${orgId}
       AND
         DATE(${usageEventT.createdAt}) >= CURRENT_DATE - INTERVAL '29 days'
       `)
@@ -202,17 +200,17 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
 
     db.select({
       applicationId: usageEventT.applicationId,
-      totalCalls: sql<number>`COUNT(*)::int`,
+      totalCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.success})::int`,
       totalTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)::int`,
     })
       .from(usageEventT)
       .where(sql`
-        ${succeededInOrg(orgId)}
+        ${usageEventT.organizationId} = ${orgId}
       AND
         ${usageEventT.createdAt} >= CURRENT_DATE - INTERVAL '29 days'
       `)
       .groupBy(usageEventT.applicationId)
-      .orderBy(sql`COUNT(*) DESC`)
+      .orderBy(sql`COUNT(*) FILTER (WHERE ${usageEventT.success}) DESC`)
       .limit(5),
   ]);
 

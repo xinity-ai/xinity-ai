@@ -328,6 +328,12 @@ export function isAbortError(e: unknown): boolean {
   return hasErrorName(e, "AbortError");
 }
 
+export function rethrowIfAborted(e: unknown): void {
+  if (isAbortError(e)) {
+    throw e;
+  }
+}
+
 export function isTimeoutError(e: unknown): boolean {
   if (hasErrorName(e, "TimeoutError")) return true;
   if (e != null && typeof e === "object" && "cause" in e) {

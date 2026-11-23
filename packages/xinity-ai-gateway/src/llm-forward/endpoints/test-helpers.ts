@@ -61,9 +61,109 @@ export function makeChatSseBody(model: string, contentChunks: string[]): string 
   return [
     sseChunk(model, { role: "assistant", content: "" }),
     ...contentChunks.map((c) => sseChunk(model, { content: c })),
-    sseChunk(model, {}, "stop", MOCK_USAGE),
+    sseChunk(model, {}, "stop"),
+    sseUsageOnlyChunk(model, MOCK_USAGE),
     "data: [DONE]\n\n",
   ].join("");
+}
+
+export const SSE_PROMPT_TOKENS = 5;
+
+function cumulativeUsage(completionTokens: number): MockUsage {
+  return { prompt_tokens: SSE_PROMPT_TOKENS, completion_tokens: completionTokens, total_tokens: SSE_PROMPT_TOKENS + completionTokens };
+}
+
+function sseUsageOnlyChunk(model: string, usage: MockUsage): string {
+  return "data: " + JSON.stringify({ ...chatCompletionEnvelope(model), object: "chat.completion.chunk", choices: [], usage }) + "\n\n";
+}
+
+export function makeChatSseChunksWithUsage(
+  model: string,
+  contentChunks: string[],
+  { finalUsageChunk = false }: { finalUsageChunk?: boolean } = {},
+): string[] {
+  const finalUsage = cumulativeUsage(contentChunks.length);
+  return [
+    ...contentChunks.map((c, i) => sseChunk(model, { content: c }, null, cumulativeUsage(i + 1))),
+    sseChunk(model, {}, "stop", finalUsage),
+    ...(finalUsageChunk ? [sseUsageOnlyChunk(model, finalUsage)] : []),
+  ];
+}
+
+export function makeChatSseBodyWithUsage(
+  model: string,
+  contentChunks: string[],
+  options: { finalUsageChunk?: boolean } = {},
+): string {
+  return [...makeChatSseChunksWithUsage(model, contentChunks, options), "data: [DONE]\n\n"].join("");
+}
+
+export type SseStreamEnd = "done" | "cut" | "abort" | "timeout" | "hold";
+
+export function makeControlledSseStream(
+  chunks: string[],
+  end: SseStreamEnd,
+  { gateAfter }: { gateAfter?: number } = {},
+): { stream: ReadableStream<Uint8Array>; release: () => void } {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const encoder = new TextEncoder();
+  let next = 0;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (next < chunks.length) {
+        if (next === gateAfter) {
+          await gate;
+        }
+        controller.enqueue(encoder.encode(chunks[next++]!));
+        return;
+      }
+      switch (end) {
+        case "done":
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+          return;
+        case "cut":
+          controller.close();
+          return;
+        case "abort":
+          controller.error(new DOMException("aborted", "AbortError"));
+          return;
+        case "timeout":
+          controller.error(new DOMException("timed out", "TimeoutError"));
+          return;
+        case "hold":
+          await new Promise(() => {});
+      }
+    },
+  });
+  return { stream, release };
+}
+
+export function makeHoldingBackend(stage: "headers" | "body"): {
+  handle: (req: Request) => Promise<Response>;
+  reached: Promise<void>;
+} {
+  let markReached!: () => void;
+  const reached = new Promise<void>((resolve) => { markReached = resolve; });
+  return {
+    reached,
+    async handle(req) {
+      if (stage === "headers") {
+        markReached();
+        await new Promise<void>((resolve) => req.signal.addEventListener("abort", () => resolve(), { once: true }));
+        return new Response(null, { status: 503 });
+      }
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"partial":'));
+          setTimeout(markReached, 30);
+        },
+      });
+      return new Response(body, { headers: { "Content-Type": "application/json" } });
+    },
+  };
 }
 
 export function makeChatSseResponse(model: string, contentChunks: string[]): Response {

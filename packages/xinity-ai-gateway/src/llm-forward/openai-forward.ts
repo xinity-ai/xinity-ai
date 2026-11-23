@@ -10,6 +10,7 @@ import {
   readSSEStream,
   recordFailedRequest,
   recordUsage,
+  rethrowIfAborted,
   TRUNCATED_STREAM_MESSAGE,
   sseEncoder,
   sseResponse,
@@ -17,6 +18,7 @@ import {
 } from "./util";
 import { recordBackendError, recordTimeToFirstToken } from "../metrics";
 import { BackendUsageSchema } from "./backend-schemas";
+import { createUsageTracker, observeParsedChunk } from "./usage-tracker";
 import type { CallLogFields } from "./usage";
 import type { ChatStreamData, ChatSyncData } from "../callLogger";
 import type { Logger } from "common-log";
@@ -123,11 +125,21 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
   onStreamChunk?: () => void;
   onStreamEnd?: () => void;
 }): Response {
-  let collectedUsage: z.infer<typeof BackendUsageSchema> | undefined;
+  const tracker = createUsageTracker();
   let backendError: BackendStreamError | undefined;
   let sawDone = false;
   let ttftRecorded = false;
+  // After a client cancel, an enqueue throws a TypeError, not an AbortError.
+  let clientCancelled = false;
   const accumByChoice = new Map<number, Acc>();
+
+  let recorded = false;
+  const recordOnce = (record: () => void) => {
+    if (!recorded) {
+      recorded = true;
+      record();
+    }
+  };
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -153,6 +165,8 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
             break;
           }
 
+          observeParsedChunk(tracker, json);
+
           let chunk: Chunk;
           // Fast-path: Standard SSE chunk envelope with verified choices shape
           if (isStandardStreamingChunk(json)) {
@@ -166,7 +180,9 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
               // Forward chunks we can't model instead of dropping them; they skip logging only.
               log.warn({ issues: parsed.error.issues }, "Unrecognized backend SSE chunk, forwarding unlogged");
               if (json && typeof json === "object") {
-                (json as Record<string, unknown>).model = originalModel;
+                const obj = json as Record<string, unknown>;
+                obj.model = originalModel;
+                delete obj.usage;
               }
               controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(json)}\n\n`));
               continue;
@@ -180,9 +196,6 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
             recordTimeToFirstToken(logFields.publicSpecifier, logFields.callStartTime);
           }
 
-          if (chunk.usage) {
-            collectedUsage = chunk.usage;
-          }
           for (const choice of chunk.choices) {
             let acc = accumByChoice.get(choice.index);
             if (!acc) {
@@ -192,17 +205,19 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
             spec.applyChoice(acc, choice);
           }
 
-          if (!includeUsage && chunk.choices.length === 0 && chunk.usage) {
+          if (chunk.choices.length === 0 && chunk.usage) {
+            if (includeUsage) {
+              controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+            }
             continue;
           }
-          const forwarded = includeUsage ? chunk : { ...chunk, usage: undefined };
-          controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(forwarded)}\n\n`));
+          controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify({ ...chunk, usage: undefined })}\n\n`));
         }
 
         if (backendError !== undefined) {
           const { model, nodeId } = logFields.modelInfo;
           recordBackendError(model, backendError.code ?? 500);
-          recordFailedRequest(logFields);
+          recordOnce(() => recordFailedRequest(logFields, tracker.total()));
           if (isCausedByRequest(backendError)) {
             log.warn({ model: originalModel, backendError }, "Backend rejected the request mid-stream");
             enqueueStreamErrorEvent(controller, backendError.message, "invalid_request_error", backendError.param);
@@ -215,48 +230,51 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
           return;
         }
 
-        const sortedAccs = [...accumByChoice.entries()].sort(([a], [b]) => a - b);
-
-        if (sawDone) {
-          // Backfill a finish_reason the backend never sent.
-          if (spec.synthesizeFinal && lastChunk) {
-            for (const [index, acc] of sortedAccs) {
-              const extra = spec.synthesizeFinal(acc, index, lastChunk);
-              if (extra) controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(extra)}\n\n`));
-            }
-          }
-          controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
-        } else {
+        if (!sawDone) {
           // Upstream ended without the [DONE] sentinel: the backend died
           // mid-stream and delivered a truncated response.
-          enqueueStreamErrorEvent(controller, TRUNCATED_STREAM_MESSAGE, "server_error");
-        }
-        controller.close();
-
-        if (!sawDone) {
           log.error({ model: originalModel }, "Backend stream ended without [DONE]");
-          recordFailedRequest(logFields);
+          recordOnce(() => recordFailedRequest(logFields, tracker.total()));
+          enqueueStreamErrorEvent(controller, TRUNCATED_STREAM_MESSAGE, "server_error");
+          controller.close();
           return;
         }
 
+        const sortedAccs = [...accumByChoice.entries()].sort(([a], [b]) => a - b);
         const outputData: ChatStreamData = sortedAccs.map(([idx, acc]) => spec.toLogEntry(acc, idx, originalModel));
-
-        logChatUsage({
+        recordOnce(() => logChatUsage({
           ...logFields,
-          usage: collectedUsage,
+          usage: tracker.total(),
           outputData,
           stream: true,
-        });
+        }));
+
+        // Backfill a finish_reason the backend never sent.
+        if (spec.synthesizeFinal && lastChunk) {
+          for (const [index, acc] of sortedAccs) {
+            const extra = spec.synthesizeFinal(acc, index, lastChunk);
+            if (extra) controller.enqueue(sseEncoder.encode(`data: ${JSON.stringify(extra)}\n\n`));
+          }
+        }
+        controller.enqueue(sseEncoder.encode("data: [DONE]\n\n"));
+        controller.close();
       } catch (e) {
         // The 200 header is already sent, so the endpoint guard can't see this
         // failure; record it here. Client aborts don't count against the node.
-        if (!isAbortError(e)) {
-          recordFailedRequest(logFields);
+        if (isAbortError(e) || clientCancelled) {
+          recordOnce(() => recordUsage({ ...logFields, usage: tracker.total(), logCalls: false, deployment: logFields.publicSpecifier }));
+          log.info({ err: e }, "Client disconnected during stream");
+          try { controller.close(); } catch {}
+          return;
         }
+        recordOnce(() => recordFailedRequest(logFields, tracker.total()));
         handleStreamError(e, controller, log);
       } finally {
         onStreamEnd?.();
       }
+    },
+    cancel() {
+      clientCancelled = true;
     },
   });
 
@@ -284,7 +302,8 @@ export async function forwardOpenAINonStream<Choice>({
   let raw: Record<string, unknown>;
   try {
     raw = await backendResponse.json() as Record<string, unknown>;
-  } catch {
+  } catch (e) {
+    rethrowIfAborted(e);
     return errorResponse("Backend returned an invalid response", 502);
   }
   raw.model = originalModel;
