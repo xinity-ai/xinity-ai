@@ -6,7 +6,7 @@ export type LoggerOptions = {
   level: pino.Level;
   /** Service name, added to every log line as `service`. */
   service: string;
-  /** If set, write JSONL log files to this directory (one per day). */
+  /** If set, write a JSONL log file to this directory, named after the process start date. */
   logDir?: string;
 };
 
@@ -34,7 +34,8 @@ function dailyFileStream(logDir: string) {
  * Uses `pino.destination()` with `sync: false` for buffered async I/O
  * on the main thread, no worker threads, works in compiled binaries.
  *
- * When `logDir` is set, a daily `.log.jsonl` file is created alongside stdout.
+ * When `logDir` is set, logs also go to a `.log.jsonl` file named after the
+ * start date, which the process keeps writing to for its lifetime.
  */
 export function createLogger(opts: LoggerOptions): pino.Logger {
   const pinoOpts: pino.LoggerOptions = {
