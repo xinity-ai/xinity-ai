@@ -1,6 +1,6 @@
 {
   "name": "xinity-ai",
-  "version": "0.26.6",
+  "version": "0.26.7",
   "peerDependencies": {
     "typescript": "catalog:"
   },
@@ -49,8 +49,8 @@
     "oxlint": "^1.79.0"
   },
   "overrides": {
-    "samlify": "2.13.1",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "minimatch": "11.0.8"
   },
   "patchedDependencies": {
     "@sveltejs/adapter-bun@1.0.0": "patches/@sveltejs%2Fadapter-bun@1.0.0.patch"

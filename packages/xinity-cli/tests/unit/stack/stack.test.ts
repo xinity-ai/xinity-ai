@@ -120,6 +120,16 @@ describe("stack persistence", () => {
     });
   });
 
+  test("keeps the schema reference of a hand-written file when saving it", () => {
+    const schema = "https://raw.githubusercontent.com/xinity-ai/xinity-ai/main/deployment/cli/stack.schema.json";
+    tmp.write("xinity/stacks/written.json", JSON.stringify({ $schema: schema, name: "written" }));
+
+    saveStack(loadStack("written")!);
+
+    const written = JSON.parse(readFileSync(definitionPath("written"), "utf-8")) as Record<string, unknown>;
+    expect(written.$schema).toBe(schema);
+  });
+
   test("loadStack moves a stored HF_TOKEN onto the key the daemon actually reads", () => {
     tmp.write(
       "xinity/stacks/old.json",
@@ -367,7 +377,7 @@ describe("validateStack", () => {
 });
 
 describe("sharedFields", () => {
-  const byKey = new Map(sharedFields().map((field) => [field.key, field]));
+  const byKey = new Map(sharedFields(makeStack()).map((field) => [field.key, field]));
 
   test("every shared key resolves, or it is collected from the operator and then dropped", () => {
     expect(byKey.size).toBe(STACK_SHARED_KEYS.size);
@@ -382,10 +392,18 @@ describe("sharedFields", () => {
   });
 
   test("an empty stack is short its infra keys, but not the switched-off S3 group", () => {
-    const demanded = missingRequiredFields(sharedFields(), {}).map((field) => field.key);
+    const demanded = missingRequiredFields(sharedFields(makeStack()), {}).map((field) => field.key);
 
     expect(demanded).toContain("DB_CONNECTION_URL");
     expect(demanded).not.toContain("S3_ENDPOINT");
+  });
+
+  test("a daemon-only stack is not asked for a database no host uses", () => {
+    const stack = makeStack({ hosts: [makeHost({ components: ["daemon"] })] });
+    const demanded = missingRequiredFields(sharedFields(stack), {}).map((field) => field.key);
+
+    expect(demanded).not.toContain("DB_CONNECTION_URL");
+    expect(demanded).toContain("METRICS_AUTH");
   });
 });
 
@@ -407,6 +425,14 @@ describe("sharedLayerProblems", () => {
     const keys = sharedLayerProblems(makeStack(), valid).flatMap((p) => p.fields.map((f) => f.envKey));
     expect(keys).not.toContain("INFOSERVER_URL");
     expect(keys).not.toContain("TETHER_URL");
+  });
+
+  test("a daemon-only stack has no problem with a missing database url", () => {
+    const stack = makeStack({ hosts: [makeHost({ components: ["daemon"] })] });
+    const { DB_CONNECTION_URL: _, ...withoutDatabase } = valid;
+    const keys = sharedLayerProblems(stack, withoutDatabase).flatMap((p) => p.fields.map((f) => f.envKey));
+
+    expect(keys).not.toContain("DB_CONNECTION_URL");
   });
 
   test("reports each distinct problem once, not once per component that shares the key", () => {

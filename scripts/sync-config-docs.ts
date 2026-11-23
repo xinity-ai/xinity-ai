@@ -1,7 +1,10 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { z } from "zod";
 import { analyzeConfig, deprecations, removals, type EnvField } from "common-env";
-import { COMPONENTS, COMPONENT_CONFIGS, type Component } from "../packages/xinity-cli/src/lib/core/component-meta.ts";
+import { COMPONENTS, COMPONENT_CONFIGS, getAutoDefaults, type Component } from "../packages/xinity-cli/src/lib/core/component-meta.ts";
+import { componentFields } from "../packages/xinity-cli/src/lib/config/env-prompt.ts";
+import { REQUIRED_IN_EVERY_STACK, STACK_SHARED_KEYS, stackDefinitionT } from "../packages/xinity-cli/src/lib/stack/stack.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const START_MARKER = "<!-- [sync:config] - generated from the config declaration, do not edit -->";
@@ -132,6 +135,121 @@ function sync(relPath: string, start: string, end: string, render: (indent: stri
   return true;
 }
 
+const STACK_SCHEMA_PATH = "deployment/cli/stack.schema.json";
+const STACK_SCHEMA_URL = `https://raw.githubusercontent.com/xinity-ai/xinity-ai/main/${STACK_SCHEMA_PATH}`;
+
+type JsonSchema = { [key: string]: unknown };
+
+function requirement(field: EnvField, installDefault: string | undefined): string {
+  if (installDefault !== undefined || !(field.requiredOverride ?? field.isRequiredBySchema)) return "";
+  const activation = field.group?.activation ?? [];
+  const others = activation.filter((key) => key !== field.key);
+  if (activation.length === 0) return "Required.";
+  return others.length === 0 ? "" : `Required when ${others.map((key) => `\`${key}\``).join(" or ")} is set.`;
+}
+
+function defaultOf(field: EnvField, installDefault: string | undefined): string | undefined {
+  if (installDefault !== undefined) return installDefault;
+  const plain = field.hasDefault && !field.isRequiredBySchema && ["string", "number", "boolean"].includes(typeof field.defaultValue);
+  return plain ? String(field.defaultValue) : undefined;
+}
+
+function keyProperty(field: EnvField, notes: string[], defaultValue: string | undefined): JsonSchema {
+  return {
+    type: "string",
+    description: [describe(field).replaceAll("\\|", "|"), ...notes].filter(Boolean).join(" "),
+    ...(field.enumValues ? { enum: field.enumValues } : {}),
+    ...(defaultValue !== undefined ? { default: defaultValue } : {}),
+  };
+}
+
+function keyMap(description: unknown, properties: Record<string, JsonSchema>): JsonSchema {
+  return { type: "object", description, properties, additionalProperties: false };
+}
+
+const DERIVED_NOTES: Record<string, string> = {
+  TETHER_URL: "Filled in from the host address when exactly one stack host runs the tether.",
+  INFOSERVER_URL: "Filled in from the host address when a stack host runs the infoserver.",
+};
+
+function sharedKeyProperties(secret: boolean): Record<string, JsonSchema> {
+  return Object.fromEntries([...STACK_SHARED_KEYS].flatMap((key) => {
+    const declaring = COMPONENTS.filter((component) => componentFields(component).some((f) => f.key === key));
+    const field = componentFields(declaring[0]!).find((f) => f.key === key)!;
+    if (field.isSecret !== secret) {
+      return [];
+    }
+    const requiring = declaring.filter((component) =>
+      requirement(componentFields(component).find((f) => f.key === field.key)!, undefined) !== "");
+    const notes = [
+      `Used by ${declaring.join(", ")}.`,
+      REQUIRED_IN_EVERY_STACK.has(field.key) ? "Required in every stack." : "",
+      !REQUIRED_IN_EVERY_STACK.has(field.key) && requiring.length > 0 ? `Required by ${requiring.join(", ")}.` : "",
+      DERIVED_NOTES[field.key] ?? "",
+    ];
+    return [[field.key, keyProperty(field, notes, defaultOf(field, undefined))]];
+  }));
+}
+
+function componentOwnFields(component: Component): EnvField[] {
+  return componentFields(component).filter((field) => !STACK_SHARED_KEYS.has(field.key));
+}
+
+function componentKeyProperties(component: Component): Record<string, JsonSchema> {
+  const installDefaults: Record<string, string> = getAutoDefaults(component);
+  return Object.fromEntries(componentOwnFields(component).map((field) => {
+    const installDefault = installDefaults[field.key];
+    return [field.key, keyProperty(field, [requirement(field, installDefault)], defaultOf(field, installDefault))];
+  }));
+}
+
+// A key several components declare has no single default or requirement, so it names them instead.
+function hostKeyProperties(): Record<string, JsonSchema> {
+  const properties: Record<string, JsonSchema> = {};
+  for (const component of COMPONENTS) {
+    for (const [key, property] of Object.entries(componentKeyProperties(component))) {
+      properties[key] ??= property;
+    }
+  }
+  for (const key of Object.keys(properties)) {
+    const declaring = COMPONENTS.filter((component) => componentOwnFields(component).some((field) => field.key === key));
+    if (declaring.length > 1) {
+      const field = componentOwnFields(declaring[0]!).find((f) => f.key === key)!;
+      properties[key] = keyProperty(field, [`Used by ${declaring.join(", ")}, each with its own default.`], undefined);
+    }
+  }
+  return properties;
+}
+
+function stackSchema(): string {
+  const schema = z.toJSONSchema(stackDefinitionT, { io: "input" }) as JsonSchema & { properties: Record<string, JsonSchema> };
+  const { properties } = schema;
+  const hostItems = (properties.hosts!.items as JsonSchema & { properties: Record<string, JsonSchema> }).properties;
+  const fleetItems = (properties.fleets!.items as JsonSchema & { properties: Record<string, JsonSchema> }).properties;
+
+  properties.env = keyMap(properties.env!.description, sharedKeyProperties(false));
+  properties.secrets = keyMap(properties.secrets!.description, sharedKeyProperties(true));
+  properties.componentEnv = keyMap(
+    properties.componentEnv!.description,
+    Object.fromEntries(COMPONENTS.map((component) => [component, keyMap(`Values for every ${component} host.`, componentKeyProperties(component))])),
+  );
+  hostItems.envOverrides = keyMap(hostItems.envOverrides!.description, hostKeyProperties());
+  fleetItems.envOverrides = keyMap(fleetItems.envOverrides!.description, componentKeyProperties("daemon"));
+
+  return JSON.stringify({ $id: STACK_SCHEMA_URL, title: "Xinity stack", ...schema }, null, 2) + "\n";
+}
+
+function syncGenerated(relPath: string, content: string): boolean {
+  const path = join(ROOT, relPath);
+  if (existsSync(path) && readFileSync(path, "utf-8") === content) {
+    console.log(`OK: ${relPath}`);
+    return true;
+  }
+  writeFileSync(path, content);
+  console.log(`Updated: ${relPath}`);
+  return true;
+}
+
 let synced = true;
 for (const component of COMPONENTS) {
   const fields = analyzeConfig(COMPONENT_CONFIGS[component]);
@@ -161,6 +279,8 @@ synced =
   sync("docs/deprecations.md", DEPRECATIONS_START_MARKER, DEPRECATIONS_END_MARKER, () =>
     [DEPRECATIONS_START_MARKER, "", ...deprecationTable(), "", DEPRECATIONS_END_MARKER].join("\n"),
   ) && synced;
+
+synced = syncGenerated(STACK_SCHEMA_PATH, stackSchema()) && synced;
 
 if (!synced) {
   process.exit(1);

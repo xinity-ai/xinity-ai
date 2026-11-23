@@ -2,8 +2,8 @@ import { confirm, isCancel } from "../core/clack.ts";
 import { heading } from "../core/output.ts";
 import { manifestWriteFailure, readManifest, writeManifest } from "./manifest.ts";
 import { categorizeFields, componentFields, secretKeysOfOtherComponents } from "../config/env-prompt.ts";
-import { type Host, isUnitActiveOn } from "../core/host.ts";
-import { unitName } from "./systemd.ts";
+import type { Host } from "../core/host.ts";
+import { isServiceActiveOn, serviceManagerOf } from "./service-manager.ts";
 import { runSteps, runStepsCollapsed } from "../term/step-runner.ts";
 import type { StepEvent } from "../term/step-event.ts";
 import {
@@ -53,26 +53,27 @@ export async function* removeComponent(opts: {
     yield { type: "warn", label: "Not installed", detail: `${component} is not in the manifest` };
   }
 
-  const unit = unitName(component);
+  const manager = serviceManagerOf(host);
+  const unit = manager.serviceName(component);
 
-  if (await isUnitActiveOn(host, unit)) {
+  if (await isServiceActiveOn(host, component)) {
     yield { type: "info", label: "Service", detail: `Stopping ${unit}…` };
     const result = await host.withElevation(
-      `systemctl disable --now ${unit}`,
+      manager.disableCommand(component),
       `Stop and disable ${unit}`,
     );
     yield* elevationStep(result, "Service", `${unit} stopped and disabled`, `Failed to stop ${unit}`, errors);
   } else {
-    await host.withElevation(`systemctl disable ${unit} 2>/dev/null || true`, `Disable ${unit}`);
+    await host.withElevation(`${manager.disableCommand(component)} 2>/dev/null || true`, `Disable ${unit}`);
     yield { type: "info", label: "Service", detail: `${unit} was not running` };
   }
 
-  const unitPath = `${UNIT_DIR}/${unit}`;
-  const rmUnit = await host.withElevation(
-    `rm -f ${unitPath} && systemctl daemon-reload`,
-    `Remove ${unit} unit file`,
+  const definitionPath = manager.definitionPath(component);
+  const rmDefinition = await host.withElevation(
+    manager.removeDefinitionCommand(component),
+    `Remove ${unit} ${manager.definitionKind}`,
   );
-  yield* elevationStep(rmUnit, "Systemd", `Removed ${unitPath}`, "Failed to remove unit", errors);
+  yield* elevationStep(rmDefinition, "Service", `Removed ${definitionPath}`, `Failed to remove the ${manager.definitionKind}`, errors);
 
   const binaryPath = `${BIN_DIR}/${binaryBaseName(component)}`;
   const rmBin = await host.withElevation(
@@ -112,7 +113,7 @@ export async function* removeComponent(opts: {
     }
   }
 
-  if (component === "daemon") {
+  if (component === "daemon" && host.os === "linux") {
     const vllmTemplatePath = `${UNIT_DIR}/vllm-driver@.service`;
     const rmTemplate = await host.withElevation(
       `rm -f ${vllmTemplatePath} && systemctl daemon-reload`,
@@ -130,12 +131,12 @@ export async function* removeComponent(opts: {
   }
 
   if (purge) {
-    const stateDir = `/var/lib/xinity-ai-${component}`;
+    const purged = [`/var/lib/xinity-ai-${component}`, ...manager.logFiles(component)].join(" ");
     const rmState = await host.withElevation(
-      `rm -rf ${stateDir}`,
+      `rm -rf ${purged}`,
       `Purge ${component} state data`,
     );
-    yield* elevationStep(rmState, "Purge", `Removed ${stateDir}`, "Failed to purge state", errors);
+    yield* elevationStep(rmState, "Purge", `Removed ${purged}`, "Failed to purge state", errors);
   }
 
   delete manifest.components[component];

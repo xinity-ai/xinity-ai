@@ -4,7 +4,7 @@ The Xinity CLI is the recommended way to deploy Xinity on any Linux server with 
 
 ## Prerequisites
 
-- Linux with systemd
+- Linux with systemd, or macOS for the daemon (see [macOS](#macos))
 - `curl` and `tar`
 - For the daemon: a machine with GPU capacity and either Ollama or vLLM available
 
@@ -64,6 +64,8 @@ Key properties:
 
 Host addresses are anything ssh accepts; use `root@ip` for zero prompts, or a sudo-capable user (one password prompt per host, asked up front).
 
+**Writing the stack file directly.** A stack is one JSON file, which you or a coding agent can write instead of going through `stack init` and `stack edit`. [Stack Files](stack-file.md) describes its layers, required values and validation, and [`stack.schema.json`](stack.schema.json) is its JSON Schema.
+
 **Bring your own infrastructure.** A stack deploys and reconciles Xinity's own components; it deliberately does not provision the infrastructure underneath them. `stack init` asks for your PostgreSQL connection URL, and optionally a Redis one for a cache the gateways share, as given facts (migrations are then handled for you). If you need that infrastructure created first, the assistants under `xinity up infra-*` do exactly that, and the URLs they produce go straight into the stack's shared settings.
 
 ## Deploy on a Single Machine
@@ -91,6 +93,29 @@ xinity up daemon
 ```
 
 The daemon connects to the tether via SSE and receives deployment instructions through it. It needs Ollama or vLLM available on the same machine to actually serve models: `xinity up infra-ollama` installs Ollama, which the daemon finds on its own, or point the daemon at an existing vLLM install with `VLLM_PATH`/`VLLM_DOCKER_IMAGE`. The daemon deletes every model in its Ollama instance that is not deployed to the node, so do not share that instance with models you want to keep.
+
+### macOS
+
+The daemon also runs on Macs, Apple Silicon and Intel, as the only component there. Install and start [Ollama for macOS](https://ollama.com/download/mac) first, then run `xinity up daemon` as on Linux. On a Mac the daemon runs as a launchd job instead of a systemd unit:
+
+| What | Path |
+|---|---|
+| Job | `/Library/LaunchDaemons/ai.xinity.daemon.plist` |
+| Config | `/etc/xinity-ai/daemon.env`, copied into the job on every change |
+| State | `/var/lib/xinity-ai-daemon` |
+| Log | `/var/log/xinity-ai-daemon.log` |
+
+Check the job with `sudo launchctl print system/ai.xinity.daemon`. Like every other host, the Mac is reached over SSH, so installing on the Mac itself needs Remote Login (System Settings, General, Sharing).
+
+The CLI does not configure the macOS firewall, which is off by default. With the firewall on, allow the daemon to accept connections, then restart it, because the firewall applies an exception only to processes started after it:
+
+```bash
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --add /opt/xinity/bin/xinity-ai-daemon
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /opt/xinity/bin/xinity-ai-daemon
+sudo launchctl kickstart -k system/ai.xinity.daemon
+```
+
+On an Intel Mac, sign the binary first with `sudo codesign --force --sign - /opt/xinity/bin/xinity-ai-daemon`. The release binary for Intel carries a signature that the firewall rejects. Repeat these steps after every daemon update, since an update replaces the binary.
 
 ## Infrastructure Utilities
 

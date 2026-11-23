@@ -20,6 +20,8 @@ A stack is a local, declarative definition of a whole deployment: shared configu
 
 `xinity stack up` compares every host against the definition, plans migrations, installs, updates, reconfigurations, and removal of components the stack no longer tracks, and applies everything after one review gate. A local state file records which hosts the stack manages, so hosts deleted from the definition are evacuated (all managed components removed) on the next `up`. Each stack pins a release version; all components are held at it, re-pinning happens from the release list in `stack edit`, and nothing updates automatically. `xinity stack doctor` (alias `status`) health-checks all hosts, or one fleet via `--fleet`.
 
+The definition is one JSON file that can also be written directly, by hand or by a coding agent. See [Stack Files](../../deployment/cli/stack-file.md) and its JSON Schema.
+
 Stacks assume the infrastructure underneath (PostgreSQL, and Redis if used) already exists and take its connection URLs as given; the `infra-*` assistants can provision it beforehand. For a guided single-machine install that also provisions infrastructure, `xinity up all` is the intended path.
 
 ### Health checking (`xinity doctor`)

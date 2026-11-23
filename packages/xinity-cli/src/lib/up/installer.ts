@@ -2,19 +2,21 @@
  * Component installer: the apply half of the up flow. Executes decisions
  * already made and reviewed during planning (up-plan.ts); nothing prompts.
  */
+import { basename } from "node:path";
 import { cyan } from "picocolors";
 
 import { buildLocalArtifact } from "./local-build.ts";
 import { manifestWriteFailure, updateManifestEntry } from "./manifest.ts";
-import { unitName } from "./systemd.ts";
 import { pass } from "../core/output.ts";
-import { type Host, commandExistsOn, isUnitActiveOn } from "../core/host.ts";
+import { type Host, commandExistsOn, httpOk } from "../core/host.ts";
+import type { HostOs } from "../core/platform.ts";
+import { isServiceActiveOn, serviceManagerOf } from "./service-manager.ts";
 import { isOllamaRunning } from "../infra/ollama-setup.ts";
-import { heredoc, writeEnvConfig, writeSystemdUnit, stopService, startService, restartService } from "./service.ts";
+import { heredoc, writeEnvConfig, writeServiceDefinition, stopService, startService, restartService } from "./service.ts";
 import { runSteps, createProgress, type Progress } from "../term/step-runner.ts";
 import {
   type Component, type InstallResult,
-  ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR,
+  ENV_DIR, SECRETS_DIR, BIN_DIR, UNIT_DIR, DEFAULT_OLLAMA_URL,
   binaryBaseName,
 } from "../core/component-meta.ts";
 import type { ComponentAction, ComponentActionKind } from "./up-plan.ts";
@@ -64,7 +66,7 @@ async function startOllama(host: Host, progress: Progress): Promise<void> {
  * counts as a driver whenever its binary is on the host; a stopped service is
  * started. vLLM stays derived from the configured env values.
  */
-async function checkDriverTools(
+async function checkLinuxDriverTools(
   config: Record<string, string>,
   secrets: Record<string, string>,
   host: Host,
@@ -149,6 +151,30 @@ async function checkDriverTools(
   }
 }
 
+// On macOS Ollama is an app the user installs and runs, and vLLM is not available.
+async function checkMacDriverTools(
+  config: Record<string, string>,
+  _secrets: Record<string, string>,
+  host: Host,
+  progress: Progress,
+): Promise<void> {
+  const ollamaUrl = config.OLLAMA_URL || DEFAULT_OLLAMA_URL;
+  if (await httpOk(host, `${ollamaUrl}/api/version`)) {
+    progress.update(`ollama answers at ${ollamaUrl}`);
+    return;
+  }
+  progress.warn(
+    "Drivers",
+    `Ollama does not answer at ${ollamaUrl}, so the node will offer no driver`,
+    "  Install and start Ollama for macOS: https://ollama.com/download/mac",
+  );
+}
+
+const DRIVER_CHECKS: Record<HostOs, typeof checkLinuxDriverTools> = {
+  linux: checkLinuxDriverTools,
+  darwin: checkMacDriverTools,
+};
+
 // ─── Apply ──────────────────────────────────────────────────────────────────
 
 type ApplyableKind = Exclude<ComponentActionKind, "none">;
@@ -198,7 +224,7 @@ async function buildAndUploadLocalArtifact(
   progress: Progress,
 ): Promise<Artifact | null> {
   const hostArch = await host.getArch();
-  const buildResult = await runSteps(buildLocalArtifact(component, repoPath, hostArch), progress);
+  const buildResult = await runSteps(buildLocalArtifact(component, repoPath, host.os, hostArch), progress);
   if (!buildResult) return null;
 
   const archivePath = await uploadArtifact(buildResult.archivePath, host, progress);
@@ -229,9 +255,10 @@ async function obtainArtifact(action: ComponentAction, host: Host, progress: Pro
 type Backup = { includesBinary: boolean; restore(): Promise<boolean> };
 
 /**
- * Copies the component's env file, the shared secrets directory and, when the
- * binary is about to be replaced, the binary to <path>.bak. A path that does
- * not exist leaves no .bak, so restore never brings back an older backup.
+ * Copies the component's env file, the shared secrets directory, its service
+ * definition and, when the binary is about to be replaced, the binary to a
+ * .bak copy. A path that does not exist leaves no .bak, so restore never
+ * brings back an older backup.
  */
 async function backUpInstallation(
   component: Component,
@@ -239,9 +266,16 @@ async function backUpInstallation(
   host: Host,
   progress: Progress,
 ): Promise<Backup> {
-  const paths = [`${ENV_DIR}/${component}.env`, SECRETS_DIR, ...(includesBinary ? [binaryPath(component)] : [])];
+  const manager = serviceManagerOf(host);
+  const definition = manager.definitionPath(component);
+  // launchd loads every file in its directory, so the definition's copy lives with the config.
+  const copies = [
+    ...[`${ENV_DIR}/${component}.env`, SECRETS_DIR, ...(includesBinary ? [binaryPath(component)] : [])]
+      .map((path) => ({ path, backup: `${path}.bak` })),
+    { path: definition, backup: `${ENV_DIR}/${basename(definition)}.bak` },
+  ];
   const result = await host.withElevation(
-    paths.map((path) => `rm -rf ${path}.bak && if [ -e ${path} ]; then cp -a ${path} ${path}.bak; fi`).join("\n"),
+    copies.map(({ path, backup }) => `rm -rf ${backup} && if [ -e ${path} ]; then cp -a ${path} ${backup}; fi`).join("\n"),
     `Back up ${component}`,
   );
   if (result.success) {
@@ -251,7 +285,10 @@ async function backUpInstallation(
     includesBinary,
     restore: async () => {
       const result = await host.withElevation(
-        paths.map((path) => `if [ -e ${path}.bak ]; then rm -rf ${path} && cp -a ${path}.bak ${path}; fi`).join("\n"),
+        [
+          ...copies.map(({ path, backup }) => `if [ -e ${backup} ]; then rm -rf ${path} && cp -a ${backup} ${path}; fi`),
+          manager.afterDefinitionWrite(component),
+        ].join("\n"),
         `Restore ${component}`,
       );
       return result.success;
@@ -260,10 +297,11 @@ async function backUpInstallation(
 }
 
 async function hardResetService(component: Component, host: Host, progress: Progress): Promise<void> {
-  const unit = unitName(component);
+  const manager = serviceManagerOf(host);
+  const unit = manager.serviceName(component);
   await stopService(component, host);
   progress.update(`Cleaning state for ${unit}…`);
-  const result = await host.withElevation(`systemctl clean --what=state ${unit}`, `Clean state for ${unit}`);
+  const result = await host.withElevation(manager.resetStateCommand(component), `Clean state for ${unit}`);
   if (result.success) {
     progress.update(`State cleaned for ${unit}`);
   } else {
@@ -272,13 +310,13 @@ async function hardResetService(component: Component, host: Host, progress: Prog
 }
 
 async function bringServiceUp(component: Component, host: Host, progress: Progress): Promise<boolean> {
-  return (await isUnitActiveOn(host, unitName(component)))
+  return (await isServiceActiveOn(host, component))
     ? runSteps(restartService(component, host), progress)
     : runSteps(startService(component, host), progress);
 }
 
 /**
- * Write env config and systemd unit, then bring the service up. A service
+ * Write env config and the service definition, then bring the service up. A service
  * that does not start is rolled back when there is a backup, otherwise
  * disabled and left in place for manual diagnosis.
  * Returns accumulated non-fatal errors.
@@ -292,7 +330,9 @@ async function applyConfigAndStart(
   progress: Progress,
 ): Promise<string[]> {
   const errors: string[] = [];
-  const unit = unitName(component);
+  const manager = serviceManagerOf(host);
+  const unit = manager.serviceName(component);
+  const definitionLabel = manager.definitionKind[0]!.toUpperCase() + manager.definitionKind.slice(1);
 
   progress.update("Writing configuration…");
   const configResult = await writeEnvConfig(component, env.config, env.secrets, host, removeSecretKeys);
@@ -304,16 +344,16 @@ async function applyConfigAndStart(
   }
 
   if (component === "daemon") {
-    await checkDriverTools(env.config, env.secrets, host, progress);
+    await DRIVER_CHECKS[host.os](env.config, env.secrets, host, progress);
   }
 
   const secretKeys = Object.keys(env.secrets);
-  const unitResult = await writeSystemdUnit(component, secretKeys, host);
-  if (unitResult.success) {
-    progress.update("Systemd unit installed");
+  const definitionResult = await writeServiceDefinition(component, { config: env.config, secretKeys }, host);
+  if (definitionResult.success) {
+    progress.update(`${definitionLabel} installed`);
   } else {
-    progress.fail("Systemd", unitResult.error || "failed to install unit");
-    errors.push("Systemd unit not installed (may need manual setup)");
+    progress.fail(definitionLabel, definitionResult.error || `failed to install the ${manager.definitionKind}`);
+    errors.push(`${definitionLabel} not installed (may need manual setup)`);
   }
 
   if (await bringServiceUp(component, host, progress)) return errors;
@@ -321,7 +361,7 @@ async function applyConfigAndStart(
   if (!progress.hasFailed()) {
     progress.fail("Service", `${unit} did not start successfully`);
   }
-  progress.update(`Diagnose with ${cyan(`systemctl status ${unit}`)} and ${cyan(`journalctl -u ${unit} -e --no-pager`)}`);
+  progress.update(`Diagnose with ${manager.diagnoseCommands(component).map((command) => cyan(command)).join(" and ")}`);
 
   if (backup) {
     const previous = backup.includesBinary ? "previous version" : "previous configuration";
@@ -331,7 +371,7 @@ async function applyConfigAndStart(
         progress.update(`${unit} is back on the ${previous}`);
         errors.push(`Service failed to start; rolled back to the ${previous}`);
       } else {
-        progress.warn("Rollback", `${unit} did not restart after restoring the ${previous}`, `  ${cyan(`systemctl start ${unit}`)}`);
+        progress.warn("Rollback", `${unit} did not restart after restoring the ${previous}`, `  ${cyan(manager.startCommand(component))}`);
         errors.push(`Service failed to start; restored the ${previous}, but it did not restart either`);
       }
       return errors;
@@ -340,11 +380,8 @@ async function applyConfigAndStart(
     errors.push(`Service failed to start, and restoring the ${previous} failed too`);
   }
 
-  // Disable the broken unit so it doesn't start on boot.
-  await host.withElevation(
-    `systemctl disable --now ${unit} 2>/dev/null; systemctl reset-failed ${unit} 2>/dev/null`,
-    `Disable ${unit}`,
-  );
+  // Disable the broken service so it does not start on boot.
+  await host.withElevation(`${manager.disableCommand(component)} 2>/dev/null`, `Disable ${unit}`);
   errors.push("Service did not start successfully");
   return errors;
 }
@@ -406,7 +443,7 @@ export async function applyComponentAction(
         version: started ? version : (action.installedVersion ?? version),
         installedAt: new Date().toISOString(),
         binaryPath: binaryPath(component),
-        unitName: unitName(component),
+        unitName: serviceManagerOf(host).serviceName(component),
         binaryChecksum: (await host.computeSha256(binaryPath(component))) ?? undefined,
       }, host);
       if (!recorded) {

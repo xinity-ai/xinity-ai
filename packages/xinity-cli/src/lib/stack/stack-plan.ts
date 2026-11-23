@@ -27,7 +27,7 @@ import {
   type StackDefinition, type StackHost, type FleetDefinition,
   resolveEnv, saveStack, getFleetForHost, hostLabel,
   componentLayerSeed, fleetLayerSeed, hostLayerBase,
-  sharedFields,
+  sharedFields, stackComponents,
   inStackComponentUrl,
 } from "./stack.ts";
 import { editSharedLayer, editComponentLayer, editFleetLayer, editHostLayer } from "./stack-layers.ts";
@@ -70,6 +70,12 @@ type StackPlanOutcome =
   | { status: "failed" };
 
 function stackMigrateUrl(stack: StackDefinition): string | undefined {
+  const usesDatabase = stackComponents(stack).some((component) =>
+    componentFields(component).some((field) => field.key === "DB_CONNECTION_URL"),
+  );
+  if (!usesDatabase) {
+    return undefined;
+  }
   return stack.secrets.DB_CONNECTION_URL ?? stack.env.DB_CONNECTION_URL;
 }
 
@@ -123,7 +129,7 @@ function deriveTetherUrl(stack: StackDefinition): void {
  * values are missing; edits are stored as diffs against the layer below.
  */
 async function ensureStackLevelConfig(stack: StackDefinition, deployments: Deployment[]): Promise<boolean> {
-  if (missingRequiredFields(sharedFields(), { ...stack.env, ...stack.secrets }).length > 0) {
+  if (missingRequiredFields(sharedFields(stack),{ ...stack.env, ...stack.secrets }).length > 0) {
     heading("shared settings");
     if (!(await editSharedLayer(stack, "Shared stack settings (new required values)"))) {
       return false;
@@ -492,12 +498,13 @@ async function applyStackPlan(
         const hostForAction = active.find((hp) => hp.actions.includes(action));
         const host = hosts.get(hostForAction!.address) ?? orphanHosts.get(hostForAction!.address);
         const arch = await host!.getArch();
-        const cacheKey = `${action.component}:${arch}`;
+        const target = `${host!.os}/${arch}`;
+        const cacheKey = `${action.component}:${target}`;
         if (!buildCache.has(cacheKey)) {
-          log.info(`Building ${cyan(action.component)} for ${arch}…`);
-          const result = await runSteps(buildLocalArtifact(action.component, action.localRepoPath!, arch), createSilentProgress());
+          log.info(`Building ${cyan(action.component)} for ${target}…`);
+          const result = await runSteps(buildLocalArtifact(action.component, action.localRepoPath!, host!.os, arch), createSilentProgress());
           if (!result) {
-            fail(action.component, `Local build failed for ${arch}`);
+            fail(action.component, `Local build failed for ${target}`);
             return false;
           }
           buildCache.set(cacheKey, { archivePath: result.archivePath, version: result.version });

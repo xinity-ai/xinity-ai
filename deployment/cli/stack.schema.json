@@ -1,0 +1,1405 @@
+{
+  "$id": "https://raw.githubusercontent.com/xinity-ai/xinity-ai/main/deployment/cli/stack.schema.json",
+  "title": "Xinity stack",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "URL of this schema, for editors and tools.",
+      "type": "string"
+    },
+    "version": {
+      "default": "0.0.0",
+      "description": "Version of the CLI that last saved the file. Set by the CLI.",
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "description": "Stack name, the same as the file name without .json. Lowercase letters, digits, hyphens and underscores."
+    },
+    "env": {
+      "type": "object",
+      "description": "Shared non-secret values, used by every component that declares them.",
+      "properties": {
+        "INFOSERVER_URL": {
+          "type": "string",
+          "description": "Infoserver URL (default hosted: https://sysinfo.xinity.ai, or your self-hosted instance). Used by gateway, dashboard, daemon. Filled in from the host address when a stack host runs the infoserver.",
+          "default": "https://sysinfo.xinity.ai"
+        },
+        "TETHER_URL": {
+          "type": "string",
+          "description": "URL of the xinity-tether service (e.g. http://tether:4020). Used by daemon. Required by daemon. Filled in from the host address when exactly one stack host runs the tether."
+        },
+        "S3_ENDPOINT": {
+          "type": "string",
+          "description": "S3-compatible endpoint URL. Used by gateway, dashboard. Required by gateway, dashboard."
+        },
+        "S3_BUCKET": {
+          "type": "string",
+          "description": "S3 bucket for media objects. Used by gateway, dashboard.",
+          "default": "xinity-media"
+        },
+        "S3_REGION": {
+          "type": "string",
+          "description": "S3 region. Endpoints that are not AWS usually ignore it, and 'us-east-1' is the conventional value. Used by gateway, dashboard.",
+          "default": "us-east-1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "secrets": {
+      "type": "object",
+      "description": "Shared secret values, used by every component that declares them.",
+      "properties": {
+        "DB_CONNECTION_URL": {
+          "type": "string",
+          "description": "PostgreSQL connection string (e.g. postgresql://user:pass@host:5432/dbname). Secret. Used by gateway, dashboard, tether. Required by gateway, dashboard, tether."
+        },
+        "REDIS_URL": {
+          "type": "string",
+          "description": "Redis or Valkey connection URL (e.g. redis://:PASSWORD@localhost:6379). Percent-encode the password. Unset keeps the cache in the gateway process, which suits a single gateway. Secret. Used by gateway."
+        },
+        "TETHER_SECRET": {
+          "type": "string",
+          "description": "Shared secret authenticating daemons to the tether. Secret. Used by daemon, tether. Required by daemon, tether."
+        },
+        "METRICS_AUTH": {
+          "type": "string",
+          "description": "Basic auth for the /metrics endpoint and the /health detail view (format: user:pass, comma-separated for multiple). Secret. Used by gateway, dashboard, daemon, infoserver, tether. Required in every stack."
+        },
+        "XINITY_SECRET_KEY": {
+          "type": "string",
+          "description": "32 bytes of base64 (openssl rand -base64 32) encrypting dashboard-managed secrets at rest. The same value on every host that sets or reads one. Secret. Used by gateway, dashboard, daemon. Required by gateway, dashboard, daemon."
+        },
+        "XINITY_SECRET_KEY_PREVIOUS": {
+          "type": "string",
+          "description": "The key XINITY_SECRET_KEY replaced, accepted for decryption only. Set during a rotation, removed once every value has been re-sealed. Secret. Used by gateway, dashboard, daemon."
+        },
+        "VLLM_HF_TOKEN": {
+          "type": "string",
+          "description": "HuggingFace token for downloading private or gated models. Secret. Can be set to `@dynamic` to take its value from the dashboard. Used by daemon."
+        },
+        "S3_ACCESS_KEY_ID": {
+          "type": "string",
+          "description": "S3 access key ID. Secret. Used by gateway, dashboard. Required by gateway, dashboard."
+        },
+        "S3_SECRET_ACCESS_KEY": {
+          "type": "string",
+          "description": "S3 secret access key. Secret. Used by gateway, dashboard. Required by gateway, dashboard."
+        }
+      },
+      "additionalProperties": false
+    },
+    "componentEnv": {
+      "type": "object",
+      "description": "Values per component type, for every host running that component.",
+      "properties": {
+        "gateway": {
+          "type": "object",
+          "description": "Values for every gateway host.",
+          "properties": {
+            "HOST": {
+              "type": "string",
+              "description": "Bind address (use 0.0.0.0 to listen on all interfaces).",
+              "default": "0.0.0.0"
+            },
+            "PORT": {
+              "type": "string",
+              "description": "Listen port.",
+              "default": "4010"
+            },
+            "IDLE_TIMEOUT": {
+              "type": "string",
+              "description": "Seconds a connection may go without traffic before it is closed (Bun allows at most 255).",
+              "default": "255"
+            },
+            "UNIX_SOCKET": {
+              "type": "string",
+              "description": "Unix socket path (overrides HOST/PORT when set)."
+            },
+            "DB_MAX_CONNECTIONS": {
+              "type": "string",
+              "description": "Maximum PostgreSQL connection pool size.",
+              "default": "20"
+            },
+            "RESPONSE_CACHE_TTL_SECONDS": {
+              "type": "string",
+              "description": "How long an identical completion is served from cache instead of the backend. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "3600"
+            },
+            "CACHE_APPLICATION_TTL_SECONDS": {
+              "type": "string",
+              "description": "How long an application name to id lookup is cached. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "300"
+            },
+            "CACHE_API_KEY_TTL_SECONDS": {
+              "type": "string",
+              "description": "How long a validated API key is cached, so every request does not hit the database. A deactivated or deleted key keeps working until its entry expires. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "120"
+            },
+            "CACHE_AUTH_FAILURE_TTL_SECONDS": {
+              "type": "string",
+              "description": "How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "10"
+            },
+            "CACHE_MODEL_TTL_SECONDS": {
+              "type": "string",
+              "description": "How long a model deployment lookup is cached. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "60"
+            },
+            "CACHE_DIGEST_MAX_ENTRIES": {
+              "type": "string",
+              "description": "Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "5000"
+            },
+            "INFOSERVER_CACHE_TTL_MS": {
+              "type": "string",
+              "description": "How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against.",
+              "default": "600000"
+            },
+            "LOG_LEVEL": {
+              "type": "string",
+              "description": "Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`.",
+              "enum": [
+                "fatal",
+                "error",
+                "warn",
+                "info",
+                "debug",
+                "trace"
+              ],
+              "default": "debug"
+            },
+            "LOG_DIR": {
+              "type": "string",
+              "description": "Log file directory (enables file logging)."
+            },
+            "XINITY_TLS_CERT": {
+              "type": "string",
+              "description": "PEM-encoded TLS certificate. Secret. Required when `XINITY_TLS_KEY` is set."
+            },
+            "XINITY_TLS_KEY": {
+              "type": "string",
+              "description": "PEM-encoded TLS private key. Secret. Required when `XINITY_TLS_CERT` is set."
+            },
+            "WEB_SEARCH_PROVIDER": {
+              "type": "string",
+              "description": "Web search backend. When unset, web search is disabled. One of `searxng`, `google`, `bing`, `brave`, `serper`, `tavily`. Can be set to `@dynamic` to take its value from the dashboard.",
+              "enum": [
+                "searxng",
+                "google",
+                "bing",
+                "brave",
+                "serper",
+                "tavily"
+              ]
+            },
+            "WEB_SEARCH_CREDENTIAL": {
+              "type": "string",
+              "description": "Provider credential: searxng=instance URL, google=apikey:cx, bing/brave/serper/tavily=API key. Secret. Can be set to `@dynamic` to take its value from the dashboard."
+            },
+            "WEB_SEARCH_ENGINE_URL": {
+              "type": "string",
+              "description": "@deprecated Use WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL instead. SearXNG search engine URL."
+            },
+            "LOAD_BALANCE_STRATEGY": {
+              "type": "string",
+              "description": "Load balancing strategy for distributing requests across inference nodes. One of `random`, `round-robin`, `least-connections`. Can be set to `@dynamic` to take its value from the dashboard.",
+              "enum": [
+                "random",
+                "round-robin",
+                "least-connections"
+              ],
+              "default": "least-connections"
+            },
+            "BACKEND_TIMEOUT_MS": {
+              "type": "string",
+              "description": "Backend timeout in ms (default: 5 min). For streaming requests this is an idle timeout that resets on each chunk; for non-streaming requests it is a wall-clock deadline. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "300000"
+            },
+            "XINITY_INFERENCE_CA": {
+              "type": "string",
+              "description": "PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS. Secret."
+            },
+            "DEEP_RESEARCH_MAX_STEPS": {
+              "type": "string",
+              "description": "Maximum tool-call steps for deep research mode. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "30"
+            },
+            "DEEP_RESEARCH_COMPACTION_THRESHOLD": {
+              "type": "string",
+              "description": "Fraction of model context window at which compaction triggers. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "0.7"
+            },
+            "MAX_MEDIA_SIZE_MB": {
+              "type": "string",
+              "description": "Largest image or audio file a request may carry, in MB.",
+              "default": "40"
+            }
+          },
+          "additionalProperties": false
+        },
+        "dashboard": {
+          "type": "object",
+          "description": "Values for every dashboard host.",
+          "properties": {
+            "HOST": {
+              "type": "string",
+              "description": "Bind address (use 0.0.0.0 to listen on all interfaces).",
+              "default": "0.0.0.0"
+            },
+            "HTTP_PORT": {
+              "type": "string",
+              "description": "TCP port the server listens on.",
+              "default": "4030"
+            },
+            "IDLE_TIMEOUT": {
+              "type": "string",
+              "description": "Seconds a connection may go without traffic before it is closed (Bun allows at most 255).",
+              "default": "30"
+            },
+            "UNIX_SOCKET": {
+              "type": "string",
+              "description": "Unix socket path (overrides HOST and HTTP_PORT when set)."
+            },
+            "DB_MAX_CONNECTIONS": {
+              "type": "string",
+              "description": "Maximum PostgreSQL connection pool size.",
+              "default": "10"
+            },
+            "BETTER_AUTH_SECRET": {
+              "type": "string",
+              "description": "Better Auth secret key, generate with: openssl rand -base64 32. Secret. Required."
+            },
+            "SIGNUP_ENABLED": {
+              "type": "string",
+              "description": "Enable user signup. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "true"
+            },
+            "INTERNAL_SIGNIN_ENABLED": {
+              "type": "string",
+              "description": "Allow sign-in with an account held by this instance (email and password, or passkey). When off, users sign in through SSO only. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "true"
+            },
+            "MULTI_TENANT_MODE": {
+              "type": "string",
+              "description": "Allow any authenticated user to create organizations.",
+              "default": "false"
+            },
+            "INSTANCE_ADMIN_EMAILS": {
+              "type": "string",
+              "description": "Emails of users who get instance-wide admin privileges (can manage all orgs). Required."
+            },
+            "MAIL_URL": {
+              "type": "string",
+              "description": "SMTP mail server URL (e.g. smtp://user:pass@mail.example.com:587). Secret."
+            },
+            "MAIL_FROM": {
+              "type": "string",
+              "description": "Email sender address (e.g. noreply@mydomain.com). Required when `MAIL_URL` is set."
+            },
+            "INFOSERVER_CACHE_TTL_MS": {
+              "type": "string",
+              "description": "How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against.",
+              "default": "600000"
+            },
+            "COMPUTE_MANAGEMENT_ENABLED": {
+              "type": "string",
+              "description": "Enable compute management.",
+              "default": "true"
+            },
+            "DEPLOYMENT_STRATEGY": {
+              "type": "string",
+              "description": "Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes). One of `first-fit`, `balanced`, `bin-pack`, `proportional`. Can be set to `@dynamic` to take its value from the dashboard.",
+              "enum": [
+                "first-fit",
+                "balanced",
+                "bin-pack",
+                "proportional"
+              ],
+              "default": "balanced"
+            },
+            "PROMETHEUS_URL": {
+              "type": "string",
+              "description": "Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes. Can be set to `@dynamic` to take its value from the dashboard."
+            },
+            "AUDIT_SINK_URL": {
+              "type": "string",
+              "description": "Sink audit events are mirrored to. http(s):// is a Loki base URL (e.g. http://localhost:6122), udp://, tcp:// or tls:// is a syslog collector (e.g. tls://collector.example.com:6514)."
+            },
+            "AUDIT_SINK_AUTH": {
+              "type": "string",
+              "description": "Loki only. Basic auth as user:pass, for an authenticated Loki endpoint. Secret."
+            },
+            "AUDIT_SINK_TENANT": {
+              "type": "string",
+              "description": "Loki only. Tenant id sent as X-Scope-OrgID, for multi-tenant Loki or Grafana Cloud."
+            },
+            "AUDIT_SINK_SYSLOG_FACILITY": {
+              "type": "string",
+              "description": "Syslog only. Facility the messages are sent under, which is what collectors route on. 'audit' is the RFC 5424 log-audit facility, local0 to local7 are the site-specific ones. One of `kern`, `user`, `mail`, `daemon`, `auth`, `syslog`, `lpr`, `news`, `uucp`, `cron`, `authpriv`, `ftp`, `ntp`, `audit`, `alert`, `clock`, `local0`, `local1`, `local2`, `local3`, `local4`, `local5`, `local6`, `local7`.",
+              "enum": [
+                "kern",
+                "user",
+                "mail",
+                "daemon",
+                "auth",
+                "syslog",
+                "lpr",
+                "news",
+                "uucp",
+                "cron",
+                "authpriv",
+                "ftp",
+                "ntp",
+                "audit",
+                "alert",
+                "clock",
+                "local0",
+                "local1",
+                "local2",
+                "local3",
+                "local4",
+                "local5",
+                "local6",
+                "local7"
+              ],
+              "default": "local0"
+            },
+            "AUDIT_SINK_SYSLOG_FRAMING": {
+              "type": "string",
+              "description": "Syslog only. How messages are delimited on tcp and tls. 'octet-counting' is RFC 6587, which rsyslog and syslog-ng expect. 'lf' is newline-delimited, for collectors that only accept that. Ignored on udp. One of `octet-counting`, `lf`.",
+              "enum": [
+                "octet-counting",
+                "lf"
+              ],
+              "default": "octet-counting"
+            },
+            "AUDIT_SINK_SYSLOG_APP_NAME": {
+              "type": "string",
+              "description": "Syslog only. APP-NAME field of the messages. Give each instance its own name when several feed one collector.",
+              "default": "xinity-audit"
+            },
+            "AUDIT_SINK_SYSLOG_CA": {
+              "type": "string",
+              "description": "Syslog only. PEM certificate authority the tls:// collector is verified against. Only needed when the collector uses a private CA."
+            },
+            "XINITY_TLS_CERT": {
+              "type": "string",
+              "description": "PEM-encoded TLS certificate. Secret. Required when `XINITY_TLS_KEY` is set."
+            },
+            "XINITY_TLS_KEY": {
+              "type": "string",
+              "description": "PEM-encoded TLS private key. Secret. Required when `XINITY_TLS_CERT` is set."
+            },
+            "HTTP_IP_HEADER": {
+              "type": "string",
+              "description": "Header the client IP is forwarded in (e.g. x-forwarded-for). Without it, requests all appear to come from the proxy."
+            },
+            "HTTP_XFF_DEPTH": {
+              "type": "string",
+              "description": "Number of proxies in front. Anything further left in the header is client-supplied and forgeable.",
+              "default": "1"
+            },
+            "HTTP_TRUSTED_PROXIES": {
+              "type": "string",
+              "description": "Restricts the forwarding header to these addresses or CIDR ranges (e.g. 10.0.0.0/8). Empty accepts it from any source, which is what a proxy-only route needs."
+            },
+            "LOG_LEVEL": {
+              "type": "string",
+              "description": "Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`.",
+              "enum": [
+                "fatal",
+                "error",
+                "warn",
+                "info",
+                "debug",
+                "trace"
+              ],
+              "default": "debug"
+            },
+            "LOG_DIR": {
+              "type": "string",
+              "description": "Log file directory (enables file logging)."
+            },
+            "NODE_ENV": {
+              "type": "string",
+              "description": "Node environment. One of `production`, `development`, `test`.",
+              "enum": [
+                "production",
+                "development",
+                "test"
+              ],
+              "default": "production"
+            },
+            "APP_NAME": {
+              "type": "string",
+              "description": "Application display name.",
+              "default": "Xinity Admin"
+            },
+            "ORIGIN": {
+              "type": "string",
+              "description": "Public origin URL browsers reach this dashboard at, no trailing slash (e.g. https://xinity.mydomain.com). The default only suits local development.",
+              "default": "http://localhost:4030"
+            },
+            "TRUSTED_ORIGINS": {
+              "type": "string",
+              "description": "Additional trusted origins for CSRF validation behind reverse proxies."
+            },
+            "GATEWAY_URL": {
+              "type": "string",
+              "description": "Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped.",
+              "default": "http://localhost:4010"
+            },
+            "LICENSE_KEY": {
+              "type": "string",
+              "description": "License key for unlocking paid features (Ed25519-signed token). Secret. Can be set to `@dynamic` to take its value from the dashboard."
+            },
+            "MCP_ENABLED": {
+              "type": "string",
+              "description": "Enable the /mcp Model Context Protocol endpoint. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "true"
+            },
+            "NOTIFICATIONS_ENABLED": {
+              "type": "string",
+              "description": "Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports). Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "true"
+            }
+          },
+          "additionalProperties": false
+        },
+        "daemon": {
+          "type": "object",
+          "description": "Values for every daemon host.",
+          "properties": {
+            "HOST": {
+              "type": "string",
+              "description": "Bind address (use 0.0.0.0 to listen on all interfaces).",
+              "default": "0.0.0.0"
+            },
+            "PORT": {
+              "type": "string",
+              "description": "Listen port.",
+              "default": "4044"
+            },
+            "IDLE_TIMEOUT": {
+              "type": "string",
+              "description": "Seconds a connection may go without traffic before it is closed (Bun allows at most 255).",
+              "default": "255"
+            },
+            "UNIX_SOCKET": {
+              "type": "string",
+              "description": "Unix socket path (overrides HOST/PORT when set)."
+            },
+            "SYNC_INTERVAL_MS": {
+              "type": "string",
+              "description": "Sync interval in milliseconds.",
+              "default": "300000"
+            },
+            "MACHINE_NAME": {
+              "type": "string",
+              "description": "Display name for this node (defaults to hostname)."
+            },
+            "CIDR_PREFIX": {
+              "type": "string",
+              "description": "Network CIDR prefix (e.g. '192.168') to filter which local IP the daemon advertises. Empty = first non-internal IPv4 address.",
+              "default": ""
+            },
+            "STATE_DIR": {
+              "type": "string",
+              "description": "Local state directory for daemon runtime data.",
+              "default": "/var/lib/xinity-ai-daemon"
+            },
+            "INFOSERVER_CACHE_TTL_MS": {
+              "type": "string",
+              "description": "How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against.",
+              "default": "600000"
+            },
+            "METRICS_SAMPLE_INTERVAL_MS": {
+              "type": "string",
+              "description": "GPU telemetry sampling interval in milliseconds.",
+              "default": "20000"
+            },
+            "VLLM_BACKEND": {
+              "type": "string",
+              "description": "vLLM backend type. One of `systemd`, `docker`.",
+              "enum": [
+                "systemd",
+                "docker"
+              ],
+              "default": "docker"
+            },
+            "VLLM_ENV_DIR": {
+              "type": "string",
+              "description": "vLLM environment config directory.",
+              "default": "/etc/vllm"
+            },
+            "VLLM_TEMPLATE_UNIT_PATH": {
+              "type": "string",
+              "description": "vLLM systemd template unit path.",
+              "default": "/etc/systemd/system/vllm-driver@.service"
+            },
+            "VLLM_PATH": {
+              "type": "string",
+              "description": "Path to the vllm binary. With VLLM_BACKEND=systemd it is executed directly; with VLLM_BACKEND=docker it is the entrypoint used inside the image (default: vllm on the image PATH). Install: https://docs.vllm.ai/en/latest/getting_started/installation/index.html."
+            },
+            "VLLM_DOCKER_IMAGE": {
+              "type": "string",
+              "description": "vLLM Docker image (enables vllm-docker driver). Options: vllm/vllm-openai (https://hub.docker.com/r/vllm/vllm-openai), timothystewart6/vllm-gb10:v0.31.0-gb10.1 (https://hub.docker.com/r/timothystewart6/vllm-gb10, recommended for DGX Spark / GB10 devices), vllm/vllm-openai:cu130-nightly (CUDA 13 nightly for the newest NVIDIA GPUs)."
+            },
+            "VLLM_HF_CACHE_DIR": {
+              "type": "string",
+              "description": "HuggingFace cache directory.",
+              "default": "/var/lib/vllm/hf-cache"
+            },
+            "VLLM_TRITON_CACHE_DIR": {
+              "type": "string",
+              "description": "Triton cache directory.",
+              "default": "/var/lib/vllm/triton-cache"
+            },
+            "VLLM_HEALTH_TIMEOUT_MS": {
+              "type": "string",
+              "description": "vLLM health check timeout in milliseconds (default: 1 hour). Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "3600000"
+            },
+            "VLLM_HEALTH_POLL_INTERVAL_MS": {
+              "type": "string",
+              "description": "vLLM health check poll interval in milliseconds. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "5000"
+            },
+            "VLLM_MAX_RESTART_COUNT": {
+              "type": "string",
+              "description": "Max container restarts before marking installation as permanently failed. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "3"
+            },
+            "XINITY_TLS_CERT": {
+              "type": "string",
+              "description": "PEM-encoded TLS certificate. Secret. Required when `XINITY_TLS_KEY` is set."
+            },
+            "XINITY_TLS_KEY": {
+              "type": "string",
+              "description": "PEM-encoded TLS private key. Secret. Required when `XINITY_TLS_CERT` is set."
+            },
+            "LOG_LEVEL": {
+              "type": "string",
+              "description": "Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`.",
+              "enum": [
+                "fatal",
+                "error",
+                "warn",
+                "info",
+                "debug",
+                "trace"
+              ],
+              "default": "debug"
+            },
+            "LOG_DIR": {
+              "type": "string",
+              "description": "Log file directory (enables file logging)."
+            },
+            "OLLAMA_URL": {
+              "type": "string",
+              "description": "Ollama API endpoint. The ollama driver is enabled if this endpoint answers when the daemon starts, so it only needs setting when ollama does not listen on its default local port.",
+              "default": "http://localhost:11434"
+            },
+            "HF_ENDPOINT": {
+              "type": "string",
+              "description": "Base URL of the Hugging Face Hub, or of a mirror of it, that models are downloaded from.",
+              "default": "https://huggingface.co"
+            }
+          },
+          "additionalProperties": false
+        },
+        "infoserver": {
+          "type": "object",
+          "description": "Values for every infoserver host.",
+          "properties": {
+            "PORT": {
+              "type": "string",
+              "description": "Listen port.",
+              "default": "8090"
+            },
+            "MODEL_INFO_DIR": {
+              "type": "string",
+              "description": "Directory of model YAML files (*.yaml, *.yml) in the current format. Required."
+            },
+            "MODEL_LEGACY_DIR": {
+              "type": "string",
+              "description": "Directory of model YAML files in the deprecated v1 format, served only on the v1 endpoints. Removed before 1.0.0, so migrate these entries to MODEL_INFO_DIR. Leave unset to serve the v1 endpoints as an empty catalog."
+            },
+            "REFRESH_INTERVAL_MS": {
+              "type": "string",
+              "description": "How often to re-read model files and re-fetch includes (ms).",
+              "default": "300000"
+            },
+            "MAX_INCLUDE_DEPTH": {
+              "type": "string",
+              "description": "Maximum recursion depth when resolving include URLs.",
+              "default": "10"
+            },
+            "RATE_LIMIT_ENABLED": {
+              "type": "string",
+              "description": "Apply per-client request ceilings. Disable only on a trusted network.",
+              "default": "true"
+            },
+            "RATE_LIMIT_EXPORT_PER_MINUTE": {
+              "type": "string",
+              "description": "Full-catalog requests allowed per client per minute, spendable all at once. Every client fetches the whole catalog once per refresh, and processes behind one address share a bucket, so this has to clear several of them at once rather than just one.",
+              "default": "60"
+            },
+            "RATE_LIMIT_API_PER_MINUTE": {
+              "type": "string",
+              "description": "Programmatic API requests allowed per client per minute, spendable all at once.",
+              "default": "600"
+            },
+            "HTTP_IP_HEADER": {
+              "type": "string",
+              "description": "Header the client IP is forwarded in (e.g. x-forwarded-for). Without it, requests all appear to come from the proxy."
+            },
+            "HTTP_XFF_DEPTH": {
+              "type": "string",
+              "description": "Number of proxies in front. Anything further left in the header is client-supplied and forgeable.",
+              "default": "1"
+            },
+            "LOG_LEVEL": {
+              "type": "string",
+              "description": "Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`.",
+              "enum": [
+                "fatal",
+                "error",
+                "warn",
+                "info",
+                "debug",
+                "trace"
+              ],
+              "default": "debug"
+            },
+            "LOG_DIR": {
+              "type": "string",
+              "description": "Log file directory (enables file logging)."
+            }
+          },
+          "additionalProperties": false
+        },
+        "tether": {
+          "type": "object",
+          "description": "Values for every tether host.",
+          "properties": {
+            "HOST": {
+              "type": "string",
+              "description": "Bind address (use 0.0.0.0 to listen on all interfaces).",
+              "default": "0.0.0.0"
+            },
+            "PORT": {
+              "type": "string",
+              "description": "Listen port.",
+              "default": "4020"
+            },
+            "IDLE_TIMEOUT": {
+              "type": "string",
+              "description": "Seconds a connection may go without traffic before it is closed (Bun allows at most 255).",
+              "default": "255"
+            },
+            "UNIX_SOCKET": {
+              "type": "string",
+              "description": "Unix socket path (overrides HOST/PORT when set)."
+            },
+            "KEEPALIVE_INTERVAL_MS": {
+              "type": "string",
+              "description": "Interval in ms between SSE keepalives, also announced to daemons as their heartbeat interval. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "15000"
+            },
+            "LIVENESS_TIMEOUT_MS": {
+              "type": "string",
+              "description": "Time in ms without a heartbeat or report from a daemon before its connection is considered dead. Can be set to `@dynamic` to take its value from the dashboard.",
+              "default": "45000"
+            },
+            "LOG_LEVEL": {
+              "type": "string",
+              "description": "Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`.",
+              "enum": [
+                "fatal",
+                "error",
+                "warn",
+                "info",
+                "debug",
+                "trace"
+              ],
+              "default": "debug"
+            },
+            "LOG_DIR": {
+              "type": "string",
+              "description": "Log file directory (enables file logging)."
+            },
+            "XINITY_TLS_CERT": {
+              "type": "string",
+              "description": "PEM-encoded TLS certificate. Secret. Required when `XINITY_TLS_KEY` is set."
+            },
+            "XINITY_TLS_KEY": {
+              "type": "string",
+              "description": "PEM-encoded TLS private key. Secret. Required when `XINITY_TLS_CERT` is set."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "dbMigratedVersion": {
+      "description": "Release whose database migrations the stack last applied. Set by the CLI.",
+      "type": "string"
+    },
+    "pinnedVersion": {
+      "default": "",
+      "description": "Release tag every component is held at, or local:<path to a checkout> to build from source.",
+      "type": "string"
+    },
+    "hosts": {
+      "default": [],
+      "description": "The machines of the stack.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "alias": {
+            "description": "Display name for the host.",
+            "type": "string"
+          },
+          "address": {
+            "type": "string",
+            "pattern": "^[a-zA-Z0-9_.@:[\\]-]+$",
+            "description": "SSH destination of the host (user@host or an ssh config alias), or \"local\" for this machine."
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "gateway",
+                "dashboard",
+                "daemon",
+                "infoserver",
+                "tether"
+              ]
+            },
+            "description": "Components installed on the host."
+          },
+          "envOverrides": {
+            "type": "object",
+            "description": "Values for this host only, for any of its components. Override every other layer.",
+            "properties": {
+              "HOST": {
+                "type": "string",
+                "description": "Bind address (use 0.0.0.0 to listen on all interfaces). Used by gateway, dashboard, daemon, tether, each with its own default."
+              },
+              "PORT": {
+                "type": "string",
+                "description": "Listen port. Used by gateway, daemon, infoserver, tether, each with its own default."
+              },
+              "IDLE_TIMEOUT": {
+                "type": "string",
+                "description": "Seconds a connection may go without traffic before it is closed (Bun allows at most 255). Used by gateway, dashboard, daemon, tether, each with its own default."
+              },
+              "UNIX_SOCKET": {
+                "type": "string",
+                "description": "Unix socket path (overrides HOST/PORT when set). Used by gateway, dashboard, daemon, tether, each with its own default."
+              },
+              "DB_MAX_CONNECTIONS": {
+                "type": "string",
+                "description": "Maximum PostgreSQL connection pool size. Used by gateway, dashboard, each with its own default."
+              },
+              "RESPONSE_CACHE_TTL_SECONDS": {
+                "type": "string",
+                "description": "How long an identical completion is served from cache instead of the backend. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "3600"
+              },
+              "CACHE_APPLICATION_TTL_SECONDS": {
+                "type": "string",
+                "description": "How long an application name to id lookup is cached. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "300"
+              },
+              "CACHE_API_KEY_TTL_SECONDS": {
+                "type": "string",
+                "description": "How long a validated API key is cached, so every request does not hit the database. A deactivated or deleted key keeps working until its entry expires. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "120"
+              },
+              "CACHE_AUTH_FAILURE_TTL_SECONDS": {
+                "type": "string",
+                "description": "How long a rejected API key is remembered. Short, so re-enabling a key takes effect promptly. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "10"
+              },
+              "CACHE_MODEL_TTL_SECONDS": {
+                "type": "string",
+                "description": "How long a model deployment lookup is cached. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "60"
+              },
+              "CACHE_DIGEST_MAX_ENTRIES": {
+                "type": "string",
+                "description": "Entries held in the in-process chat message digest cache, which avoids re-hashing repeated history. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "5000"
+              },
+              "INFOSERVER_CACHE_TTL_MS": {
+                "type": "string",
+                "description": "How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against. Used by gateway, dashboard, daemon, each with its own default."
+              },
+              "LOG_LEVEL": {
+                "type": "string",
+                "description": "Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`. Used by gateway, dashboard, daemon, infoserver, tether, each with its own default.",
+                "enum": [
+                  "fatal",
+                  "error",
+                  "warn",
+                  "info",
+                  "debug",
+                  "trace"
+                ]
+              },
+              "LOG_DIR": {
+                "type": "string",
+                "description": "Log file directory (enables file logging). Used by gateway, dashboard, daemon, infoserver, tether, each with its own default."
+              },
+              "XINITY_TLS_CERT": {
+                "type": "string",
+                "description": "PEM-encoded TLS certificate. Secret. Used by gateway, dashboard, daemon, tether, each with its own default."
+              },
+              "XINITY_TLS_KEY": {
+                "type": "string",
+                "description": "PEM-encoded TLS private key. Secret. Used by gateway, dashboard, daemon, tether, each with its own default."
+              },
+              "WEB_SEARCH_PROVIDER": {
+                "type": "string",
+                "description": "Web search backend. When unset, web search is disabled. One of `searxng`, `google`, `bing`, `brave`, `serper`, `tavily`. Can be set to `@dynamic` to take its value from the dashboard.",
+                "enum": [
+                  "searxng",
+                  "google",
+                  "bing",
+                  "brave",
+                  "serper",
+                  "tavily"
+                ]
+              },
+              "WEB_SEARCH_CREDENTIAL": {
+                "type": "string",
+                "description": "Provider credential: searxng=instance URL, google=apikey:cx, bing/brave/serper/tavily=API key. Secret. Can be set to `@dynamic` to take its value from the dashboard."
+              },
+              "WEB_SEARCH_ENGINE_URL": {
+                "type": "string",
+                "description": "@deprecated Use WEB_SEARCH_PROVIDER + WEB_SEARCH_CREDENTIAL instead. SearXNG search engine URL."
+              },
+              "LOAD_BALANCE_STRATEGY": {
+                "type": "string",
+                "description": "Load balancing strategy for distributing requests across inference nodes. One of `random`, `round-robin`, `least-connections`. Can be set to `@dynamic` to take its value from the dashboard.",
+                "enum": [
+                  "random",
+                  "round-robin",
+                  "least-connections"
+                ],
+                "default": "least-connections"
+              },
+              "BACKEND_TIMEOUT_MS": {
+                "type": "string",
+                "description": "Backend timeout in ms (default: 5 min). For streaming requests this is an idle timeout that resets on each chunk; for non-streaming requests it is a wall-clock deadline. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "300000"
+              },
+              "XINITY_INFERENCE_CA": {
+                "type": "string",
+                "description": "PEM-encoded CA certificate for verifying daemon TLS. When set, gateway connects to daemons via HTTPS. Secret."
+              },
+              "DEEP_RESEARCH_MAX_STEPS": {
+                "type": "string",
+                "description": "Maximum tool-call steps for deep research mode. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "30"
+              },
+              "DEEP_RESEARCH_COMPACTION_THRESHOLD": {
+                "type": "string",
+                "description": "Fraction of model context window at which compaction triggers. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "0.7"
+              },
+              "MAX_MEDIA_SIZE_MB": {
+                "type": "string",
+                "description": "Largest image or audio file a request may carry, in MB.",
+                "default": "40"
+              },
+              "HTTP_PORT": {
+                "type": "string",
+                "description": "TCP port the server listens on.",
+                "default": "4030"
+              },
+              "BETTER_AUTH_SECRET": {
+                "type": "string",
+                "description": "Better Auth secret key, generate with: openssl rand -base64 32. Secret. Required."
+              },
+              "SIGNUP_ENABLED": {
+                "type": "string",
+                "description": "Enable user signup. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "true"
+              },
+              "INTERNAL_SIGNIN_ENABLED": {
+                "type": "string",
+                "description": "Allow sign-in with an account held by this instance (email and password, or passkey). When off, users sign in through SSO only. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "true"
+              },
+              "MULTI_TENANT_MODE": {
+                "type": "string",
+                "description": "Allow any authenticated user to create organizations.",
+                "default": "false"
+              },
+              "INSTANCE_ADMIN_EMAILS": {
+                "type": "string",
+                "description": "Emails of users who get instance-wide admin privileges (can manage all orgs). Required."
+              },
+              "MAIL_URL": {
+                "type": "string",
+                "description": "SMTP mail server URL (e.g. smtp://user:pass@mail.example.com:587). Secret."
+              },
+              "MAIL_FROM": {
+                "type": "string",
+                "description": "Email sender address (e.g. noreply@mydomain.com). Required when `MAIL_URL` is set."
+              },
+              "COMPUTE_MANAGEMENT_ENABLED": {
+                "type": "string",
+                "description": "Enable compute management.",
+                "default": "true"
+              },
+              "DEPLOYMENT_STRATEGY": {
+                "type": "string",
+                "description": "Node selection strategy for new model installations. 'first-fit' picks the first node that fits (deterministic). 'balanced' picks the node with the most absolute free VRAM (spread for HA). 'bin-pack' picks the tightest fit (consolidate so idle nodes stay drainable). 'proportional' picks the node with the lowest percent utilization (fair spread across heterogeneous nodes). One of `first-fit`, `balanced`, `bin-pack`, `proportional`. Can be set to `@dynamic` to take its value from the dashboard.",
+                "enum": [
+                  "first-fit",
+                  "balanced",
+                  "bin-pack",
+                  "proportional"
+                ],
+                "default": "balanced"
+              },
+              "PROMETHEUS_URL": {
+                "type": "string",
+                "description": "Prometheus server URL for live GPU metrics overlay on the Compute page (e.g. http://prometheus:9090). Enables utilization rings and energy readouts on compute nodes. Can be set to `@dynamic` to take its value from the dashboard."
+              },
+              "AUDIT_SINK_URL": {
+                "type": "string",
+                "description": "Sink audit events are mirrored to. http(s):// is a Loki base URL (e.g. http://localhost:6122), udp://, tcp:// or tls:// is a syslog collector (e.g. tls://collector.example.com:6514)."
+              },
+              "AUDIT_SINK_AUTH": {
+                "type": "string",
+                "description": "Loki only. Basic auth as user:pass, for an authenticated Loki endpoint. Secret."
+              },
+              "AUDIT_SINK_TENANT": {
+                "type": "string",
+                "description": "Loki only. Tenant id sent as X-Scope-OrgID, for multi-tenant Loki or Grafana Cloud."
+              },
+              "AUDIT_SINK_SYSLOG_FACILITY": {
+                "type": "string",
+                "description": "Syslog only. Facility the messages are sent under, which is what collectors route on. 'audit' is the RFC 5424 log-audit facility, local0 to local7 are the site-specific ones. One of `kern`, `user`, `mail`, `daemon`, `auth`, `syslog`, `lpr`, `news`, `uucp`, `cron`, `authpriv`, `ftp`, `ntp`, `audit`, `alert`, `clock`, `local0`, `local1`, `local2`, `local3`, `local4`, `local5`, `local6`, `local7`.",
+                "enum": [
+                  "kern",
+                  "user",
+                  "mail",
+                  "daemon",
+                  "auth",
+                  "syslog",
+                  "lpr",
+                  "news",
+                  "uucp",
+                  "cron",
+                  "authpriv",
+                  "ftp",
+                  "ntp",
+                  "audit",
+                  "alert",
+                  "clock",
+                  "local0",
+                  "local1",
+                  "local2",
+                  "local3",
+                  "local4",
+                  "local5",
+                  "local6",
+                  "local7"
+                ],
+                "default": "local0"
+              },
+              "AUDIT_SINK_SYSLOG_FRAMING": {
+                "type": "string",
+                "description": "Syslog only. How messages are delimited on tcp and tls. 'octet-counting' is RFC 6587, which rsyslog and syslog-ng expect. 'lf' is newline-delimited, for collectors that only accept that. Ignored on udp. One of `octet-counting`, `lf`.",
+                "enum": [
+                  "octet-counting",
+                  "lf"
+                ],
+                "default": "octet-counting"
+              },
+              "AUDIT_SINK_SYSLOG_APP_NAME": {
+                "type": "string",
+                "description": "Syslog only. APP-NAME field of the messages. Give each instance its own name when several feed one collector.",
+                "default": "xinity-audit"
+              },
+              "AUDIT_SINK_SYSLOG_CA": {
+                "type": "string",
+                "description": "Syslog only. PEM certificate authority the tls:// collector is verified against. Only needed when the collector uses a private CA."
+              },
+              "HTTP_IP_HEADER": {
+                "type": "string",
+                "description": "Header the client IP is forwarded in (e.g. x-forwarded-for). Without it, requests all appear to come from the proxy. Used by dashboard, infoserver, each with its own default."
+              },
+              "HTTP_XFF_DEPTH": {
+                "type": "string",
+                "description": "Number of proxies in front. Anything further left in the header is client-supplied and forgeable. Used by dashboard, infoserver, each with its own default."
+              },
+              "HTTP_TRUSTED_PROXIES": {
+                "type": "string",
+                "description": "Restricts the forwarding header to these addresses or CIDR ranges (e.g. 10.0.0.0/8). Empty accepts it from any source, which is what a proxy-only route needs."
+              },
+              "NODE_ENV": {
+                "type": "string",
+                "description": "Node environment. One of `production`, `development`, `test`.",
+                "enum": [
+                  "production",
+                  "development",
+                  "test"
+                ],
+                "default": "production"
+              },
+              "APP_NAME": {
+                "type": "string",
+                "description": "Application display name.",
+                "default": "Xinity Admin"
+              },
+              "ORIGIN": {
+                "type": "string",
+                "description": "Public origin URL browsers reach this dashboard at, no trailing slash (e.g. https://xinity.mydomain.com). The default only suits local development.",
+                "default": "http://localhost:4030"
+              },
+              "TRUSTED_ORIGINS": {
+                "type": "string",
+                "description": "Additional trusted origins for CSRF validation behind reverse proxies."
+              },
+              "GATEWAY_URL": {
+                "type": "string",
+                "description": "Gateway base URL shown to users in docs and code examples (e.g. https://api.example.com). Must NOT include the /v1 path segment - that is appended where needed. A trailing slash is stripped.",
+                "default": "http://localhost:4010"
+              },
+              "LICENSE_KEY": {
+                "type": "string",
+                "description": "License key for unlocking paid features (Ed25519-signed token). Secret. Can be set to `@dynamic` to take its value from the dashboard."
+              },
+              "MCP_ENABLED": {
+                "type": "string",
+                "description": "Enable the /mcp Model Context Protocol endpoint. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "true"
+              },
+              "NOTIFICATIONS_ENABLED": {
+                "type": "string",
+                "description": "Enable the notification scheduler (deployment status, node health, capacity warnings, weekly reports). Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "true"
+              },
+              "SYNC_INTERVAL_MS": {
+                "type": "string",
+                "description": "Sync interval in milliseconds.",
+                "default": "300000"
+              },
+              "MACHINE_NAME": {
+                "type": "string",
+                "description": "Display name for this node (defaults to hostname)."
+              },
+              "CIDR_PREFIX": {
+                "type": "string",
+                "description": "Network CIDR prefix (e.g. '192.168') to filter which local IP the daemon advertises. Empty = first non-internal IPv4 address.",
+                "default": ""
+              },
+              "STATE_DIR": {
+                "type": "string",
+                "description": "Local state directory for daemon runtime data.",
+                "default": "/var/lib/xinity-ai-daemon"
+              },
+              "METRICS_SAMPLE_INTERVAL_MS": {
+                "type": "string",
+                "description": "GPU telemetry sampling interval in milliseconds.",
+                "default": "20000"
+              },
+              "VLLM_BACKEND": {
+                "type": "string",
+                "description": "vLLM backend type. One of `systemd`, `docker`.",
+                "enum": [
+                  "systemd",
+                  "docker"
+                ],
+                "default": "docker"
+              },
+              "VLLM_ENV_DIR": {
+                "type": "string",
+                "description": "vLLM environment config directory.",
+                "default": "/etc/vllm"
+              },
+              "VLLM_TEMPLATE_UNIT_PATH": {
+                "type": "string",
+                "description": "vLLM systemd template unit path.",
+                "default": "/etc/systemd/system/vllm-driver@.service"
+              },
+              "VLLM_PATH": {
+                "type": "string",
+                "description": "Path to the vllm binary. With VLLM_BACKEND=systemd it is executed directly; with VLLM_BACKEND=docker it is the entrypoint used inside the image (default: vllm on the image PATH). Install: https://docs.vllm.ai/en/latest/getting_started/installation/index.html."
+              },
+              "VLLM_DOCKER_IMAGE": {
+                "type": "string",
+                "description": "vLLM Docker image (enables vllm-docker driver). Options: vllm/vllm-openai (https://hub.docker.com/r/vllm/vllm-openai), timothystewart6/vllm-gb10:v0.31.0-gb10.1 (https://hub.docker.com/r/timothystewart6/vllm-gb10, recommended for DGX Spark / GB10 devices), vllm/vllm-openai:cu130-nightly (CUDA 13 nightly for the newest NVIDIA GPUs)."
+              },
+              "VLLM_HF_CACHE_DIR": {
+                "type": "string",
+                "description": "HuggingFace cache directory.",
+                "default": "/var/lib/vllm/hf-cache"
+              },
+              "VLLM_TRITON_CACHE_DIR": {
+                "type": "string",
+                "description": "Triton cache directory.",
+                "default": "/var/lib/vllm/triton-cache"
+              },
+              "VLLM_HEALTH_TIMEOUT_MS": {
+                "type": "string",
+                "description": "vLLM health check timeout in milliseconds (default: 1 hour). Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "3600000"
+              },
+              "VLLM_HEALTH_POLL_INTERVAL_MS": {
+                "type": "string",
+                "description": "vLLM health check poll interval in milliseconds. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "5000"
+              },
+              "VLLM_MAX_RESTART_COUNT": {
+                "type": "string",
+                "description": "Max container restarts before marking installation as permanently failed. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "3"
+              },
+              "OLLAMA_URL": {
+                "type": "string",
+                "description": "Ollama API endpoint. The ollama driver is enabled if this endpoint answers when the daemon starts, so it only needs setting when ollama does not listen on its default local port.",
+                "default": "http://localhost:11434"
+              },
+              "HF_ENDPOINT": {
+                "type": "string",
+                "description": "Base URL of the Hugging Face Hub, or of a mirror of it, that models are downloaded from.",
+                "default": "https://huggingface.co"
+              },
+              "MODEL_INFO_DIR": {
+                "type": "string",
+                "description": "Directory of model YAML files (*.yaml, *.yml) in the current format. Required."
+              },
+              "MODEL_LEGACY_DIR": {
+                "type": "string",
+                "description": "Directory of model YAML files in the deprecated v1 format, served only on the v1 endpoints. Removed before 1.0.0, so migrate these entries to MODEL_INFO_DIR. Leave unset to serve the v1 endpoints as an empty catalog."
+              },
+              "REFRESH_INTERVAL_MS": {
+                "type": "string",
+                "description": "How often to re-read model files and re-fetch includes (ms).",
+                "default": "300000"
+              },
+              "MAX_INCLUDE_DEPTH": {
+                "type": "string",
+                "description": "Maximum recursion depth when resolving include URLs.",
+                "default": "10"
+              },
+              "RATE_LIMIT_ENABLED": {
+                "type": "string",
+                "description": "Apply per-client request ceilings. Disable only on a trusted network.",
+                "default": "true"
+              },
+              "RATE_LIMIT_EXPORT_PER_MINUTE": {
+                "type": "string",
+                "description": "Full-catalog requests allowed per client per minute, spendable all at once. Every client fetches the whole catalog once per refresh, and processes behind one address share a bucket, so this has to clear several of them at once rather than just one.",
+                "default": "60"
+              },
+              "RATE_LIMIT_API_PER_MINUTE": {
+                "type": "string",
+                "description": "Programmatic API requests allowed per client per minute, spendable all at once.",
+                "default": "600"
+              },
+              "KEEPALIVE_INTERVAL_MS": {
+                "type": "string",
+                "description": "Interval in ms between SSE keepalives, also announced to daemons as their heartbeat interval. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "15000"
+              },
+              "LIVENESS_TIMEOUT_MS": {
+                "type": "string",
+                "description": "Time in ms without a heartbeat or report from a daemon before its connection is considered dead. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "45000"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "address",
+          "components"
+        ]
+      }
+    },
+    "fleets": {
+      "default": [],
+      "description": "Named groups of daemon hosts sharing daemon values.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Fleet name, unique in the stack."
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Addresses of the member hosts. Each must be a stack host running the daemon, and a host belongs to at most one fleet."
+          },
+          "envOverrides": {
+            "type": "object",
+            "description": "Daemon values for the hosts of this fleet. Override the daemon's componentEnv.",
+            "properties": {
+              "HOST": {
+                "type": "string",
+                "description": "Bind address (use 0.0.0.0 to listen on all interfaces).",
+                "default": "0.0.0.0"
+              },
+              "PORT": {
+                "type": "string",
+                "description": "Listen port.",
+                "default": "4044"
+              },
+              "IDLE_TIMEOUT": {
+                "type": "string",
+                "description": "Seconds a connection may go without traffic before it is closed (Bun allows at most 255).",
+                "default": "255"
+              },
+              "UNIX_SOCKET": {
+                "type": "string",
+                "description": "Unix socket path (overrides HOST/PORT when set)."
+              },
+              "SYNC_INTERVAL_MS": {
+                "type": "string",
+                "description": "Sync interval in milliseconds.",
+                "default": "300000"
+              },
+              "MACHINE_NAME": {
+                "type": "string",
+                "description": "Display name for this node (defaults to hostname)."
+              },
+              "CIDR_PREFIX": {
+                "type": "string",
+                "description": "Network CIDR prefix (e.g. '192.168') to filter which local IP the daemon advertises. Empty = first non-internal IPv4 address.",
+                "default": ""
+              },
+              "STATE_DIR": {
+                "type": "string",
+                "description": "Local state directory for daemon runtime data.",
+                "default": "/var/lib/xinity-ai-daemon"
+              },
+              "INFOSERVER_CACHE_TTL_MS": {
+                "type": "string",
+                "description": "How long the local catalog snapshot is trusted before a conditional re-fetch (ms). A refresh costs one 304 when nothing changed, so the ceiling on how stale a new entry can be is what this trades against.",
+                "default": "600000"
+              },
+              "METRICS_SAMPLE_INTERVAL_MS": {
+                "type": "string",
+                "description": "GPU telemetry sampling interval in milliseconds.",
+                "default": "20000"
+              },
+              "VLLM_BACKEND": {
+                "type": "string",
+                "description": "vLLM backend type. One of `systemd`, `docker`.",
+                "enum": [
+                  "systemd",
+                  "docker"
+                ],
+                "default": "docker"
+              },
+              "VLLM_ENV_DIR": {
+                "type": "string",
+                "description": "vLLM environment config directory.",
+                "default": "/etc/vllm"
+              },
+              "VLLM_TEMPLATE_UNIT_PATH": {
+                "type": "string",
+                "description": "vLLM systemd template unit path.",
+                "default": "/etc/systemd/system/vllm-driver@.service"
+              },
+              "VLLM_PATH": {
+                "type": "string",
+                "description": "Path to the vllm binary. With VLLM_BACKEND=systemd it is executed directly; with VLLM_BACKEND=docker it is the entrypoint used inside the image (default: vllm on the image PATH). Install: https://docs.vllm.ai/en/latest/getting_started/installation/index.html."
+              },
+              "VLLM_DOCKER_IMAGE": {
+                "type": "string",
+                "description": "vLLM Docker image (enables vllm-docker driver). Options: vllm/vllm-openai (https://hub.docker.com/r/vllm/vllm-openai), timothystewart6/vllm-gb10:v0.31.0-gb10.1 (https://hub.docker.com/r/timothystewart6/vllm-gb10, recommended for DGX Spark / GB10 devices), vllm/vllm-openai:cu130-nightly (CUDA 13 nightly for the newest NVIDIA GPUs)."
+              },
+              "VLLM_HF_CACHE_DIR": {
+                "type": "string",
+                "description": "HuggingFace cache directory.",
+                "default": "/var/lib/vllm/hf-cache"
+              },
+              "VLLM_TRITON_CACHE_DIR": {
+                "type": "string",
+                "description": "Triton cache directory.",
+                "default": "/var/lib/vllm/triton-cache"
+              },
+              "VLLM_HEALTH_TIMEOUT_MS": {
+                "type": "string",
+                "description": "vLLM health check timeout in milliseconds (default: 1 hour). Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "3600000"
+              },
+              "VLLM_HEALTH_POLL_INTERVAL_MS": {
+                "type": "string",
+                "description": "vLLM health check poll interval in milliseconds. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "5000"
+              },
+              "VLLM_MAX_RESTART_COUNT": {
+                "type": "string",
+                "description": "Max container restarts before marking installation as permanently failed. Can be set to `@dynamic` to take its value from the dashboard.",
+                "default": "3"
+              },
+              "XINITY_TLS_CERT": {
+                "type": "string",
+                "description": "PEM-encoded TLS certificate. Secret. Required when `XINITY_TLS_KEY` is set."
+              },
+              "XINITY_TLS_KEY": {
+                "type": "string",
+                "description": "PEM-encoded TLS private key. Secret. Required when `XINITY_TLS_CERT` is set."
+              },
+              "LOG_LEVEL": {
+                "type": "string",
+                "description": "Log level. One of `fatal`, `error`, `warn`, `info`, `debug`, `trace`.",
+                "enum": [
+                  "fatal",
+                  "error",
+                  "warn",
+                  "info",
+                  "debug",
+                  "trace"
+                ],
+                "default": "debug"
+              },
+              "LOG_DIR": {
+                "type": "string",
+                "description": "Log file directory (enables file logging)."
+              },
+              "OLLAMA_URL": {
+                "type": "string",
+                "description": "Ollama API endpoint. The ollama driver is enabled if this endpoint answers when the daemon starts, so it only needs setting when ollama does not listen on its default local port.",
+                "default": "http://localhost:11434"
+              },
+              "HF_ENDPOINT": {
+                "type": "string",
+                "description": "Base URL of the Hugging Face Hub, or of a mirror of it, that models are downloaded from.",
+                "default": "https://huggingface.co"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "name",
+          "hosts"
+        ]
+      }
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

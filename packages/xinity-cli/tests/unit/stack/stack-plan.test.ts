@@ -15,6 +15,7 @@ const actualGithub = { ...(await import("../../../src/lib/up/github.ts")) };
 const actualInstallRemove = { ...(await import("../../../src/lib/up/install-remove.ts")) };
 const actualUpPlan = { ...(await import("../../../src/lib/up/up-plan.ts")) };
 const actualMigrator = { ...(await import("../../../src/lib/up/migrator.ts")) };
+const actualInstaller = { ...(await import("../../../src/lib/up/installer.ts")) };
 let reachable: Set<string>;
 let migrationCalls: { targetVersion: string; connectionUrl: string }[];
 let manifests: Record<string, Manifest>;
@@ -73,9 +74,31 @@ mock.module("../../../src/lib/up/install-remove.ts", () => ({
 
 let gateApproves: boolean;
 
+let appliedActions: { component: Component; address: string }[];
+
 mock.module("../../../src/lib/up/up-plan.ts", () => ({
   ...actualUpPlan,
   reviewGate: async () => gateApproves,
+  planComponentAction: async (component: Component) => ({
+    component,
+    kind: "update",
+    installedVersion: "v1.0.0",
+    toVersion: "v9.9.9",
+    env: { config: {}, secrets: {} },
+    envChanges: [],
+    secretFiles: { remove: [], keptForOtherComponents: [] },
+    hardReset: false,
+    serviceRunning: true,
+    hostOs: "linux",
+  }),
+}));
+
+mock.module("../../../src/lib/up/installer.ts", () => ({
+  ...actualInstaller,
+  applyComponentAction: async (action: { component: Component }, host: Host) => {
+    appliedActions.push({ component: action.component, address: hostAddress(host) });
+    return { success: true, errors: [] };
+  },
 }));
 
 mock.module("../../../src/lib/up/migrator.ts", () => ({
@@ -95,6 +118,7 @@ afterAll(() => {
   mock.module("../../../src/lib/up/install-remove.ts", () => actualInstallRemove);
   mock.module("../../../src/lib/up/up-plan.ts", () => actualUpPlan);
   mock.module("../../../src/lib/up/migrator.ts", () => actualMigrator);
+  mock.module("../../../src/lib/up/installer.ts", () => actualInstaller);
 });
 
 function daemonEntry(): Manifest["components"] {
@@ -130,6 +154,7 @@ describe("runStackFlow", () => {
     membershipWrites = [];
     membershipWriteFails = false;
     migrationCalls = [];
+    appliedActions = [];
     gateApproves = true;
   });
 
@@ -279,6 +304,20 @@ describe("runStackFlow", () => {
     expect(await runStackFlow(stack, { targetVersion: "latest" })).toBe(true);
     expect(migrationCalls).toEqual([{ targetVersion: "latest", connectionUrl: "postgresql://localhost/db" }]);
     expect(stack.dbMigratedVersion).toBe("v9.9.9");
+  });
+
+  test("a daemon-only stack updates its daemon without migrating a database no host uses", async () => {
+    reachable = new Set(["10.0.0.20"]);
+    const stack = makeStack("s13");
+    stack.secrets.DB_CONNECTION_URL = "postgresql://placeholder/unused";
+    stack.env.TETHER_URL = "http://tether.example:4020";
+    stack.dbMigratedVersion = "v8.0.0";
+    stack.hosts = [{ address: "10.0.0.20", components: ["daemon"] }];
+
+    expect(await runStackFlow(stack, { targetVersion: "latest" })).toBe(true);
+    expect(migrationCalls).toEqual([]);
+    expect(appliedActions).toEqual([{ component: "daemon", address: "10.0.0.20" }]);
+    expect(stack.dbMigratedVersion).toBe("v8.0.0");
   });
 
 });

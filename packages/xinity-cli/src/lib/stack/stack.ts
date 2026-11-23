@@ -32,28 +32,29 @@ const hostAddressT = z.string().regex(
 );
 
 const stackHostT = z.object({
-  alias: z.string().optional(),
-  address: hostAddressT,
-  components: z.array(componentT),
-  envOverrides: envRecordT.optional(),
+  alias: z.string().optional().describe("Display name for the host."),
+  address: hostAddressT.describe("SSH destination of the host (user@host or an ssh config alias), or \"local\" for this machine."),
+  components: z.array(componentT).describe("Components installed on the host."),
+  envOverrides: envRecordT.optional().describe("Values for this host only, for any of its components. Override every other layer."),
 });
 
 const fleetDefinitionT = z.object({
-  name: z.string(),
-  hosts: z.array(z.string()),
-  envOverrides: envRecordT.optional(),
+  name: z.string().describe("Fleet name, unique in the stack."),
+  hosts: z.array(z.string()).describe("Addresses of the member hosts. Each must be a stack host running the daemon, and a host belongs to at most one fleet."),
+  envOverrides: envRecordT.optional().describe("Daemon values for the hosts of this fleet. Override the daemon's componentEnv."),
 });
 
-const stackDefinitionT = z.object({
-  version: z.string().default("0.0.0"),
-  name: z.string(),
-  env: envRecordT.default({}),
-  secrets: envRecordT.default({}),
-  componentEnv: z.record(z.string(), envRecordT).default({}) as z.ZodType<Partial<Record<Component, Record<string, string>>>>,
-  dbMigratedVersion: z.string().optional(),
-  pinnedVersion: z.string().default(""),
-  hosts: z.array(stackHostT).default([]),
-  fleets: z.array(fleetDefinitionT).default([]),
+export const stackDefinitionT = z.object({
+  $schema: z.string().optional().describe("URL of this schema, for editors and tools."),
+  version: z.string().default("0.0.0").describe("Version of the CLI that last saved the file. Set by the CLI."),
+  name: z.string().describe("Stack name, the same as the file name without .json. Lowercase letters, digits, hyphens and underscores."),
+  env: envRecordT.default({}).describe("Shared non-secret values, used by every component that declares them."),
+  secrets: envRecordT.default({}).describe("Shared secret values, used by every component that declares them."),
+  componentEnv: z.record(z.string(), envRecordT).default({}).describe("Values per component type, for every host running that component.") as z.ZodType<Partial<Record<Component, Record<string, string>>>>,
+  dbMigratedVersion: z.string().optional().describe("Release whose database migrations the stack last applied. Set by the CLI."),
+  pinnedVersion: z.string().default("").describe("Release tag every component is held at, or local:<path to a checkout> to build from source."),
+  hosts: z.array(stackHostT).default([]).describe("The machines of the stack."),
+  fleets: z.array(fleetDefinitionT).default([]).describe("Named groups of daemon hosts sharing daemon values."),
 });
 
 export type StackDefinition = z.infer<typeof stackDefinitionT> & {
@@ -124,7 +125,7 @@ export function isDeferredToDeploy(problem: ConfigProblem): boolean {
 }
 
 // Worth having on every deployment, so it is asked for even when no component here requires it.
-const REQUIRED_IN_EVERY_STACK: ReadonlySet<string> = new Set(["METRICS_AUTH"]);
+export const REQUIRED_IN_EVERY_STACK: ReadonlySet<string> = new Set(["METRICS_AUTH"]);
 
 /** Owned by the shared layer; component/fleet/host editors must not offer them. */
 export const STACK_SHARED_KEYS: Set<string> = new Set(SHARED_KEYS);
@@ -134,20 +135,30 @@ function agreedShape(field: EnvField): string {
   return JSON.stringify([field.description, field.isSecret, field.isBoolean, field.enumValues, field.defaultValue]);
 }
 
+/** A stack without any placed component is still being set up, so it is shaped for all of them. */
+export function stackComponents(stack: StackDefinition): readonly Component[] {
+  const placed = COMPONENTS.filter((component) => stack.hosts.some((host) => host.components.includes(component)));
+  return placed.length > 0 ? placed : COMPONENTS;
+}
+
 /** The shared keys as their components declare them, so nothing restates their descriptions. */
-export function sharedFields(): EnvField[] {
-  const declared = COMPONENTS.flatMap((component) => componentFields(component));
+export function sharedFields(stack: StackDefinition): EnvField[] {
+  const present = stackComponents(stack);
+  const declared = COMPONENTS.flatMap((component) =>
+    componentFields(component).map((field) => ({ field, present: present.includes(component) })),
+  );
 
   return SHARED_KEYS.map((key) => {
-    const matches = declared.filter((field) => field.key === key);
-    const first = matches[0];
+    const matches = declared.filter(({ field }) => field.key === key);
+    const first = matches[0]?.field;
     if (!first) {
       throw new Error(`The stack offers ${key}, which no component declares`);
     }
-    if (matches.some((field) => agreedShape(field) !== agreedShape(first))) {
+    if (matches.some(({ field }) => agreedShape(field) !== agreedShape(first))) {
       throw new Error(`Components declare ${key} differently, so the stack cannot offer one of them`);
     }
-    const wanted = REQUIRED_IN_EVERY_STACK.has(key) || matches.some((field) => field.isRequiredBySchema);
+    const wanted = REQUIRED_IN_EVERY_STACK.has(key)
+      || matches.some(({ field, present }) => present && field.isRequiredBySchema);
     return { ...first, requiredOverride: wanted && !DERIVED_FROM_HOST_ADDRESSES.has(key) };
   });
 }
@@ -159,7 +170,7 @@ export function sharedLayerProblems(
   const problems: ConfigProblem[] = [];
   const seen = new Set<string>();
 
-  for (const component of COMPONENTS) {
+  for (const component of stackComponents(stack)) {
     const env = {
       ...getAutoDefaults(component),
       ...stack.derivedEnv,
@@ -187,7 +198,7 @@ export function applySharedResult(
   stack: StackDefinition,
   result: { config: Record<string, string>; secrets: Record<string, string> },
 ): void {
-  for (const field of sharedFields()) {
+  for (const field of sharedFields(stack)) {
     const bucket = field.isSecret ? stack.secrets : stack.env;
     const value = field.isSecret ? result.secrets[field.key] : result.config[field.key];
     if (value === undefined) {

@@ -5,7 +5,7 @@
  * instance. Use `connectHost()` from remote-host.ts to create one.
  */
 import { quoteShellArg } from "common-env";
-import type { HostArch } from "./platform.ts";
+import type { HostArch, HostOs } from "./platform.ts";
 
 // ─── Low-level shell primitives ─────────────────────────────────────────────
 
@@ -90,6 +90,8 @@ export type Host = {
    * Returns the hex hash string, or null if the file doesn't exist.
    */
   computeSha256(filePath: string): Promise<string | null>;
+
+  readonly os: HostOs;
 
   /** Get the release build flavour this host can run. Throws on unsupported architectures. */
   getArch(): Promise<HostArch>;

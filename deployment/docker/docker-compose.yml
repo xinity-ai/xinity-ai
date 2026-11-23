@@ -60,8 +60,6 @@ services:
       REDIS_URL_FILE: ${REDIS_URL_FILE:-}
       XINITY_SECRET_KEY_FILE: /run/secrets/xinity_secret_key
       INFOSERVER_URL: ${INFOSERVER_URL:-https://sysinfo.xinity.ai}
-      WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-searxng}
-      WEB_SEARCH_CREDENTIAL: ${WEB_SEARCH_CREDENTIAL:-http://searxng:${SEARXNG_PORT:-8888}}
       RESPONSE_CACHE_TTL_SECONDS: ${RESPONSE_CACHE_TTL:-3600}
       METRICS_AUTH_FILE: /run/secrets/metrics_auth
     networks:
@@ -178,7 +176,8 @@ services:
     restart: unless-stopped
     environment:
       SEARXNG_SECRET: ${SEARXNG_SECRET:-}
-      SEARXNG_BASE_URL: http://searxng:${SEARXNG_PORT:-8888}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     networks:
       - xinity-network
     profiles: [searxng]

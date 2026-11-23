@@ -15,7 +15,7 @@ If you have direnv installed, set up a `.envrc` file with `use flake .` to autom
 
 On startup, the daemon:
 
-1. Detects GPU hardware (NVIDIA via `nvidia-smi`, AMD via sysfs/`rocm-smi`, Intel via `xpu-smi`). Falls back to system RAM when no GPUs are found. Unified memory systems (e.g., DGX Spark) are detected and allocated at 90% of system RAM.
+1. Detects GPU hardware (NVIDIA via `nvidia-smi`, AMD via sysfs/`rocm-smi`, Intel via `xpu-smi`). Falls back to system RAM when no GPUs are found. Unified memory systems (e.g., DGX Spark) are detected and allocated at 90% of system RAM. On Apple Silicon Macs, capacity is the memory macOS lets the GPU use, see [macOS](#macos).
 2. Detects RDMA-capable network ports and the nodes on the other end of each, re-checks them every 30 seconds and reports changes via `POST /api/v1/interconnect`. See [Node Coupling](../../docs/features/node-coupling.md).
 3. Opens a persistent SSE connection to the tether, sending its hardware profile (capacity, GPU details, interconnect ports, drivers, hostname, port) as the registration body. The tether upserts the node record in the database.
 4. Receives desired state (model installations) from the tether over the SSE stream and installs/removes models accordingly. Changes are pushed immediately when the dashboard updates a deployment.
@@ -80,6 +80,15 @@ Set `VLLM_BACKEND` to choose the backend (`docker`, the default, or `systemd`). 
 ### Node Coupling
 
 To couple nodes over an RDMA link (for example two DGX Sparks on their ConnectX cable), set up the cabled ports as described in [Node Coupling](../../docs/features/node-coupling.md#setting-up-the-link).
+
+### macOS
+
+A Mac runs the daemon with the Ollama driver. vLLM and node coupling are not available.
+
+1. Install [Ollama for macOS](https://ollama.com/download/mac) and start it. If you already use Ollama on this Mac, give Xinity a separate instance, see [Ollama Driver](#ollama-driver).
+2. Install the daemon with `xinity up daemon`, see the [CLI deployment guide](../../deployment/cli/README.md#macos). To run it by hand instead, download `xinity-ai-daemon-darwin-arm64.tar.gz` (or `darwin-x64` on an Intel Mac) from the release, set `TETHER_URL` and `TETHER_SECRET` (see [Configuration](#configuration)) and start `./xinity-ai-daemon`.
+
+On Apple Silicon the node's capacity is the memory macOS lets the GPU use, about 2/3 of RAM up to 36 GB and about 3/4 above. To give models more room, raise the limit with `sudo sysctl iogpu.wired_limit_mb=<MB>` and restart the daemon. The setting resets on reboot. Ollama runs on the CPU on an Intel Mac, so its capacity is the system RAM.
 
 ## Configuration
 
