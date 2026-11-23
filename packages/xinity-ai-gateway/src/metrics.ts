@@ -205,8 +205,8 @@ export function recordTimeToFirstToken(deployment: string, callStartTime: number
   timeToFirstToken.observe({ deployment }, Date.now() - callStartTime);
 }
 
-export function recordModelRequest(model: string, success: boolean, orgId: string): void {
-  modelRequestsTotal.inc({ model, status: success ? "success" : "failure", org_id: orgId });
+export function recordModelRequest(model: string, success: boolean, keyId: string, orgId: string): void {
+  modelRequestsTotal.inc({ model, status: success ? "success" : "failure", key_id: keyId, org_id: orgId });
 }
 
 export function recordBackendError(model: string, status: number): void {
