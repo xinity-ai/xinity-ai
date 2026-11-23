@@ -52,7 +52,7 @@ export const recordUsage = ({
   const durationMs = Date.now() - callStartTime;
   const tokens = usage && { inputTokens: normalizeInputTokens(usage), outputTokens: normalizeOutputTokens(usage) };
   recordTokenUsage(modelInfo.model, auth.keyId, auth.orgId, tokens, { deployment, durationMs });
-  recordModelRequest(modelInfo.model, true, auth.orgId);
+  recordModelRequest(modelInfo.model, true, auth.keyId, auth.orgId);
 
   const shouldLog = callWillBeLogged(auth, logCalls);
 
@@ -84,7 +84,7 @@ export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRe
   if (usage) {
     recordTokenUsage(modelInfo.model, auth.keyId, auth.orgId, tokens);
   }
-  recordModelRequest(modelInfo.model, false, auth.orgId);
+  recordModelRequest(modelInfo.model, false, auth.keyId, auth.orgId);
   recordUsageEvent({
     organizationId: auth.orgId,
     applicationId: auth.applicationId,

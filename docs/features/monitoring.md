@@ -75,7 +75,7 @@ sum(rate(http_requests_total{job="xinity-gateway",status=~"[45].."}[5m]))
 | Metric | Type | Labels | Description |
 |---|---|---|---|
 | `gateway_time_to_first_token_milliseconds` | histogram | `deployment` | Time to first token (streaming) |
-| `gateway_model_requests_total` | counter | `model`, `status`, `org_id` | Requests per model (success/failure) |
+| `gateway_model_requests_total` | counter | `model`, `status`, `key_id`, `org_id` | Requests per model (success/failure) |
 | `gateway_client_disconnects_total` | counter | `endpoint` | Client disconnections during streaming |
 | `gateway_backend_errors_total` | counter | `model`, `status` | Backend errors by model and HTTP status |
 | `gateway_input_tokens` | histogram | `model`, `key_id`, `org_id` | Input tokens per request |
