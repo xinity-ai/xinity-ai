@@ -13,7 +13,7 @@ import { config } from "../config";
 import { rootLogger } from "../logger";
 import { groupInstallationsByDriver } from "./driver-grouping";
 import { updateRegistry } from "./model-registry";
-import { updateInstallationState } from "./model-installation/state";
+import { reportUnacceptedStates, updateInstallationState } from "./model-installation/state";
 import { getNodeId, getNodeDrivers } from "./statekeeper";
 
 const log = rootLogger.child({ name: "db-sync" });
@@ -137,7 +137,11 @@ function sync(): Observable<void> {
   }
   log.debug("Performing sync");
 
-  return defer(() => from(Promise.all([getNodeId(), getNodeDrivers()]))).pipe(
+  return defer(() => from(Promise.all([
+    getNodeId(),
+    getNodeDrivers(),
+    reportUnacceptedStates(latestInstallations.map((i) => i.installationId)),
+  ]))).pipe(
     switchMap(([nodeId, drivers]) => {
       const installations = latestInstallations.map(d => toSyncInstallation(d, nodeId));
       updateRegistry(installations);

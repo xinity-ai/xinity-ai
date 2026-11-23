@@ -237,6 +237,7 @@ async function postSigned<T>(path: string, report: T, canonical: (report: T, aut
       method: "POST",
       headers: jsonHeaders(authorization),
       body: JSON.stringify({ ...report, signature: await signPayloadAsNode(canonical(report, authorization)) }),
+      signal: AbortSignal.timeout(HANDSHAKE_TIMEOUT_MS),
     });
     if (!res.ok) {
       const { message, reason } = await readRefusal(res);

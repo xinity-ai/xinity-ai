@@ -32,24 +32,32 @@ export async function updateInstallationState(
     groupGeneration: opts?.groupGeneration !== undefined ? opts.groupGeneration : localStateCache.get(id)?.groupGeneration ?? null,
   };
   localStateCache.set(id, entry);
+  await reportLatestState(id);
+}
+
+export async function reportUnacceptedStates(ids: string[]): Promise<void> {
+  await Promise.all(ids.map(reportLatestState));
+}
+
+const reportChains = new Map<string, Promise<void>>();
+
+// Reports of one installation go out one after another, so an older state can never land after a newer one.
+function reportLatestState(id: string): Promise<void> {
+  const report = (reportChains.get(id) ?? Promise.resolve()).then(() => sendIfUnaccepted(id));
+  reportChains.set(id, report);
+  return report;
+}
+
+async function sendIfUnaccepted(id: string): Promise<void> {
+  const entry = localStateCache.get(id);
   // Every report makes the tether push its group's desired state again, and the next sync would repeat it, so only a change is reported.
-  if (Bun.deepEquals(acceptedByTether.get(id), entry)) {
+  if (!entry || Bun.deepEquals(acceptedByTether.get(id), entry)) {
     return;
   }
 
-  const nodeId = await getNodeId();
   const accepted = await reportInstallationStates({
-    nodeId,
-    states: [{
-      installationId: id,
-      lifecycleState,
-      progress: opts?.progress,
-      statusMessage: opts?.statusMessage,
-      errorMessage: opts?.errorMessage,
-      failureLogs: opts?.failureLogs,
-      groupStage: entry.groupStage,
-      groupGeneration: entry.groupGeneration,
-    }],
+    nodeId: await getNodeId(),
+    states: [{ installationId: id, ...entry }],
   });
   if (accepted) {
     acceptedByTether.set(id, entry);
