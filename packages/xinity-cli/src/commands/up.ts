@@ -17,6 +17,7 @@ import { deprecationGate } from "../lib/up/deprecation-gate.ts";
 import { warn, heading } from "../lib/core/output.ts";
 import { connectHost, TARGET_HOST_OPTION } from "../lib/remote/remote-host.ts";
 import { type Host, commandExistsOn } from "../lib/core/host.ts";
+import type { HostOs } from "../lib/core/platform.ts";
 import { parseEnvString } from "../lib/config/env-file.ts";
 import { seaweedfsSetup } from "../lib/infra/seaweedfs-setup.ts";
 import { discoverRedis, infraRedis } from "../lib/infra/redis-setup.ts";
@@ -33,6 +34,11 @@ const COMPONENTS = [
   "infra-ollama", "infra-vllm", "infra-searxng", "infra-prometheus",
   "cli", "all",
 ] as const;
+
+const UP_TARGETS_BY_OS: Record<HostOs, readonly string[]> = {
+  linux: COMPONENTS,
+  darwin: [...COMPONENTS_BY_OS.darwin, "db"],
+};
 
 const INFRA_SETUPS: Partial<Record<string, (host: Host, dryRun: boolean) => Promise<unknown>>> = {
   "infra-seaweedfs": seaweedfsSetup,
@@ -220,7 +226,7 @@ export const upCommand: CommandModule = {
     const host = await connectHost(targetHostArg);
 
     try {
-      const supported: readonly string[] = COMPONENTS_BY_OS[host.os];
+      const supported = UP_TARGETS_BY_OS[host.os];
       if (!supported.includes(component)) {
         log.error(`${component} is not available on ${host.os} hosts (supported: ${supported.join(", ")})`);
         outro("Failed");

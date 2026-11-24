@@ -12,23 +12,24 @@ import { configureCommand } from "./commands/configure.ts";
 import { rmCommand } from "./commands/rm.ts";
 import { completionCommand } from "./commands/completion.ts";
 import { stackCommand } from "./commands/stack.ts";
+import { IS_WINDOWS } from "./lib/core/platform.ts";
 
-const LOCAL_LINUX_COMMANDS = new Set(["up", "rm", "doctor"]);
+const LOCAL_SERVICE_COMMANDS = new Set(["up", "rm", "doctor"]);
 
 function rejectLocalServiceCommands(argv: { _: (string | number)[]; "target-host"?: string }): void {
-  if (process.platform === "linux") {
+  if (!IS_WINDOWS) {
     return;
   }
   const cmd = String(argv._[0] ?? "");
-  if (!LOCAL_LINUX_COMMANDS.has(cmd)) {
+  if (!LOCAL_SERVICE_COMMANDS.has(cmd)) {
     return;
   }
   if (argv["target-host"]) {
     return;
   }
   console.error(
-    `Service management requires a Linux host. ` +
-    `Use --target-host to specify a remote Linux host.`,
+    `Service management requires a Linux or macOS host. ` +
+    `Use --target-host to specify a remote host.`,
   );
   process.exit(1);
 }
