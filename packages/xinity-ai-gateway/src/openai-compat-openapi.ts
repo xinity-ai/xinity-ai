@@ -488,6 +488,55 @@ export const openaiCompatPaths = {
       },
     },
   },
+  "/v1/images/edits": {
+    post: {
+      tags: [TAG],
+      summary: "Edit images from a prompt",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/images/createEdit",
+        "",
+        "Xinity notes:",
+        "- Only available for deployments of image models that edit images.",
+        `- ${APP_HEADER_NOTE}`,
+        "- Input images must be PNG, JPEG or WebP.",
+        "- `mask` is not supported.",
+        "- Images are always returned as `b64_json`. `response_format: \"url\"` is rejected.",
+        "- Streaming (`stream`, `partial_images`) is not supported.",
+        "- `output_format` accepts `png` (default), `jpeg` and `webp`. `quality` and `input_fidelity` are accepted and ignored.",
+      ].join("\n"),
+      security: SECURITY,
+      // Hand-written: a multipart binary upload can't be derived from a Zod schema.
+      requestBody: {
+        required: true,
+        content: {
+          "multipart/form-data": {
+            schema: {
+              type: "object",
+              required: ["image", "prompt", "model"],
+              properties: {
+                image: {
+                  type: "array",
+                  items: { type: "string", format: "binary" },
+                  description: "The images to edit. Repeat the field (`image` or `image[]`) for several.",
+                },
+                prompt: { type: "string" },
+                model: { type: "string" },
+                n: { type: "integer", minimum: 1, maximum: 10, default: 1 },
+                size: { type: "string", description: "`WIDTHxHEIGHT`, or `auto` for the model's default." },
+                output_format: { type: "string", enum: ["png", "jpeg", "webp"], default: "png" },
+                output_compression: { type: "integer", minimum: 0, maximum: 100 },
+                background: { type: "string", enum: ["transparent", "opaque", "auto"] },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": jsonResponse("Edited images", "#/components/schemas/ImagesResponse"),
+        ...errorResponses,
+      },
+    },
+  },
   "/v1/responses": {
     post: {
       tags: [TAG],

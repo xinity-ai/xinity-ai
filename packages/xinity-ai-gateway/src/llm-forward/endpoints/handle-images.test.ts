@@ -47,7 +47,7 @@ const realMediaStore = await import("../../media-store");
 const storeMedia = mock(async () => "xinity-media://stored");
 mock.module("../../media-store", () => ({ ...realMediaStore, storeMedia }));
 
-const { handleImageGeneration } = await import("./handle-images");
+const { handleImageEdit, handleImageGeneration } = await import("./handle-images");
 
 function pngChunk(type: string, data: Uint8Array): Buffer {
   const chunk = Buffer.alloc(12 + data.length);
@@ -59,7 +59,7 @@ function pngChunk(type: string, data: Uint8Array): Buffer {
 }
 
 /** A grey RGB PNG stored without compression, the way vllm-omni writes one by default. */
-function uncompressedPng(width: number, height: number): Buffer {
+function uncompressedPng(width: number, height: number): Uint8Array<ArrayBuffer> {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
@@ -68,29 +68,38 @@ function uncompressedPng(width: number, height: number): Buffer {
   for (let row = 0; row < height; row++) {
     rows[row * (1 + width * 3)] = 0;
   }
-  return Buffer.concat([
+  return new Uint8Array(Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     pngChunk("IHDR", header),
     pngChunk("IDAT", deflateSync(rows, { level: 0 })),
     pngChunk("IEND", new Uint8Array()),
-  ]);
+  ]));
 }
 
-function idatPixels(png: Buffer): Buffer {
-  const length = png.readUInt32BE(33);
+function pngBlob(width: number, height: number): Blob {
+  return new Blob([uncompressedPng(width, height)], { type: "image/png" });
+}
+
+function idatPixels(png: Uint8Array): Buffer {
+  const length = Buffer.from(png).readUInt32BE(33);
   return inflateSync(png.subarray(41, 41 + length));
 }
 
 let server: ReturnType<typeof Bun.serve>;
 let backendBodies: Record<string, unknown>[] = [];
+let backendForms: Awaited<ReturnType<Request["formData"]>>[] = [];
 let backendImages = [uncompressedPng(64, 32)];
 
 beforeAll(() => {
   server = Bun.serve({
     port: 0,
     fetch: async (req) => {
-      backendBodies.push(await req.json() as Record<string, unknown>);
-      return Response.json({ created: 1700000000, data: backendImages.map((png) => ({ b64_json: png.toString("base64"), url: null })) });
+      if (new URL(req.url).pathname.endsWith("/edits")) {
+        backendForms.push(await req.formData());
+      } else {
+        backendBodies.push(await req.json() as Record<string, unknown>);
+      }
+      return Response.json({ created: 1700000000, data: backendImages.map((png) => ({ b64_json: Buffer.from(png).toString("base64"), url: null })) });
     },
   });
   mockPort = server.port!;
@@ -101,6 +110,7 @@ afterEach(() => {
   logImageCall.mockClear();
   storeMedia.mockClear();
   backendBodies = [];
+  backendForms = [];
   backendImages = [uncompressedPng(64, 32)];
   checkAuth.mockImplementation(async () => ({ orgId: "org-1", keyId: "key-1", applicationId: "app-1", collectData: true }));
   getModelInfo.mockImplementation(async () => modelFound(imageModel()));
@@ -201,10 +211,88 @@ describe("handleImageGeneration", () => {
   });
 
   test("answers 502 when the engine returns something that is not an image", async () => {
-    backendImages = [Buffer.from("not an image")];
+    backendImages = [new TextEncoder().encode("not an image")];
 
     const res = await generate({});
 
     expect(res.status).toBe(502);
+  });
+});
+
+function edit(fields: Record<string, string | Blob | Blob[]>, imageField = "image"): Promise<Response> {
+  const form = new FormData();
+  form.set("model", "test-image");
+  form.set("prompt", "make it night");
+  for (const [name, value] of Object.entries({ [imageField]: [pngBlob(32, 32)], ...fields })) {
+    for (const part of Array.isArray(value) ? value : [value]) {
+      form.append(name, part);
+    }
+  }
+  return handleImageEdit(new Request("http://localhost:4000/v1/images/edits", {
+    method: "POST",
+    headers: { "Authorization": "Bearer test" },
+    body: form,
+  }));
+}
+
+describe("handleImageEdit", () => {
+  const editModel = () => modelFound(imageModel({ tags: ["image_edit"] }));
+
+  test("sends every input image to the engine, with form fields read as their declared types", async () => {
+    getModelInfo.mockImplementation(async () => editModel());
+
+    const res = await edit({ "image[]": [pngBlob(16, 16), pngBlob(32, 16)], n: "2", seed: "7", guidance_scale: "3" }, "image[]");
+
+    expect(res.status).toBe(200);
+    const form = backendForms[0]!;
+    expect(form.getAll("image")).toHaveLength(2);
+    expect(Object.fromEntries([...form.entries()].filter(([name]) => name !== "image"))).toEqual({
+      model: "engine-image",
+      prompt: "make it night",
+      response_format: "b64_json",
+      output_format: "png",
+      n: "2",
+      seed: "7",
+    });
+  });
+
+  test("records the input images' patches times steps as input tokens", async () => {
+    getModelInfo.mockImplementation(async () => editModel());
+
+    await edit({ image: [pngBlob(32, 32), pngBlob(16, 16)], num_inference_steps: "4" });
+
+    // (2 x 2 + 1) input patches and 4 x 2 output patches, at 4 steps.
+    expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ inputTokens: 5 * 4, outputTokens: 8 * 4 });
+  });
+
+  test("logs the prompt together with references to the stored input images", async () => {
+    getModelInfo.mockImplementation(async () => editModel());
+
+    await edit({});
+    await Bun.sleep(0);
+
+    expect(storeMedia).toHaveBeenCalledTimes(2);
+    const [message] = (logImageCall.mock.calls[0]![0] as { inputMessages: { content: { type: string }[] }[] }).inputMessages;
+    expect(message!.content.map((part) => part.type)).toEqual(["text", "image_url"]);
+  });
+
+  test.each([
+    ["a mask", { mask: pngBlob(32, 32) }],
+    ["an input that is not an image", { image: new Blob(["not an image"]) }],
+    ["a missing input image", { image: [] }],
+  ])("refuses %s before reaching the engine", async (_name, fields) => {
+    getModelInfo.mockImplementation(async () => editModel());
+
+    const res = await edit(fields);
+
+    expect(res.status).toBe(400);
+    expect(backendForms).toHaveLength(0);
+  });
+
+  test("refuses a model that only generates images", async () => {
+    const res = await edit({});
+
+    expect(res.status).toBe(400);
+    expect(backendForms).toHaveLength(0);
   });
 });

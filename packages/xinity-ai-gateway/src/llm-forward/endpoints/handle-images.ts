@@ -2,10 +2,11 @@ import { z } from "zod";
 import { promisify } from "node:util";
 import { deflate, inflate } from "node:zlib";
 import { bytesDigest } from "common-env";
+import { formatMediaRef } from "common-env/media-ref";
 import type { StorableImageType } from "common-env/media-types";
 import { errorResponse, extractAllowedRequestParams, forwardBackendError, recordUsage, rethrowIfAborted } from "../util";
 import { withEndpointGuards } from "../endpoint-guards";
-import { backendPostJson } from "../backend-fetch";
+import { backendPostForm, backendPostJson } from "../backend-fetch";
 import type { ModelInfo } from "../model-data";
 import type { AuthResult } from "../auth";
 import { mediaStore, sniffImageType, storeMedia } from "../../media-store";
@@ -64,7 +65,7 @@ function engineRequestParams(body: ImageRequestBody, rawBody: Record<string, unk
 }
 
 type Dimensions = { width: number; height: number };
-type GeneratedImage = { bytes: Uint8Array<ArrayBuffer>; mimeType: StorableImageType; dimensions: Dimensions | null };
+type DecodedImage = { bytes: Uint8Array<ArrayBuffer>; mimeType: StorableImageType; dimensions: Dimensions | null };
 
 const viewOf = (bytes: Uint8Array) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 const tagAt = (bytes: Uint8Array, offset: number) => String.fromCharCode(...bytes.subarray(offset, offset + 4));
@@ -142,15 +143,18 @@ async function compressPng(png: Uint8Array<ArrayBuffer>): Promise<Uint8Array<Arr
   }
 }
 
-async function toGeneratedImage(b64: string): Promise<GeneratedImage | null> {
-  const decoded = new Uint8Array(Buffer.from(b64, "base64"));
-  const mimeType = sniffImageType(decoded);
+function decodeImage(bytes: Uint8Array<ArrayBuffer>): DecodedImage | null {
+  const mimeType = sniffImageType(bytes);
   const readDimensions = mimeType && DIMENSIONS[mimeType];
   if (!mimeType || !readDimensions) {
     return null;
   }
-  const bytes = mimeType === "image/png" ? await compressPng(decoded) : decoded;
   return { bytes, mimeType, dimensions: readDimensions(bytes) };
+}
+
+async function toGeneratedImage(b64: string): Promise<DecodedImage | null> {
+  const decoded = new Uint8Array(Buffer.from(b64, "base64"));
+  return decodeImage(sniffImageType(decoded) === "image/png" ? await compressPng(decoded) : decoded);
 }
 
 const BackendImagesSchema = z.looseObject({
@@ -158,7 +162,7 @@ const BackendImagesSchema = z.looseObject({
   data: z.array(z.looseObject({ b64_json: z.string() })).min(1),
 });
 
-async function readBackendImages(res: Response): Promise<{ created: number; images: GeneratedImage[] } | null> {
+async function readBackendImages(res: Response): Promise<{ created: number; images: DecodedImage[] } | null> {
   let json: unknown;
   try {
     json = await res.json();
@@ -178,7 +182,7 @@ async function readBackendImages(res: Response): Promise<{ created: number; imag
 // patch at every step, so patches times steps tracks their compute where no token count exists.
 const PATCH_PIXELS = 16;
 
-function denoisedPatches(images: GeneratedImage[], steps: number | undefined): number {
+function denoisedPatches(images: DecodedImage[], steps: number | undefined): number {
   if (steps === undefined) {
     return 0;
   }
@@ -191,39 +195,61 @@ function stepsUsed(requestParams: Record<string, unknown>, modelInfo: ModelInfo)
   return typeof requestParams.num_inference_steps === "number" ? requestParams.num_inference_steps : modelInfo.defaultInferenceSteps;
 }
 
-type ImageCallLog = {
+type ImageCall = {
   auth: AuthResult;
   modelInfo: ModelInfo;
-  publicSpecifier: string;
+  originalModel: string;
   endpoint: "images_generations" | "images_edits";
   prompt: string;
+  inputImages: DecodedImage[];
   requestParams: Record<string, unknown>;
-  images: GeneratedImage[];
-  durationMs: number;
+  callStartTime: number;
 };
 
-async function logImages(call: ImageCallLog): Promise<void> {
-  await Promise.all(call.images.map((image) => storeMedia(image.bytes, image.mimeType, null, call.auth.orgId, mediaStore)));
+async function logImages(call: ImageCall, outputImages: DecodedImage[]): Promise<void> {
+  const images = [...call.inputImages, ...outputImages];
+  await Promise.all(images.map((image) => storeMedia(image.bytes, image.mimeType, null, call.auth.orgId, mediaStore)));
+  const imageParts = call.inputImages.map((image) => ({ type: "image_url" as const, image_url: { url: formatMediaRef(bytesDigest(image.bytes)) } }));
   await logImageCall({
     keyId: call.auth.keyId,
     applicationId: call.auth.applicationId,
     organizationId: call.auth.orgId,
-    durationInMS: call.durationMs,
-    publicSpecifier: call.publicSpecifier,
+    durationInMS: Date.now() - call.callStartTime,
+    publicSpecifier: call.originalModel,
     servedModel: call.modelInfo.model,
     endpoint: call.endpoint,
-    inputMessages: [{ role: "user", content: call.prompt }],
-    outputMediaDigests: call.images.map((image) => bytesDigest(image.bytes)),
+    inputMessages: [{ role: "user", content: imageParts.length > 0 ? [{ type: "text", text: call.prompt }, ...imageParts] : call.prompt }],
+    outputMediaDigests: outputImages.map((image) => bytesDigest(image.bytes)),
     requestParams: call.requestParams,
   });
 }
 
-function imagesResponse(created: number, images: GeneratedImage[], outputFormat: unknown): Response {
-  const size = images[0]?.dimensions;
+async function respondWithImages(call: ImageCall, backendResponse: Response): Promise<Response> {
+  if (!backendResponse.ok) {
+    return forwardBackendError(backendResponse, log, call.modelInfo);
+  }
+  const generated = await readBackendImages(backendResponse);
+  if (!generated) {
+    return errorResponse("Backend returned an invalid response", 502);
+  }
+
+  const steps = stepsUsed(call.requestParams, call.modelInfo);
+  const shouldLog = recordUsage({
+    usage: { inputTokens: denoisedPatches(call.inputImages, steps), outputTokens: denoisedPatches(generated.images, steps) },
+    auth: call.auth,
+    modelInfo: call.modelInfo,
+    callStartTime: call.callStartTime,
+    deployment: call.originalModel,
+  });
+  if (shouldLog) {
+    logImages(call, generated.images).catch((err) => log.error({ err, endpoint: call.endpoint }, "Logging an image call failed"));
+  }
+
+  const size = generated.images[0]?.dimensions;
   return Response.json({
-    created,
-    data: images.map((image) => ({ b64_json: Buffer.from(image.bytes).toString("base64") })),
-    output_format: outputFormat,
+    created: generated.created,
+    data: generated.images.map((image) => ({ b64_json: Buffer.from(image.bytes).toString("base64") })),
+    output_format: call.requestParams.output_format,
     ...(size ? { size: `${size.width}x${size.height}` } : {}),
   });
 }
@@ -250,35 +276,100 @@ export const handleImageGeneration = withEndpointGuards({
       prompt: body.prompt,
       response_format: "b64_json",
     }, signal);
-    if (!backendResponse.ok) {
-      return forwardBackendError(backendResponse, log, modelInfo);
+    return respondWithImages({
+      auth, modelInfo, originalModel, endpoint: "images_generations", prompt: body.prompt, inputImages: [], requestParams, callStartTime,
+    }, backendResponse);
+  },
+});
+
+const formNumber = z.coerce.number().int();
+
+export const ImageEditBodySchema = ImageGenerationBodySchema.extend({
+  image: z.array(z.instanceof(Blob)).min(1),
+  mask: z.instanceof(Blob).nullish(),
+  n: formNumber.min(1).max(10).nullish(),
+  output_compression: formNumber.min(0).max(100).nullish(),
+  stream: z.stringbool().nullish(),
+  partial_images: formNumber.min(0).max(3).nullish(),
+});
+
+// The OpenAI SDKs send an array field as repeated `name[]` parts.
+async function readEditForm(req: Request): Promise<Record<string, unknown> | Response> {
+  const form = await req.formData().catch(() => null);
+  if (!form) {
+    return errorResponse("Expected a multipart/form-data body", 400);
+  }
+  const body: Record<string, unknown> = { image: [] };
+  for (const [key, value] of form.entries()) {
+    const name = key.endsWith("[]") ? key.slice(0, -2) : key;
+    if (name === "image") {
+      (body.image as unknown[]).push(value);
+    } else {
+      body[name] = value;
+    }
+  }
+  return body;
+}
+
+const FORM_VALUE_PARSERS: Record<string, (value: string) => unknown> = {
+  number: Number,
+  boolean: (value) => value === "true",
+  string: (value) => value,
+};
+
+// Form fields arrive as text, so an allowlisted extra is read as the type the catalog declares for it.
+function typedFormParams(rawBody: Record<string, unknown>, allowed: Record<string, string> | undefined): Record<string, unknown> {
+  const typed: Record<string, unknown> = {};
+  for (const [name, type] of Object.entries(allowed ?? {})) {
+    const value = rawBody[name];
+    const parse = FORM_VALUE_PARSERS[type];
+    if (typeof value === "string" && parse) {
+      typed[name] = parse(value);
+    }
+  }
+  return typed;
+}
+
+function engineForm(fields: Record<string, unknown>, images: DecodedImage[]): FormData {
+  const form = new FormData();
+  for (const [name, value] of Object.entries(fields)) {
+    form.append(name, typeof value === "object" ? JSON.stringify(value) : String(value));
+  }
+  for (const [index, image] of images.entries()) {
+    form.append("image", new Blob([image.bytes], { type: image.mimeType }), `image-${index}`);
+  }
+  return form;
+}
+
+export const handleImageEdit = withEndpointGuards({
+  modelTypes: [IMAGE_MODEL_TYPE],
+  bodySchema: ImageEditBodySchema,
+  readBody: readEditForm,
+  log,
+  handler: async ({ auth, body, rawBody, modelInfo, originalModel, req }) => {
+    const callStartTime = Date.now();
+    const refusal = unsupportedRequest(body);
+    if (refusal) {
+      return errorResponse(refusal, 400);
+    }
+    if (body.mask) {
+      return errorResponse("mask is not supported", 400);
+    }
+    if (lacksTag(modelInfo, "image_edit")) {
+      return errorResponse(`Model '${originalModel}' does not edit images`, 400);
     }
 
-    const generated = await readBackendImages(backendResponse);
-    if (!generated) {
-      return errorResponse("Backend returned an invalid response", 502);
+    const inputImages = await Promise.all(body.image.map(async (file) => decodeImage(new Uint8Array(await file.arrayBuffer()))));
+    if (!inputImages.every((image) => image !== null)) {
+      return errorResponse("Input images must be PNG, JPEG or WebP", 400);
     }
 
-    const shouldLog = recordUsage({
-      usage: { inputTokens: 0, outputTokens: denoisedPatches(generated.images, stepsUsed(requestParams, modelInfo)) },
-      auth,
-      modelInfo,
-      callStartTime,
-      deployment: originalModel,
-    });
-    if (shouldLog) {
-      logImages({
-        auth,
-        modelInfo,
-        publicSpecifier: originalModel,
-        endpoint: "images_generations",
-        prompt: body.prompt,
-        requestParams,
-        images: generated.images,
-        durationMs: Date.now() - callStartTime,
-      }).catch((err) => log.error({ err }, "Logging an image generation failed"));
-    }
-
-    return imagesResponse(generated.created, generated.images, requestParams.output_format);
+    const requestParams = engineRequestParams(body, typedFormParams(rawBody, modelInfo.requestParams), modelInfo);
+    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(config.inference.backendTimeoutMs())]);
+    const form = engineForm({ ...requestParams, model: modelInfo.model, prompt: body.prompt, response_format: "b64_json" }, inputImages);
+    const backendResponse = await backendPostForm(modelInfo, "/v1/images/edits", form, signal);
+    return respondWithImages({
+      auth, modelInfo, originalModel, endpoint: "images_edits", prompt: body.prompt, inputImages, requestParams, callStartTime,
+    }, backendResponse);
   },
 });
