@@ -51,7 +51,7 @@ xinity update --check    # check for updates without installing
 |---|---|
 | `--version` | Print the CLI version |
 
-The single-host commands (`up`, `rm`, `configure`, `doctor`) additionally accept `--target-host <host>` to run against a remote server via SSH. On macOS and Windows, `--target-host` is required for service management commands since services only run on Linux. Multi-host operations use stacks (`xinity stack`), which carry their own host lists.
+The single-host commands (`up`, `rm`, `configure`, `doctor`) additionally accept `--target-host <host>` to run against a remote server via SSH. On Windows, `--target-host` is required for service management commands, and on macOS for `configure`. Multi-host operations use stacks (`xinity stack`), which carry their own host lists.
 
 ## How Changes Are Applied: Plan → Review → Apply
 
