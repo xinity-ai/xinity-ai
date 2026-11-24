@@ -193,6 +193,8 @@ export const inferenceEndpointEnum = callDataSchema.enum("inference_endpoint", [
   "audio_transcriptions",
   "rerank",
   "responses",
+  "images_generations",
+  "images_edits",
 ]);
 export type InferenceEndpoint = (typeof inferenceEndpointEnum.enumValues)[number];
 
@@ -232,6 +234,19 @@ export const inferenceCallMessageT = callDataSchema.table("inference_call_messag
   index("inference_call_message_message_id_idx").on(table.messageId),
 ]);
 export type InferenceCallMessage = InferSelectModel<typeof inferenceCallMessageT>;
+
+/** Media a call produced. No cascade to `media_object`, so a stored image cannot be deleted out from under a call that shows it. */
+export const inferenceCallMediaT = callDataSchema.table("inference_call_media", {
+  callId: uuid("call_id")
+    .notNull()
+    .references(() => inferenceCallT.id, { onDelete: "cascade" }),
+  seq: integer().notNull(),
+  mediaObjectId: uuid("media_object_id").notNull().references(() => mediaObjectT.id),
+}, table => [
+  primaryKey({ columns: [table.callId, table.seq] }),
+  index("inference_call_media_media_object_id_idx").on(table.mediaObjectId),
+]);
+export type InferenceCallMedia = InferSelectModel<typeof inferenceCallMediaT>;
 
 export type Highlight = {
   start: number;

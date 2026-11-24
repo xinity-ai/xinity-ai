@@ -1,12 +1,20 @@
 import {
+  and,
+  eq,
+  inArray,
   inferenceCallT,
+  inferenceCallMediaT,
   inferenceCallMessageT,
+  mediaObjectT,
   type ApiCallInputMessage,
   type InferenceEndpoint,
   type MessageDirection,
 } from "common-db";
 import { getDB } from "./db";
-import { recordChatMessages } from "./chat-message-store";
+import { recordChatMessages, type ChatMessageStoreExecutor } from "./chat-message-store";
+import { rootLogger } from "./logger";
+
+const log = rootLogger.child({ name: "inference-call-store" });
 
 export type InferenceCallRecord = {
   /** Set when a caller needed the id before the batch was flushed. */
@@ -22,6 +30,7 @@ export type InferenceCallRecord = {
   metadata?: Record<string, unknown>;
   inputMessages: ApiCallInputMessage[];
   outputMessages: ApiCallInputMessage[];
+  outputMediaDigests?: string[];
 };
 
 type PendingMessage = {
@@ -106,7 +115,36 @@ export async function recordInferenceCalls(calls: InferenceCallRecord[]): Promis
     if (rows.length > 0) {
       await tx.insert(inferenceCallMessageT).values(rows);
     }
+
+    const mediaRows = await outputMediaRows(calls, ids, tx);
+    if (mediaRows.length > 0) {
+      await tx.insert(inferenceCallMediaT).values(mediaRows);
+    }
   });
 
   return ids;
+}
+
+async function outputMediaRows(calls: InferenceCallRecord[], ids: string[], tx: ChatMessageStoreExecutor) {
+  const rows: { callId: string; seq: number; mediaObjectId: string }[] = [];
+  for (const [index, call] of calls.entries()) {
+    const digests = call.outputMediaDigests ?? [];
+    if (digests.length === 0) {
+      continue;
+    }
+    const stored = await tx
+      .select({ id: mediaObjectT.id, sha256: mediaObjectT.sha256 })
+      .from(mediaObjectT)
+      .where(and(eq(mediaObjectT.organizationId, call.organizationId), inArray(mediaObjectT.sha256, digests)));
+    const idByDigest = new Map(stored.map((row) => [row.sha256, row.id]));
+    for (const [seq, digest] of digests.entries()) {
+      const mediaObjectId = idByDigest.get(digest);
+      if (mediaObjectId) {
+        rows.push({ callId: ids[index]!, seq, mediaObjectId });
+      } else {
+        log.warn({ callId: ids[index], digest }, "Output media was not stored, logging the call without it");
+      }
+    }
+  }
+  return rows;
 }
