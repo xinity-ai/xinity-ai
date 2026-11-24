@@ -11,6 +11,7 @@ type ReleaseInfo = {
   version: string;
   bundles: Record<string, string>;
   binaries: Record<string, { "x86_64-linux": string; "aarch64-linux": string }>;
+  migrations: string;
 };
 
 function parseArgs(): {
@@ -101,6 +102,7 @@ const next: ReleaseInfo = {
           ] as const,
       ),
   ),
+  migrations: lookup(hashes, "db-migrations.tar.gz", "migrations"),
 };
 
 writeFileSync(releaseJson, JSON.stringify(next, null, 2) + "\n");

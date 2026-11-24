@@ -16,5 +16,6 @@
       "x86_64-linux": "sha256-TBfXMehtY9A2Wo5XKLjdhweAfJ6K+6b6FP3ytsXgKVY=",
       "aarch64-linux": "sha256-41679CgTGb1MDuFY8pP8tv25QT22lSaWd5ehIe+F0sg="
     }
-  }
+  },
+  "migrations": "sha256-kFj719gIfpUadmCY22LgiIQk3WiFiRlnu2J3Y5WY5z4="
 }
