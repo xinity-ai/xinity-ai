@@ -7,4 +7,5 @@ export const MODEL_TYPE_LABELS: Record<ModelType, string> = {
   embedding: "Embedding",
   rerank: "Rerank",
   transcription: "Transcription",
+  image: "Image",
 };

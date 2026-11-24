@@ -12,6 +12,8 @@ import {
   ModelTypeEnum,
   RequestParamTypeEnum,
   TagEnum,
+  type ModelType,
+  type Tag,
   flatStringArray,
   hasBlockedRequestParam,
   isKnownEngine,
@@ -182,7 +184,8 @@ export const ModelFields = z.looseObject({
   type: ModelTypeEnum.default("chat").describe("Usage type, which determines API compatibility"),
   family: z.string().default("unknown").describe("Family of the model. May be unknown"),
   variantOf: z.string().optional().describe("Specifier of the standard variant of this model, when this entry is a variant of it. The UI presents the group together while each variant stays separately deployable and keeps its own license, description and capacity. A variant may not itself have variants"),
-  tags: z.array(TagEnum).default([]).describe("Capabilities this variant supports: tools, vision, custom_code, diarization, realtime"),
+  tags: z.array(TagEnum).default([]).describe("Capabilities this variant supports: tools, vision, custom_code, diarization, realtime, image_gen, image_edit"),
+  defaultInferenceSteps: z.number().int().positive().optional().describe("Denoising steps an image model runs when a request leaves the step count unset. Stated for every image model and no other"),
   isCustom: z.boolean().default(false).describe("Set for fine-tuned models"),
 
   unlisted: z.boolean().default(false).describe("Keeps the entry out of the model picker without making it unusable. Deployments referencing it keep working, and a user can still reach it deliberately"),
@@ -210,15 +213,39 @@ export const RelayedModelFields = ModelFields.extend({
   placement: RelayedPlacement.default({ limits: [] }),
 });
 
+const TAG_MODEL_TYPES: Partial<Record<Tag, ModelType>> = {
+  realtime: "transcription",
+  image_gen: "image",
+  image_edit: "image",
+};
+
+const IMAGE_ENDPOINT_TAGS: Tag[] = ["image_gen", "image_edit"];
+
 function withModelRules<T extends typeof ModelFields | typeof RelayedModelFields>(fields: T) {
   return fields
     .refine(
       model => !model.requestParams || !hasBlockedRequestParam(Object.keys(model.requestParams)),
       { message: "requestParams must not contain blocked prefixes", path: ["requestParams"] },
     )
+    .superRefine((model, ctx) => {
+      for (const tag of model.tags) {
+        const type = TAG_MODEL_TYPES[tag];
+        if (type && model.type !== type) {
+          ctx.addIssue({ code: "custom", message: `the ${tag} tag is for ${type} models`, path: ["tags"] });
+        }
+      }
+    })
     .refine(
-      model => !model.tags.includes("realtime") || model.type === "transcription",
-      { message: "the realtime tag is for transcription models", path: ["tags"] },
+      model => model.type !== "image" || model.tags.some(tag => IMAGE_ENDPOINT_TAGS.includes(tag)),
+      { message: `an image model needs at least one of ${IMAGE_ENDPOINT_TAGS.join(", ")}`, path: ["tags"] },
+    )
+    .refine(
+      model => model.type !== "image" || model.engine === "vllm",
+      { message: "image models run on vllm", path: ["engine"] },
+    )
+    .refine(
+      model => (model.type === "image") === (model.defaultInferenceSteps !== undefined),
+      { message: "defaultInferenceSteps is stated exactly for image models", path: ["defaultInferenceSteps"] },
     )
     .refine(
       model => !model.tags.includes("realtime") || model.sizing.audioPositionsPerSecond !== undefined,

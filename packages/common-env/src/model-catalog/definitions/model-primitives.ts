@@ -8,7 +8,7 @@ import { z } from "zod";
 export const EngineEnum = z.enum(["vllm", "ollama"]);
 export type Engine = z.infer<typeof EngineEnum>;
 
-export const TagEnum = z.enum(["tools", "custom_code", "vision", "diarization", "realtime"]);
+export const TagEnum = z.enum(["tools", "custom_code", "vision", "diarization", "realtime", "image_gen", "image_edit"]);
 export type Tag = z.infer<typeof TagEnum>;
 
 export const GpuVendorEnum = z.enum(["nvidia", "amd", "intel"]);
@@ -25,7 +25,7 @@ export function experimentalGpuVendors(gpus: readonly { vendor: string }[]): Gpu
   return [...vendors].filter((vendor) => GPU_VENDOR_SUPPORT[vendor].experimental);
 }
 
-export const ModelTypeEnum = z.enum(["embedding", "chat", "rerank", "transcription"]);
+export const ModelTypeEnum = z.enum(["embedding", "chat", "rerank", "transcription", "image"]);
 export type ModelType = z.infer<typeof ModelTypeEnum>;
 
 /**

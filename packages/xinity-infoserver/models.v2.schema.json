@@ -228,7 +228,8 @@
               "embedding",
               "chat",
               "rerank",
-              "transcription"
+              "transcription",
+              "image"
             ]
           },
           "family": {
@@ -242,7 +243,7 @@
           },
           "tags": {
             "default": [],
-            "description": "Capabilities this variant supports: tools, vision, custom_code, diarization, realtime",
+            "description": "Capabilities this variant supports: tools, vision, custom_code, diarization, realtime, image_gen (images from a prompt), image_edit (images from a prompt and input images)",
             "type": "array",
             "items": {
               "type": "string",
@@ -251,9 +252,17 @@
                 "custom_code",
                 "vision",
                 "diarization",
-                "realtime"
+                "realtime",
+                "image_gen",
+                "image_edit"
               ]
             }
+          },
+          "defaultInferenceSteps": {
+            "description": "Denoising steps an image model runs when a request leaves the step count unset. Stated for every image model and no other",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
           },
           "isCustom": {
             "default": false,

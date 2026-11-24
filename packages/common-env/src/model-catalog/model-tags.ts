@@ -4,6 +4,7 @@
  */
 import { type LegacyModel, type Provider, ProviderEnum } from "./definitions/model-definition";
 import type { RequestParamType } from "./definitions/model-primitives";
+import { requiredFeaturesForEngine } from "./node-compat";
 
 // ---------------------------------------------------------------------------
 // Provider resolution
@@ -68,8 +69,7 @@ export function resolveRequiredPlatformsForDriver(model: LegacyModel, driver: Pr
 
 /** Returns driver features required by the model's type, or empty array. */
 export function resolveRequiredFeaturesForDriver(model: LegacyModel, driver: Provider): string[] {
-  if (driver === "vllm" && model.type === "transcription") return ["audio"];
-  return [];
+  return requiredFeaturesForEngine(driver, model.type);
 }
 
 // ---------------------------------------------------------------------------

@@ -48,7 +48,8 @@
               "embedding",
               "chat",
               "rerank",
-              "transcription"
+              "transcription",
+              "image"
             ]
           },
           "family": {
@@ -67,7 +68,9 @@
                 "custom_code",
                 "vision",
                 "diarization",
-                "realtime"
+                "realtime",
+                "image_gen",
+                "image_edit"
               ]
             }
           },
@@ -88,7 +91,9 @@
                     "custom_code",
                     "vision",
                     "diarization",
-                    "realtime"
+                    "realtime",
+                    "image_gen",
+                    "image_edit"
                   ]
                 }
               },
@@ -101,7 +106,9 @@
                     "custom_code",
                     "vision",
                     "diarization",
-                    "realtime"
+                    "realtime",
+                    "image_gen",
+                    "image_edit"
                   ]
                 }
               }

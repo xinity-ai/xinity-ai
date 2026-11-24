@@ -7,6 +7,7 @@ import {
 } from "./definitions/model-definition";
 import { resolveTagsForDriver, resolveAllTags, resolveArgsForDriver, resolveRequestParamsForDriver, type RequestParamMap } from "./model-tags";
 import { satisfiesMinVersion } from "./semver";
+import type { ModelType } from "./definitions/model-primitives";
 import { version } from "../../../../package.json";
 
 export type CatalogClientConfig = {
@@ -209,7 +210,7 @@ export type PaginatedModels = {
 export type FetchModelsParams = {
   page?: number;
   pageSize?: number;
-  type?: "chat" | "embedding" | "rerank" | "transcription";
+  type?: ModelType;
   family?: string;
   tags?: string[];
 }

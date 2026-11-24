@@ -19,9 +19,9 @@
 
   // Icons
   import { X, Search, Info, HardDrive, Eye, EyeOff, Plus, LoaderCircle, AlertCircle,
-    LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic } from "@lucide/svelte";
-  // Icons for the not-yet-available model types (see MODEL_TYPES below):
-  // import { Image as ImageIcon, AudioLines } from "@lucide/svelte";
+    LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic, Image as ImageIcon } from "@lucide/svelte";
+  // Icon for the not-yet-available model type (see MODEL_TYPES below):
+  // import { AudioLines } from "@lucide/svelte";
 
   /** Minimum number of filtered results before auto-loading the next page. */
   const MIN_RESULTS_THRESHOLD = 10;
@@ -34,12 +34,12 @@
     { value: "embedding", label: MODEL_TYPE_LABELS.embedding, icon: Boxes },
     { value: "rerank", label: MODEL_TYPE_LABELS.rerank, icon: ArrowUpDown },
     { value: "transcription", label: MODEL_TYPE_LABELS.transcription, icon: Mic },
-    // { value: "image", label: "Image", icon: ImageIcon },
+    { value: "image", label: MODEL_TYPE_LABELS.image, icon: ImageIcon },
     // { value: "tts", label: "Text to Speech", icon: AudioLines },
   ] as const;
 
   const ENGINE_MODEL_TYPES: Record<Engine, readonly ModelType[]> = {
-    vllm: ["chat", "embedding", "rerank", "transcription"],
+    vllm: ["chat", "embedding", "rerank", "transcription", "image"],
     ollama: ["chat", "embedding"],
   };
 

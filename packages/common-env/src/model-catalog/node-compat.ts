@@ -5,6 +5,7 @@
  */
 import { matchesVersionRange, satisfiesMinVersion } from "./semver";
 import type { Model } from "./definitions/model-definition";
+import { isKnownModelType, type ModelType } from "./definitions/model-primitives";
 import { nearestIncompatibility, type IncompatibilityReason } from "./incompatibility";
 import type { GpuInfo } from "../tether-protocol";
 
@@ -84,9 +85,17 @@ export function checkNodeCompatibility(
   return null;
 }
 
+const VLLM_FEATURES_BY_TYPE: Record<ModelType, string[]> = {
+  chat: [],
+  embedding: [],
+  rerank: [],
+  transcription: ["audio"],
+  image: ["vllm-omni"],
+};
+
 /** Driver features implied by a model's type rather than declared on it. */
 export function requiredFeaturesForEngine(engine: string, type: string | undefined): string[] {
-  return engine === "vllm" && type === "transcription" ? ["audio"] : [];
+  return engine === "vllm" && isKnownModelType(type) ? VLLM_FEATURES_BY_TYPE[type] : [];
 }
 
 /** Everything a cluster-wide deployability check reads off a model. */
