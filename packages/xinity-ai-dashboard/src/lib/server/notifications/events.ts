@@ -10,6 +10,8 @@ export const NotificationType = {
   // Deployment lifecycle (modelTrainingAlerts)
   deployment_ready: "deployment_ready",
   deployment_failed: "deployment_failed",
+  deployment_degraded: "deployment_degraded",
+  deployment_down: "deployment_down",
   deployment_created: "deployment_created",
 
   // System health (apiUsageAlerts)
@@ -37,6 +39,8 @@ export const notificationSettingsKey: Record<NotificationType, keyof Notificatio
 
   deployment_ready: "modelTrainingAlerts",
   deployment_failed: "modelTrainingAlerts",
+  deployment_degraded: "modelTrainingAlerts",
+  deployment_down: "modelTrainingAlerts",
   deployment_created: "modelTrainingAlerts",
 
   node_offline: "apiUsageAlerts",

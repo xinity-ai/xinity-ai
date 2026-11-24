@@ -406,7 +406,7 @@
                 <div class="ml-3">
                   <p class="text-sm font-medium text-gray-900">{model.name}</p>
                   <div class="flex items-center mt-1">
-                    <span class="h-2 w-2 rounded-full bg-green-500 mr-1.5"></span>
+                    <span class="h-2 w-2 rounded-full mr-1.5 {model.status === "enabled" ? "bg-green-500" : "bg-gray-400"}"></span>
                     <p class="text-xs text-gray-500 capitalize">{model.status}</p>
                   </div>
                 </div>

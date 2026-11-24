@@ -1,52 +1,24 @@
 <script lang="ts">
   import type { PageData } from "./$types";
   import type { DeploymentDefinition } from "./+page.server";
-  import type { ClusterOverview } from "$lib/server/orpc/procedures/cluster.procedure";
-  import DeploymentModal from "./DeploymentModal.svelte";
-  import TestChatModal from "./TestChatModal.svelte";
-  import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
-  import TestRerankModal from "./TestRerankModal.svelte";
+  import { IDLE_REFRESH_MS, refreshEveryMs, viewOf } from "$lib/components/deployments/deployment-types";
+  import { needsAttention, statusDisplayOf } from "$lib/components/deployments/status-display";
+  import StatusChip from "$lib/components/deployments/StatusChip.svelte";
+  import RolloutShare from "./RolloutShare.svelte";
   import { orpc } from "$lib/orpc/orpc-client";
-  import { formatGb, humanDate, humanDuration, updateOptimistically } from "$lib/util";
   import { browserLogger } from "$lib/browserLogging";
-  import { toastState } from "$lib/state/toast.svelte";
-  import { copyToClipboard } from "$lib/copy";
-  import { replicaSlots, replicaSlotCounts, type ReplicaSlots } from "./replica-slots";
-
-  // shadcn components
   import { Button } from "$lib/components/ui/button";
   import * as Card from "$lib/components/ui/card";
-  import * as Collapsible from "$lib/components/ui/collapsible";
   import { Badge } from "$lib/components/ui/badge";
-
-  // Icons
-  import { Plus, Pencil, Trash2, Copy, Rocket, Info, MessageSquare, RotateCcw, TriangleAlert } from "@lucide/svelte";
+  import { Plus, Rocket, ArrowRight } from "@lucide/svelte";
   import { browser } from "$app/env";
   import { permissions } from "$lib/state/permissions.svelte";
-  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import NoOrganization from "$lib/components/NoOrganization.svelte";
 
   let { data }: { data: PageData } = $props();
-  const nodeCapabilities = $derived(data.nodeCapabilities);
-
-  // Mutable overrides updated by refreshCapacity() after mutations.
-  // When set, these take precedence over the load-function values.
-  let capacityOverride = $state<ClusterOverview | null>(null);
-  const activeNodeCapabilities = $derived(capacityOverride?.nodeCapabilities ?? nodeCapabilities);
-  const activeModelCompatibility = $derived(capacityOverride?.modelCompatibility ?? data.modelCompatibility);
-
-  async function refreshCapacity() {
-    const [err, cap] = await orpc.cluster.capacity({});
-    if (!err && cap) capacityOverride = cap;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Local deployment state - driven by streamed initial load then updated in place
-  // ---------------------------------------------------------------------------
 
   let deployments = $state<DeploymentDefinition[]>([]);
   let deploymentsLoaded = $state(false);
-  let deletedIds = $state(new Set<string>());
 
   $effect(() => {
     Promise.resolve(data.deployments).then((deps) => {
@@ -55,199 +27,60 @@
     });
   });
 
-  function isUnclean(d: DeploymentDefinition): boolean {
-    if (!d.enabled) return false;
-    if (!d.status) return true; // enabled but no status reported yet = scheduling
-    return d.status.phase !== "ready" && d.status.phase !== "failed" && d.status.phase !== "partial";
-  }
+  // Kept as a string so a refresh that leaves every pace as it was does not restart the timers.
+  const paces = $derived(JSON.stringify(deployments.flatMap((d) => {
+    const every = refreshEveryMs(d);
+    return every === null ? [] : [{ id: d.id, every }];
+  })));
 
-  // Fast refresh: only deployments with unclean status, every 10 seconds
   $effect(() => {
     if (!browser || !deploymentsLoaded) return;
 
-    const uncleanIds = deployments
-      .filter(d => !deletedIds.has(d.id) && isUnclean(d))
-      .map(d => d.id);
-
-    if (uncleanIds.length === 0) return;
-
-    const timer = setInterval(async () => {
-      await Promise.all(uncleanIds.map(async (id) => {
-        const [err, dep] = await orpc.deployment.get({ id, withStatus: true });
+    const byPace = Map.groupBy(JSON.parse(paces) as { id: string; every: number }[], ({ every }) => every);
+    const timers = [...byPace].map(([every, entries]) => setInterval(async () => {
+      await Promise.all(entries.map(async ({ id }) => {
+        const [err, dep] = await orpc.deployments.get({ id, withStatus: true });
         if (!err && dep) {
-          deployments = deployments.map(d => d.id === id ? dep : d);
+          deployments = deployments.map((d) => (d.id === id ? dep : d));
         }
       }));
-    }, 10_000);
+    }, every));
 
-    return () => clearInterval(timer);
+    return () => timers.forEach(clearInterval);
   });
 
-  // Slow refresh: all deployments every 2 hours to catch any background changes
+  // Slow refresh of every deployment, for what changes in the cluster underneath
   $effect(() => {
     if (!browser || !deploymentsLoaded) return;
 
     const timer = setInterval(async () => {
-      const [err, deps] = await orpc.deployment.list({ withStatus: true });
+      const [err, deps] = await orpc.deployments.list({ withStatus: true });
       if (err) { browserLogger.warn({ err }, "Background deployment refresh failed"); return; }
       deployments = deps;
-    }, 2 * 60 * 60 * 1000);
+    }, IDLE_REFRESH_MS);
 
     return () => clearInterval(timer);
   });
 
-  // ---------------------------------------------------------------------------
-  // UI state
-  // ---------------------------------------------------------------------------
 
-  let showCreateDeploymentModal = $state(false);
-  let editDeploymentModalId: string | null = $state(null);
-  let testDeploymentModalId: string | null = $state(null);
-  let testModelType: "chat" | "embedding" | "rerank" | null = $state(null);
-  let deploymentToDelete: DeploymentDefinition | null = $state(null);
-  const editDeployment = $derived(deployments.find((d) => d.id === editDeploymentModalId));
-  const testDeployment = $derived(deployments.find((d) => d.id === testDeploymentModalId) ?? null);
-
-  // Cached model type per specifier. Stays "loading" until we know, then
-  // either the resolved type or "unknown" (catalog miss / fetch error). The
-  // Test button only renders for entries we resolved to a supported type.
-  type ModelTypeKnowledge =
-    | { status: "loading" }
-    | { status: "known"; type: "chat" | "embedding" | "rerank" | "transcription" }
-    | { status: "unknown" };
-  let modelKnowledge = $state<Record<string, ModelTypeKnowledge>>({});
-
-  $effect(() => {
-    if (!browser || !deploymentsLoaded) return;
-    for (const d of deployments) {
-      if (d.status?.phase !== "ready" && d.status?.phase !== "partial") continue;
-      const key = d.specifier;
-      if (modelKnowledge[key] !== undefined) continue;
-      modelKnowledge[key] = { status: "loading" };
-      void fetchModelType(key);
-    }
-  });
-
-  async function fetchModelType(specifier: string) {
-    const [err, model] = await orpc.model.get({ specifier });
-    if (err || !model) {
-      modelKnowledge[specifier] = { status: "unknown" };
-      return;
-    }
-    modelKnowledge[specifier] = { status: "known", type: model.type ?? "chat" };
-  }
-
-  function testableType(
-    deployment: DeploymentDefinition,
-  ): "chat" | "embedding" | "rerank" | null {
-    const k = modelKnowledge[deployment.specifier];
-    if (k?.status !== "known" || k.type === "transcription") return null;
-    return k.type;
-  }
-
-  function openTest(
-    deployment: DeploymentDefinition,
-    type: "chat" | "embedding" | "rerank",
-  ) {
-    testModelType = type;
-    testDeploymentModalId = deployment.id;
-  }
-
-  function closeTest() {
-    testDeploymentModalId = null;
-    testModelType = null;
-  }
-
-  const visibleDeployments = $derived(
-    deployments
-      .filter(d => !deletedIds.has(d.id))
-      .toSorted((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
+  const sortedDeployments = $derived(
+    deployments.toSorted((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })),
   );
 
-  function deploymentTypeLabel(deployment: DeploymentDefinition): string {
-    if (!deployment?.earlySpecifier) return "Static";
-    if (deployment.canaryProgressWithFeedback) return "Canary (smart-auto)";
-    if (deployment.canaryProgressUntil) return "Canary (time-based)";
-    if (deployment.canaryProgressFrom) return "Canary (manual)";
-    return "Canary";
-  }
+  const summary = $derived.by(() => {
+    const rollingOut = deployments.filter((d) => viewOf(d).rollingOut(d)).length;
+    const attention = deployments.filter(needsAttention).length;
+    return [
+      { text: `${deployments.length} ${deployments.length === 1 ? "deployment" : "deployments"}`, warn: false },
+      ...(rollingOut > 0 ? [{ text: `${rollingOut} rolling out`, warn: false }] : []),
+      ...(attention > 0 ? [{ text: `${attention} ${attention === 1 ? "needs" : "need"} attention`, warn: true }] : []),
+    ];
+  });
 
-  function requestDelete(deployment: DeploymentDefinition) {
-    deploymentToDelete = deployment;
-  }
-
-  async function refreshDeployments() {
-    const [err, deps] = await orpc.deployment.list({ withStatus: true });
-    if (err) {
-      browserLogger.warn({ err }, "Failed to refresh deployments");
-      toastState.add("Failed to refresh deployments", "error");
-      return;
-    }
-    deployments = deps;
-    refreshCapacity();
-  }
-
-  // Status chip colors/labels by phase
-  const phaseConfig = {
-    ready:          { dot: "bg-[#4ade80]",      chip: "bg-[#4ade80]/15 text-[#16a34a]",        pulse: false, label: "Ready" },
-    partial:        { dot: "bg-[#f59e0b]",      chip: "bg-[#f59e0b]/15 text-[#d97706]",      pulse: false, label: "Partial" },
-    failed:         { dot: "bg-destructive",     chip: "bg-destructive/15 text-destructive",   pulse: false, label: "Failed" },
-    scheduling:     { dot: "bg-[#98B9FD]",      chip: "bg-[#98B9FD]/15 text-[#5b8ae6]",      pulse: true,  label: "Scheduling" },
-    downloading:    { dot: "bg-primary",         chip: "bg-primary/15 text-primary",            pulse: true,  label: "Downloading" },
-    installing:     { dot: "bg-primary",         chip: "bg-primary/15 text-primary",            pulse: true,  label: "Installing" },
-    not_in_catalog: { dot: "bg-[#f59e0b]",      chip: "bg-[#f59e0b]/15 text-[#d97706]",      pulse: false, label: "Not in Catalog" },
-  } as const;
-
-  /** A desired replica the orchestrator has not placed, rendered hollow so it reads as an empty slot. */
-  const unscheduledSlotConfig = {
-    dot: "border border-muted-foreground/50",
-    chip: "bg-muted text-muted-foreground",
-    pulse: false,
-    label: "Not scheduled",
-  } as const;
-
-  const slotConfig = { ...phaseConfig, unscheduled: unscheduledSlotConfig } as const;
-
-  const REPLICA_DOT_THRESHOLD = 8;
-  let expandedReplicaCards = $state(new Set<string>());
-
-  async function confirmDelete() {
-    if (!deploymentToDelete) return;
-    const deleting = deploymentToDelete;
-    deploymentToDelete = null;
-    let failed = false;
-
-    await updateOptimistically({
-      apiPromise: () => orpc.deployment.delete({ id: deleting.id }),
-      update: () => { deletedIds.add(deleting.id); },
-      undo: (error) => {
-        deletedIds.delete(deleting.id);
-        failed = true;
-        browserLogger.warn({ error, deploymentId: deleting.id }, "Failed to delete deployment");
-        toastState.add(`Failed to delete deployment`, "error");
-      },
-    });
-
-    if (!failed) {
-      toastState.add(`Deleted deployment "${deleting.name}"`, "success");
-      deployments = deployments.filter(d => d.id !== deleting.id);
-      deletedIds.delete(deleting.id);
-      refreshCapacity();
-    }
-  }
-  async function retryDeployment(deployment: DeploymentDefinition) {
-    const [err] = await orpc.deployment.retry({ id: deployment.id });
-    if (err) {
-      toastState.add("Failed to retry deployment", "error");
-      return;
-    }
-    toastState.add(`Retrying "${deployment.name}"`, "success");
-    deployments = deployments.map(d =>
-      d.id === deployment.id
-        ? { ...d, status: { phase: "scheduling" as const, progress: null, error: null } }
-        : d
-    );
-  }
+  const readyReplicas = (deployment: DeploymentDefinition) =>
+    deployment.status?.replicas?.filter((replica) => replica.phase === "ready").length ?? 0;
+  const wantedReplicas = (deployment: DeploymentDefinition) =>
+    deployment.status?.wanted.reduce((sum, { replicas }) => sum + replicas, 0) ?? viewOf(deployment).replicas(deployment);
 </script>
 
 <svelte:head>
@@ -258,361 +91,87 @@
   <NoOrganization />
 {:else}
   <div class="max-w-full p-6 compact:p-3">
-    <div class="flex items-center justify-between mb-8 compact:mb-4">
+    <div class="flex flex-wrap items-end justify-between gap-4 mb-6 compact:mb-3">
       <div>
         <h1 class="mb-2 text-2xl font-bold">Model Hub</h1>
         <p class="text-muted-foreground">
-          Manage and deploy your custom trained models
+          {#if !deploymentsLoaded}
+            Loading deployments…
+          {:else}
+            {#each summary as part, index (part.text)}
+              {#if index > 0}<span aria-hidden="true" class="mx-1.5">·</span><span class="sr-only">, </span>{/if}<span class={part.warn ? "text-amber-700 dark:text-amber-500" : ""}>{part.text}</span>
+            {/each}
+          {/if}
         </p>
       </div>
+      {#if permissions.canManageDeployments}
+        <Button href="/modelhub/new">
+          <Plus class="w-4 h-4" />
+          Deploy New Model
+        </Button>
+      {/if}
     </div>
 
-    {#snippet chip(dotClass: string, chipClass: string, label: string, pulse = false, tooltip?: string)}
-      <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold tracking-wide uppercase {chipClass}">
-        <span class="w-2 h-2 rounded-full {dotClass} {pulse ? 'animate-pulse' : ''}"></span>
-        {label}
-        {#if tooltip}
-          <span class="ml-0.5 cursor-help" title={tooltip}><Info class="w-3 h-3" /></span>
-        {/if}
-      </span>
-    {/snippet}
-
-    {#snippet replicaDots(slots: ReplicaSlots)}
-      {#each slots.observed as replica}
-        {@const rcfg = phaseConfig[replica.phase]}
-        <span
-          class="w-2.5 h-2.5 rounded-full {rcfg.dot} {rcfg.pulse ? 'animate-pulse' : ''}"
-          title="{replica.node ?? 'Unknown node'}: {rcfg.label}{replica.error ? ` (${replica.error})` : ''}"
-        ></span>
-      {/each}
-      {#each { length: slots.missing } as _}
-        <span
-          class="w-2.5 h-2.5 rounded-full {unscheduledSlotConfig.dot}"
-          title="Not scheduled: no node was free to take this replica"
-        ></span>
-      {/each}
-    {/snippet}
-
     {#if !deploymentsLoaded}
-      <!-- Skeleton cards while deployments stream in -->
-      <div class="grid grid-cols-1 gap-6 compact:gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div class="rounded-lg border bg-card divide-y animate-pulse">
         {#each [0, 1, 2] as _}
-          <div class="rounded-lg border bg-card animate-pulse flex flex-col">
-            <div class="p-6 pb-3">
-              <div class="flex items-center justify-between">
-                <div class="h-5 bg-muted rounded w-2/5"></div>
-                <div class="h-5 bg-muted rounded w-16"></div>
-              </div>
-            </div>
-            <div class="p-6 pt-0 space-y-5 flex-1">
-              <div class="space-y-1.5">
-                <div class="h-3 bg-muted rounded w-24"></div>
-                <div class="h-5 bg-muted rounded w-3/4 font-mono"></div>
-              </div>
-              <div class="space-y-1.5">
-                <div class="h-3 bg-muted rounded w-12"></div>
-                <div class="h-7 bg-muted rounded-full w-20"></div>
-              </div>
-              <div class="space-y-1.5">
-                <div class="h-3 bg-muted rounded w-14"></div>
-                <div class="h-5 bg-muted rounded w-1/2"></div>
-              </div>
-              <div class="space-y-1.5">
-                <div class="h-3 bg-muted rounded w-16"></div>
-                <div class="h-5 bg-muted rounded w-2/3"></div>
-              </div>
-            </div>
-            <div class="p-6 pt-4 border-t flex justify-end gap-2">
-              <div class="h-9 bg-muted rounded w-16"></div>
-              <div class="h-9 bg-muted rounded w-16"></div>
-            </div>
+          <div class="flex items-center gap-6 px-4 py-4">
+            <div class="h-5 bg-muted rounded w-48"></div>
+            <div class="h-4 bg-muted rounded w-40"></div>
+            <div class="h-6 bg-muted rounded-full w-20 ml-auto"></div>
           </div>
         {/each}
-        {#if permissions.canManageDeployments}
-          <button
-            onclick={() => { showCreateDeploymentModal = true; }}
-            class="flex flex-col items-center justify-center p-8 min-h-64 transition-colors border-2 border-dashed rounded-lg bg-muted/50 hover:bg-muted border-muted-foreground/25 hover:border-muted-foreground/50"
-          >
-            <Plus class="w-12 h-12 text-muted-foreground" />
-            <p class="mt-2 text-lg font-medium text-muted-foreground">Deploy New Model</p>
-          </button>
-        {/if}
       </div>
-    {:else if visibleDeployments.length > 0}
-      <div class="grid grid-cols-1 gap-6 compact:gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {#each visibleDeployments as deployment (deployment.id)}
-          <Card.Root
-            data-deployment={JSON.stringify(deployment)}
-            class={["flex flex-col", !deployment.enabled ? "border-l-4 border-l-destructive" : ""].filter(Boolean).join(" ")}
-          >
-            <Card.Header class={["pb-3", !deployment.enabled && "opacity-60"].filter(Boolean).join(" ")}>
-              <div class="flex items-center justify-between">
-                <Card.Title class="text-lg">{deployment.name}</Card.Title>
-                <div class="flex items-center gap-2">
-                  {#if !deployment.enabled}
-                    <Badge variant="destructive">Disabled</Badge>
-                  {/if}
-                  {#if deployment.replicas > 1}
-                    <Badge variant="secondary">{deployment.replicas} replicas</Badge>
-                  {/if}
-                  <Badge variant="outline">{deploymentTypeLabel(deployment)}</Badge>
-                </div>
-              </div>
-            </Card.Header>
-
-            <Card.Content class={["space-y-4 compact:space-y-2 flex-1", !deployment.enabled && "opacity-60"].filter(Boolean).join(" ")}>
-              <div>
-                <p class="text-sm text-muted-foreground">Model Specifier</p>
-                <div class="flex items-center gap-2">
-                  <p class="font-medium font-mono text-sm">{deployment.publicSpecifier}</p>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    class="h-7 w-7"
-                    onclick={() => copyToClipboard(deployment.publicSpecifier)}
-                    title="Copy model specifier"
-                  >
-                    <Copy class="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
-
-              <!-- Deployment Traffic Distribution -->
-              {#if deployment.canaryProgressUntil}
-                <div>
-                  <p class="text-sm text-muted-foreground mb-2">Traffic Distribution</p>
-                  <div class="w-full bg-muted rounded-full h-2">
-                    <div
-                      class="bg-primary h-2 rounded-full transition-all"
-                      style="width: {deployment.progress}%"
-                    ></div>
-                  </div>
-                  <div class="flex flex-wrap mt-1.5 text-xs text-muted-foreground">
-                    <span>{deployment.progress}% to {deployment.publicSpecifier}</span>
-                    {#if deployment.earlySpecifier && 100 - deployment.progress > 0}
-                      <span class="ml-auto">
-                        {100 - deployment.progress}% to {deployment.earlySpecifier}
-                      </span>
+    {:else if sortedDeployments.length > 0}
+      <div class="rounded-lg border bg-card">
+        <div class="hidden md:grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_10rem_5rem_1.5rem] gap-4 px-4 py-2 compact:px-3 compact:py-1 border-b text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <span>Deployment</span>
+          <span>Model</span>
+          <span>Status</span>
+          <span>Serving</span>
+          <span></span>
+        </div>
+        <ul class="divide-y">
+          {#each sortedDeployments as deployment (deployment.id)}
+            {@const view = viewOf(deployment)}
+            {@const models = view.models(deployment)}
+            {@const badge = view.badge(deployment)}
+            <li>
+              <a
+                href="/modelhub/{deployment.id}"
+                class="grid grid-cols-1 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_10rem_5rem_1.5rem] items-center gap-x-4 gap-y-2 compact:gap-y-1 px-4 py-3 compact:px-3 compact:py-1.5 hover:bg-muted/50 transition-colors {deployment.enabled ? '' : 'opacity-60'}"
+              >
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="font-medium truncate">{deployment.name}</span>
+                    <span class="md:hidden"><StatusChip display={statusDisplayOf(deployment)} /></span>
+                    {#if deployment.enabled}
+                      <span class="text-xs text-muted-foreground md:hidden">{readyReplicas(deployment)} of {wantedReplicas(deployment)} serving</span>
+                    {/if}
+                    {#if badge}
+                      <Badge variant="outline" class="shrink-0 {badge.class}">{badge.label}</Badge>
                     {/if}
                   </div>
+                  <span class="block font-mono text-xs text-muted-foreground truncate">{deployment.publicSpecifier}</span>
                 </div>
-              {/if}
-
-              <div>
-                <p class="text-sm text-muted-foreground mb-2">Status</p>
-                {#if !deployment.enabled}
-                  {@render chip("bg-muted-foreground/50", "bg-muted text-muted-foreground", "Disabled")}
-                {:else if !deployment.status}
-                  {@render chip("bg-amber-400", "bg-amber-100 text-amber-700", "No node available", false, "The orchestrator could not place this model on any node. Common causes: no node has enough free VRAM for the model weight, or no available node has the required driver. A node that was removed or is powered off no longer counts.")}
-                {:else}
-                  {@const cfg = phaseConfig[deployment.status.phase]}
-                  {@const slots = replicaSlots(deployment.replicas, deployment.status.replicas)}
-                  {@render chip(cfg.dot, cfg.chip, cfg.label, cfg.pulse)}
-                  {#if slots.missing > 0}
-                    <span
-                      class="ml-2 text-xs text-amber-600 dark:text-amber-500 cursor-help"
-                      title="Only {slots.observed.length} of {deployment.replicas} requested replicas are placed. Each replica needs its own node, so a cluster cannot run more replicas than it has nodes. Other causes: no node has enough free VRAM for the model weight, or no available node has the required driver."
-                    >
-                      {slots.observed.length}/{deployment.replicas} replicas
-                    </span>
-                  {/if}
-                  {#if slots.total > 1}
-                    {#if slots.total <= REPLICA_DOT_THRESHOLD}
-                      <div class="flex items-center gap-1 mt-1.5">
-                        {@render replicaDots(slots)}
-                      </div>
-                    {:else}
-                      {@const counts = replicaSlotCounts(slots)}
-                      {@const expanded = expandedReplicaCards.has(deployment.id)}
-                      <div class="mt-1.5">
-                        <div class="flex items-center gap-2">
-                          <div class="flex h-2 rounded-full overflow-hidden w-24 bg-muted">
-                            {#each counts as [phase, count]}
-                              <div
-                                class={slotConfig[phase].dot}
-                                style="width: {(count / slots.total) * 100}%; min-width: 3px"
-                              ></div>
-                            {/each}
-                          </div>
-                          <span class="text-xs text-muted-foreground">
-                            {counts.map(([phase, count]) => `${count} ${slotConfig[phase].label.toLowerCase()}`).join(", ")}
-                          </span>
-                        </div>
-                        <button
-                          class="text-xs text-muted-foreground hover:underline cursor-pointer mt-1"
-                          onclick={() => {
-                            const next = new Set(expandedReplicaCards);
-                            if (expanded) { next.delete(deployment.id); }
-                            else { next.add(deployment.id); }
-                            expandedReplicaCards = next;
-                          }}
-                        >
-                          {expanded ? "Hide replicas" : `Show all ${slots.total} replicas`}
-                        </button>
-                        {#if expanded}
-                          <div class="flex flex-wrap gap-1 mt-1.5">
-                            {@render replicaDots(slots)}
-                          </div>
-                        {/if}
-                      </div>
+                <div class="min-w-0 space-y-1">
+                  <div class="font-mono text-sm truncate" title={models.from ? `${models.from} → ${models.to}` : models.to}>
+                    {#if models.from}
+                      <span class="text-muted-foreground">{models.from} →</span>
                     {/if}
-                  {/if}
-                  {#each (deployment.status.replicas ?? []).filter((replica) => replica.members) as replica, index (index)}
-                    <dl class="mt-2 space-y-1 text-xs">
-                      <div class="text-muted-foreground">Across {replica.members!.length} machines</div>
-                      {#each replica.members! as member (member.node)}
-                        {@const memberCfg = phaseConfig[member.phase]}
-                        <div class="flex justify-between gap-3 pl-3">
-                          <dt class="flex items-center gap-1.5 min-w-0">
-                            <span class="w-2 h-2 shrink-0 rounded-full {memberCfg.dot} {memberCfg.pulse ? 'animate-pulse' : ''}" title={memberCfg.label}></span>
-                            <span class="sr-only">{memberCfg.label}:</span>
-                            <span class="truncate">{member.node}{member.cards > 1 ? `, ${member.cards} cards` : ""}</span>
-                          </dt>
-                          <dd class="shrink-0 text-right text-muted-foreground">
-                            {formatGb(member.gpuGb)} GPU{member.hostGb > 0 ? ` + ${formatGb(member.hostGb)} host` : ""}
-                          </dd>
-                        </div>
-                        {#if member.error}
-                          <p class="pl-6 text-destructive">{member.error}</p>
-                        {/if}
-                      {/each}
-                      {#if replica.error && !replica.members!.some((member) => member.error)}
-                        <p class="pl-3 text-destructive">{replica.error}</p>
-                      {/if}
-                      {#each replica.couplingIssues ?? [] as issue}
-                        <p class="flex items-start gap-1 text-amber-700 dark:text-amber-500">
-                          <TriangleAlert class="w-3 h-3 mt-px shrink-0" aria-hidden="true" />Coupling: {issue.text}
-                          <a href={issue.docsUrl} target="_blank" rel="noopener noreferrer" title="How to fix this" aria-label="How to fix this" class="text-muted-foreground hover:text-amber-700">
-                            <Info class="w-3 h-3 mt-px shrink-0" />
-                          </a>
-                        </p>
-                      {/each}
-                    </dl>
-                  {/each}
-                  {#if deployment.status.progress != null}
-                    <div title="{Math.round(deployment.status.progress * 100)}%" class="w-full bg-muted rounded-full h-2 mt-2">
-                      <div class="bg-primary h-2 rounded-full transition-all" style="width: {deployment.status.progress * 100}%"></div>
-                    </div>
-                  {/if}
-                  {#if (deployment.status.phase === 'failed' || deployment.status.phase === 'partial') && deployment.status.error}
-                    {#if !(deployment.status.replicas ?? []).some((replica) => replica.members && replica.error === deployment.status!.error)}
-                      <p class="text-sm text-destructive mt-2">{deployment.status.error}</p>
-                    {/if}
-                    <a href="/docs/deployment-troubleshooting/" class="text-xs text-muted-foreground hover:underline mt-1 inline-block">Troubleshooting guide</a>
-                  {/if}
-                  {#if (deployment.status.phase === 'failed' || deployment.status.phase === 'partial') && deployment.status.failureLogs}
-                    <Collapsible.Root class="mt-2">
-                      <div class="flex items-center gap-2">
-                        <Collapsible.Trigger class="text-xs text-muted-foreground hover:underline cursor-pointer">View logs</Collapsible.Trigger>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          class="h-6 px-2 text-xs text-muted-foreground"
-                          onclick={() => copyToClipboard(deployment.status?.failureLogs ?? '')}
-                          title="Copy all logs"
-                        >
-                          <Copy class="w-3.5 h-3.5" />
-                          Copy logs
-                        </Button>
-                      </div>
-                      <Collapsible.Content>
-                        <pre class="mt-2 p-3 bg-muted rounded text-xs font-mono overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap wrap-break-word">{deployment.status.failureLogs}</pre>
-                      </Collapsible.Content>
-                    </Collapsible.Root>
-                  {/if}
-                {/if}
-              </div>
-
-              <div>
-                <p class="text-sm text-muted-foreground">Model</p>
-                <p class="font-medium">{deployment.publicSpecifier}</p>
-                {#if deployment.deprecatedModel}
-                  <p class="text-xs text-amber-700 dark:text-amber-400 mt-1 flex items-start gap-1.5">
-                    <Info class="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>
-                      Uses a model entry in a format that is being retired. It keeps running for now.
-                      Edit this deployment and pick a current entry to move it over.
-                    </span>
-                  </p>
-                {/if}
-              </div>
-
-              <div>
-                <p class="text-sm text-muted-foreground">Created</p>
-                <p class="font-medium">{humanDate(deployment.createdAt)}</p>
-              </div>
-
-              {#if (deployment.canaryProgressUntil?.valueOf() || 0) >= Date.now()}
-                <div>
-                  <p class="text-sm text-muted-foreground">Deployment Timeline</p>
-                  <p class="font-medium">
-                    Complete on {humanDate(deployment.canaryProgressUntil!)}
-                  </p>
+                    {models.to}
+                  </div>
+                  <RolloutShare {deployment} />
                 </div>
-
-                <div>
-                  <p class="text-sm text-muted-foreground">Deployment Duration</p>
-                  <p class="font-medium">
-                    {(deployment.canaryProgressUntil &&
-                      deployment.canaryProgressFrom &&
-                      humanDuration(
-                        (deployment.canaryProgressUntil.valueOf() -
-                          deployment.canaryProgressFrom.valueOf()) /
-                          1000 /
-                          60 /
-                          60,
-                      )) ||
-                      "N/A"}
-                  </p>
+                <div class="hidden md:block"><StatusChip display={statusDisplayOf(deployment)} /></div>
+                <div class="hidden text-sm text-muted-foreground md:block" title="Replicas serving, of those wanted">
+                  {deployment.enabled ? `${readyReplicas(deployment)} of ${wantedReplicas(deployment)}` : "Off"}
                 </div>
-              {/if}
-            </Card.Content>
-
-            {#if permissions.canManageDeployments || deployment.status?.phase === "ready" || deployment.status?.phase === "partial"}
-              <Card.Footer class="pt-4 border-t flex justify-end gap-2">
-                {#if deployment.status?.phase === "ready" || deployment.status?.phase === "partial"}
-                  {@const type = testableType(deployment)}
-                  {#if type}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onclick={() => openTest(deployment, type)}
-                    >
-                      <MessageSquare class="w-4 h-4" />
-                      Test
-                    </Button>
-                  {/if}
-                {/if}
-                {#if permissions.canManageDeployments}
-                  {#if deployment.status?.phase === "failed" || deployment.status?.phase === "partial"}
-                    <Button variant="outline" size="sm" onclick={() => retryDeployment(deployment)}>
-                      <RotateCcw class="w-4 h-4" />
-                      Retry
-                    </Button>
-                  {/if}
-                  <Button variant="outline" size="sm" onclick={() => (editDeploymentModalId = deployment.id)}>
-                    <Pencil class="w-4 h-4" />
-                    Edit
-                  </Button>
-                  <Button variant="destructive" size="sm" onclick={() => requestDelete(deployment)}>
-                    <Trash2 class="w-4 h-4" />
-                    Delete
-                  </Button>
-                {/if}
-              </Card.Footer>
-            {/if}
-          </Card.Root>
-        {/each}
-
-        {#if permissions.canManageDeployments}
-          <button
-            onclick={() => { showCreateDeploymentModal = true; }}
-            class="flex flex-col items-center justify-center p-8 min-h-64 transition-colors border-2 border-dashed rounded-lg bg-muted/50 hover:bg-muted border-muted-foreground/25 hover:border-muted-foreground/50"
-          >
-            <Plus class="w-12 h-12 text-muted-foreground" />
-            <p class="mt-2 text-lg font-medium text-muted-foreground">Deploy New Model</p>
-          </button>
-        {/if}
+                <ArrowRight class="hidden md:block w-4 h-4 text-muted-foreground" />
+              </a>
+            </li>
+          {/each}
+        </ul>
       </div>
     {:else}
       <Card.Root class="mt-6">
@@ -624,7 +183,7 @@
             There are no model deployments as of yet.
           </p>
           {#if permissions.canManageDeployments}
-            <Button onclick={() => { showCreateDeploymentModal = true; }}>
+            <Button href="/modelhub/new">
               <Plus class="w-4 h-4" />
               Deploy Your First Model
             </Button>
@@ -639,51 +198,3 @@
   </div>
 {/if}
 
-<DeploymentModal
-  open={showCreateDeploymentModal}
-  nodeCapabilities={activeNodeCapabilities}
-  modelCompatibility={activeModelCompatibility}
-  close={() => (showCreateDeploymentModal = false)}
-  onSaved={refreshDeployments}
-/>
-
-{#if editDeployment}
-  <DeploymentModal
-    open={true}
-    deployment={editDeployment}
-    nodeCapabilities={activeNodeCapabilities}
-    modelCompatibility={activeModelCompatibility}
-    close={() => (editDeploymentModalId = null)}
-    onSaved={refreshDeployments}
-  />
-{/if}
-
-{#if testModelType === "chat"}
-  <TestChatModal
-    open={testDeployment !== null}
-    deployment={testDeployment}
-    applications={data.applications}
-    close={closeTest}
-  />
-{:else if testModelType === "embedding"}
-  <TestEmbeddingModal
-    open={testDeployment !== null}
-    deployment={testDeployment}
-    close={closeTest}
-  />
-{:else if testModelType === "rerank"}
-  <TestRerankModal
-    open={testDeployment !== null}
-    deployment={testDeployment}
-    close={closeTest}
-  />
-{/if}
-
-<ConfirmDialog
-  open={Boolean(deploymentToDelete)}
-  title="Delete Deployment"
-  description="Are you sure you want to delete {deploymentToDelete?.name ?? 'this deployment'}? This action cannot be undone."
-  confirmLabel="Delete"
-  onConfirm={() => void confirmDelete()}
-  onCancel={() => (deploymentToDelete = null)}
-/>

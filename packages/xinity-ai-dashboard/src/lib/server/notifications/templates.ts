@@ -7,6 +7,8 @@ import type { NotificationType } from "./events";
 import EmailWelcomeTemplate from "$lib/components/mailTemplates/EmailWelcomeTemplate.svelte";
 import EmailDeploymentReadyTemplate from "$lib/components/mailTemplates/EmailDeploymentReadyTemplate.svelte";
 import EmailDeploymentFailedTemplate from "$lib/components/mailTemplates/EmailDeploymentFailedTemplate.svelte";
+import EmailDeploymentDegradedTemplate from "$lib/components/mailTemplates/EmailDeploymentDegradedTemplate.svelte";
+import EmailDeploymentDownTemplate from "$lib/components/mailTemplates/EmailDeploymentDownTemplate.svelte";
 import EmailDeploymentCreatedTemplate from "$lib/components/mailTemplates/EmailDeploymentCreatedTemplate.svelte";
 import EmailNodeStatusTemplate from "$lib/components/mailTemplates/EmailNodeStatusTemplate.svelte";
 import EmailCapacityWarningTemplate from "$lib/components/mailTemplates/EmailCapacityWarningTemplate.svelte";
@@ -18,6 +20,8 @@ const templateMap: Record<NotificationType, AnyComponent> = {
   welcome: EmailWelcomeTemplate,
   deployment_ready: EmailDeploymentReadyTemplate,
   deployment_failed: EmailDeploymentFailedTemplate,
+  deployment_degraded: EmailDeploymentDegradedTemplate,
+  deployment_down: EmailDeploymentDownTemplate,
   deployment_created: EmailDeploymentCreatedTemplate,
   node_offline: EmailNodeStatusTemplate,
   node_online: EmailNodeStatusTemplate,
@@ -38,6 +42,8 @@ const subjectMap: Record<NotificationType, SubjectGenerator> = {
   welcome: () => "Welcome to Xinity!",
   deployment_ready: (d) => `Deployment "${d.deploymentName}" is ready`,
   deployment_failed: (d) => `Deployment "${d.deploymentName}" has failed`,
+  deployment_degraded: (d) => `Deployment "${d.deploymentName}" is degraded`,
+  deployment_down: (d) => `Deployment "${d.deploymentName}" is down`,
   deployment_created: (d) => `New deployment "${d.deploymentName}" created`,
   node_offline: (d) => `Node ${d.nodeHost} went offline`,
   node_online: (d) => `Node ${d.nodeHost} is back online`,

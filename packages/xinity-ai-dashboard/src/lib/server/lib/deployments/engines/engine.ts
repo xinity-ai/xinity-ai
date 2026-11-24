@@ -20,7 +20,7 @@ export type EngineScheduler = {
   excludes: (placed: Placement, candidate: Placement) => boolean;
   placeOnNode: (node: NodeResources, request: PlacementRequest) => NodeSlot | undefined;
   groupsAcrossNodes?: (candidates: CandidateNode[], request: PlacementRequest) => MemberSlot[][];
-  charge: (node: NodeResources, request: Omit<PlacementRequest, "goal" | "strategy">, cards: number) => Charge | undefined;
+  charge: (node: NodeResources, request: Omit<PlacementRequest, "goal" | "strategy">, cards: number) => (Charge & { parts: FootprintPart[] }) | undefined;
   occupiedCards: (cards: NodeResources["cards"], gpuIds: string[]) => NodeResources["cards"];
   port: (usedPorts: ReadonlySet<number>) => number;
 };

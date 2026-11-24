@@ -4,7 +4,7 @@
   import * as Alert from "$lib/components/ui/alert";
   import { Send, Copy, RotateCcw } from "@lucide/svelte";
 
-  import type { DeploymentDefinition } from "./+page.server";
+  import type { DeploymentOutput } from "$lib/orpc/dtos/model.dto";
   import { browserLogger } from "$lib/browserLogging";
   import { copyToClipboard } from "$lib/copy";
   import TestModal from "./TestModal.svelte";
@@ -27,7 +27,7 @@
     close,
   }: {
     open: boolean;
-    deployment: DeploymentDefinition | null;
+    deployment: DeploymentOutput | null;
     close: () => void;
   } = $props();
 

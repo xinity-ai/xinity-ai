@@ -1,9 +1,9 @@
-import type { ModelDeployment } from "./schema/models";
+import type { DeploymentLegacy } from "./schema/models";
 
-export function calcCanaryProgress(deployment: Pick<ModelDeployment, "progress" | "earlySpecifier" | "canaryProgressFrom" | "canaryProgressUntil">): number {
-  const { progress, earlySpecifier, canaryProgressFrom, canaryProgressUntil } = deployment;
-  const notCanary = progress === 100 || !earlySpecifier;
-  if (notCanary) {
+/** Share of traffic, in percent, that has moved to the rollout's new side by now. */
+export function calcRolloutProgress(rollout: Pick<DeploymentLegacy, "progress" | "canaryProgressFrom" | "canaryProgressUntil">): number {
+  const { progress, canaryProgressFrom, canaryProgressUntil } = rollout;
+  if (progress === 100) {
     return 100;
   }
   if (canaryProgressUntil && canaryProgressUntil.valueOf() < Date.now()) {
@@ -21,4 +21,8 @@ export function calcCanaryProgress(deployment: Pick<ModelDeployment, "progress" 
   const elapsed = Math.max(0, Math.min(Date.now() - start, totalDuration));
   const interpolated = progress + ((100 - progress) * (elapsed / totalDuration));
   return Math.max(0, Math.min(interpolated, 99));
+}
+
+export function calcCanaryProgress(deployment: Pick<DeploymentLegacy, "progress" | "earlySpecifier" | "canaryProgressFrom" | "canaryProgressUntil">): number {
+  return deployment.earlySpecifier ? calcRolloutProgress(deployment) : 100;
 }

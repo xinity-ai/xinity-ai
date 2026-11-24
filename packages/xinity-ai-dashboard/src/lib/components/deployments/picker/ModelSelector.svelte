@@ -7,12 +7,15 @@
   import { formatGb } from "$lib/util";
   import { groupModelVariants, groupIncompatibility, type ModelGroup } from "./model-groups";
   import { SvelteSet } from "svelte/reactivity";
+  import { untrack } from "svelte";
 
   // shadcn components
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Badge } from "$lib/components/ui/badge";
   import ModelChoiceCard from "./ModelChoiceCard.svelte";
+  import { ENGINE_LABELS, MODEL_TYPE_LABELS } from "./model-labels";
+  import type { LicensedVram } from "../status-display";
 
   // Icons
   import { X, Search, Info, HardDrive, Eye, EyeOff, Plus, LoaderCircle, AlertCircle,
@@ -27,15 +30,14 @@
 
   const MODEL_TYPES = [
     { value: "all", label: "All", icon: LayoutGrid },
-    { value: "chat", label: "Chat", icon: MessageSquare },
-    { value: "embedding", label: "Embedding", icon: Boxes },
-    { value: "rerank", label: "Rerank", icon: ArrowUpDown },
-    { value: "transcription", label: "Transcription", icon: Mic },
+    { value: "chat", label: MODEL_TYPE_LABELS.chat, icon: MessageSquare },
+    { value: "embedding", label: MODEL_TYPE_LABELS.embedding, icon: Boxes },
+    { value: "rerank", label: MODEL_TYPE_LABELS.rerank, icon: ArrowUpDown },
+    { value: "transcription", label: MODEL_TYPE_LABELS.transcription, icon: Mic },
     // { value: "image", label: "Image", icon: ImageIcon },
     // { value: "tts", label: "Text to Speech", icon: AudioLines },
   ] as const;
 
-  const ENGINE_LABELS: Record<Engine, string> = { vllm: "vLLM", ollama: "Ollama" };
   const ENGINE_MODEL_TYPES: Record<Engine, readonly ModelType[]> = {
     vllm: ["chat", "embedding", "rerank", "transcription"],
     ollama: ["chat", "embedding"],
@@ -48,32 +50,41 @@
 
   // --- Props ---
   let {
-    open = $bindable(false),
     onSelect,
     onClose,
     nodeCapabilities = [],
     modelCompatibility = {},
+    fixedType,
+    current,
+    searchTerm = $bindable(""),
+    licensedVram = null,
   }: {
-    open: boolean;
     onSelect: (model: ModelWithSpecifier) => void;
-    onClose: () => void;
+    onClose?: () => void;
     nodeCapabilities?: NodeCapability[];
     modelCompatibility?: ModelCompatibility;
+    /** Offers only models of this type, for a deployment that already serves one. */
+    fixedType?: ModelType;
+    /** The model the deployment serves now, shown but not offered. */
+    current?: string;
+    searchTerm?: string;
+    licensedVram?: LicensedVram;
   } = $props();
 
+  const licenseRoomGb = $derived(licensedVram ? Math.max(0, licensedVram.limitGb - licensedVram.usedGb) : null);
+
   // --- Filter State ---
-  let searchTerm = $state("");
   let selectedEngine = $state<Engine | "all">("all");
-  let selectedType = $state<(typeof MODEL_TYPES)[number]["value"]>("all");
+  let selectedType = $state<(typeof MODEL_TYPES)[number]["value"]>(untrack(() => fixedType ?? "all"));
   let showUnlisted = $state(false);
   // A plain Set is not reactive under $state, so mutating one updates nothing.
   const selectedTags = new SvelteSet<string>();
   let pickingFrom = $state<ModelGroup | null>(null);
   let sentinel = $state<HTMLElement | null>(null);
 
-  // Trigger initial load when modal opens
+  // Trigger the initial load
   $effect(() => {
-    if (open && !modelCatalog.initialLoaded && !modelCatalog.isLoading) {
+    if (!modelCatalog.initialLoaded && !modelCatalog.isLoading) {
       modelCatalog.loadMore();
     }
   });
@@ -81,7 +92,7 @@
   // Auto-load more when filtered results are sparse.
   // Stops immediately once hasMore is false; no further requests regardless of filter.
   $effect(() => {
-    if (!open || !modelCatalog.initialLoaded || modelCatalog.isLoading || !modelCatalog.hasMore) return;
+    if (!modelCatalog.initialLoaded || modelCatalog.isLoading || !modelCatalog.hasMore) return;
     searchTerm; selectedEngine; selectedType; selectedTags; showUnlisted;
     if (variantGroups.length < MIN_RESULTS_THRESHOLD) {
       modelCatalog.loadMore();
@@ -103,7 +114,7 @@
   const totalFreeCapacity = $derived(nodeCapabilities.reduce((sum, n) => sum + n.free, 0));
 
   const allTags = $derived(
-    Array.from(new Set(modelCatalog.models.flatMap((m) => m.tags))).sort(),
+    Array.from(new Set(modelCatalog.models.filter((m) => !fixedType || m.type === fixedType).flatMap((m) => m.tags))).sort(),
   );
 
   // Insertion order preserved; no re-sort prevents layout shifts when new pages arrive
@@ -151,6 +162,9 @@
 
   // --- Functions ---
   function unavailableForEngine(type: (typeof MODEL_TYPES)[number]["value"]): string | undefined {
+    if (fixedType && type !== fixedType) {
+      return `This deployment serves ${MODEL_TYPE_LABELS[fixedType].toLowerCase()} models`;
+    }
     if (selectedEngine === "all" || type === "all") {
       return undefined;
     }
@@ -163,7 +177,7 @@
   function selectEngine(engine: Engine | "all") {
     selectedEngine = engine;
     if (unavailableForEngine(selectedType)) {
-      selectedType = "all";
+      selectedType = fixedType ?? "all";
     }
   }
 
@@ -193,21 +207,35 @@
     return modelCompatibility[model.publicSpecifier]?.blockedReleaseNote;
   }
 
+  // Variants share most of their name, so each is titled by what sets it apart, or by its engine when only that differs.
+  function variantTitles(group: ModelGroup): Map<string, string> {
+    const words = group.variants.map((variant) => variant.name.split(" "));
+    let shared = 0;
+    while (words.every((name) => name.length > shared + 1 && name[shared] === words[0]![shared])) {
+      shared++;
+    }
+    return new Map(group.variants.map((variant, index) => {
+      const rest = words[index]!.slice(shared).join(" ");
+      const sameName = group.variants.filter((other) => other.name === variant.name).length > 1;
+      return [variant.publicSpecifier, sameName ? `${variant.name}, ${ENGINE_LABELS[variant.engine]}` : rest];
+    }));
+  }
+
   function handleSelect(model: ModelWithSpecifier) {
     pickingFrom = null;
     onSelect(model);
-    onClose();
   }
 </script>
 
-<Modal {open} {onClose} class="z-50">
-  <div class="bg-card rounded-xl shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+<div class="flex h-full min-h-0 flex-col overflow-hidden">
     <!-- Header -->
     <header class="p-5 border-b flex justify-between items-center bg-muted/50">
       <div>
-        <h2 class="text-xl font-bold">Select Model</h2>
+        <h2 class="text-xl font-bold">{fixedType ? "Choose the new model" : "Select Model"}</h2>
         <p class="text-sm text-muted-foreground">
-          {#if modelCatalog.initialLoaded}
+          {#if fixedType}
+            Only {MODEL_TYPE_LABELS[fixedType].toLowerCase()} models, the kind this deployment serves.
+          {:else if modelCatalog.initialLoaded}
             {modelCatalog.models.length} of {modelCatalog.totalCount} models loaded
           {:else}
             Choose a model for your deployment
@@ -225,18 +253,24 @@
           <Plus class="w-3.5 h-3.5" />
           Request a model
         </a>
-        <Button variant="ghost" size="icon" onclick={onClose} aria-label="Close modal">
-          <X class="w-5 h-5" />
-        </Button>
+        {#if onClose}
+          <Button variant="ghost" size="icon" onclick={onClose} aria-label="Close">
+            <X class="w-5 h-5" />
+          </Button>
+        {/if}
       </div>
     </header>
 
     <!-- Controls -->
     <div class="p-5 border-b bg-card space-y-4">
       <div class="relative">
+        <!-- A dialog opening focuses its autofocus field, so search is where typing starts. -->
+        <!-- svelte-ignore a11y_autofocus -->
         <Input
+          autofocus
           type="text"
           placeholder="Search by name, description, or ID..."
+          aria-label="Search models"
           bind:value={searchTerm}
           class="pr-10"
         />
@@ -273,6 +307,7 @@
         {/if}
       </div>
 
+      {#if !fixedType}
       <div class="flex flex-wrap gap-2 items-center">
         <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">Type:</span>
         {#each MODEL_TYPES as t}
@@ -288,6 +323,7 @@
           </button>
         {/each}
       </div>
+      {/if}
 
       {#if allTags.length > 0}
         <div class="flex flex-wrap gap-2 items-center">
@@ -310,14 +346,23 @@
       <div class="px-5 py-3 border-b bg-muted/30 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
         <div class="flex items-center gap-2">
           <HardDrive class="w-4 h-4 text-muted-foreground shrink-0" />
-          <span class="text-muted-foreground">Total free:</span>
+          <span class="text-muted-foreground">Free on the machines:</span>
           <span class="font-semibold">{formatGb(totalFreeCapacity)}</span>
         </div>
+        {#if licensedVram && licenseRoomGb !== null}
+          <div class="flex items-center gap-2">
+            <span class="text-muted-foreground">Left under the license:</span>
+            <span class="font-semibold">{formatGb(licenseRoomGb)} of {formatGb(licensedVram.limitGb)} VRAM</span>
+          </div>
+          {#if licenseRoomGb === 0}
+            <p class="basis-full text-amber-700 dark:text-amber-400">The license leaves no VRAM for new replicas, so {fixedType ? "the new model cannot start" : "a new deployment can only be saved disabled"} for now.</p>
+          {/if}
+        {/if}
       </div>
     {/if}
 
     <!-- Model List -->
-    <main class="grow overflow-y-auto p-5 bg-muted/30">
+    <div class="grow overflow-y-auto p-5 bg-muted/30">
       {#if modelCatalog.loadError && !modelCatalog.initialLoaded}
         <div class="flex flex-col items-center justify-center h-64 text-muted-foreground">
           <AlertCircle class="w-12 h-12 mb-4 text-destructive opacity-70" />
@@ -336,7 +381,7 @@
           <p class="text-lg font-medium">No models found</p>
           <p class="text-sm">Try adjusting your search or filters</p>
           <div class="flex items-center gap-2 mt-4">
-            <Button variant="link" onclick={() => { searchTerm = ""; selectedEngine = "all"; selectedType = "all"; showUnlisted = false; selectedTags.clear(); }}>
+            <Button variant="link" onclick={() => { searchTerm = ""; selectedEngine = "all"; selectedType = fixedType ?? "all"; showUnlisted = false; selectedTags.clear(); }}>
               Clear all filters
             </Button>
             <a href={MODEL_REQUEST_URL} target="_blank" rel="noopener noreferrer" class="text-sm text-primary hover:underline">
@@ -361,6 +406,8 @@
                     blockedReason={groupReason}
                     blockedDetail={groupReason === "version_blocked" ? blockedReleaseNote(group.leader) : undefined}
                     variantCount={group.variants.length}
+                    current={group.variants.length === 1 && group.leader.publicSpecifier === current}
+                    containsCurrent={group.variants.length > 1 && group.variants.some((variant) => variant.publicSpecifier === current)}
                     onSelect={() => chooseFromGroup(group)}
                   />
                 {/each}
@@ -388,12 +435,12 @@
           <div bind:this={sentinel}></div>
         </div>
       {/if}
-    </main>
+    </div>
   </div>
-</Modal>
 
 {#if pickingFrom}
   {@const group = pickingFrom}
+  {@const titles = variantTitles(group)}
   <Modal open onClose={() => (pickingFrom = null)} class="z-50">
     <div class="bg-card rounded-xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden">
       <header class="p-5 border-b flex justify-between items-start gap-4 bg-muted/50">
@@ -408,7 +455,7 @@
         </Button>
       </header>
 
-      <main class="p-5 overflow-y-auto">
+      <div class="p-5 overflow-y-auto">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {#each group.variants as variant, i (variant.publicSpecifier)}
             {@const variantReason = undeployableReason(variant)}
@@ -417,11 +464,13 @@
               blockedReason={variantReason}
               blockedDetail={variantReason === "version_blocked" ? blockedReleaseNote(variant) : undefined}
               repeatsPreviousDescription={variant.description === group.variants[i - 1]?.description}
+              current={variant.publicSpecifier === current}
+              title={titles.get(variant.publicSpecifier)}
               onSelect={handleSelect}
             />
           {/each}
         </div>
-      </main>
+      </div>
     </div>
   </Modal>
 {/if}

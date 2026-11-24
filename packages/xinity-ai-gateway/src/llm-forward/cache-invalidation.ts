@@ -4,7 +4,7 @@ const log = rootLogger.child({ name: "cache-invalidation" });
 
 /** Tables the routing cache is derived from. */
 const SOURCE_CHANNELS = ["ai_node", "model_installation", "model_installation_state"] as const;
-const DEPLOYMENT_CHANNEL = "model_deployment";
+const DEPLOYMENT_CHANNELS = ["deployment", "deployment_legacy", "deployment_managed", "deployment_canary"] as const;
 
 type CacheInvalidationDeps = {
   subscribe: (
@@ -29,8 +29,10 @@ export function createCacheInvalidation(deps: CacheInvalidationDeps) {
       for (const channel of SOURCE_CHANNELS) {
         unlisteners.push(await deps.subscribe(channel, onSourceChange, onSourceChange));
       }
-      unlisteners.push(await deps.subscribe(DEPLOYMENT_CHANNEL, onDeploymentChange, onDeploymentChange));
-      log.info({ channels: [...SOURCE_CHANNELS, DEPLOYMENT_CHANNEL] }, "Listening for cache invalidation");
+      for (const channel of DEPLOYMENT_CHANNELS) {
+        unlisteners.push(await deps.subscribe(channel, onDeploymentChange, onDeploymentChange));
+      }
+      log.info({ channels: [...SOURCE_CHANNELS, ...DEPLOYMENT_CHANNELS] }, "Listening for cache invalidation");
     },
 
     async stop(): Promise<void> {

@@ -1,7 +1,17 @@
-export type Placement = { deploymentId: string; specifier: string };
+export type InstallationOwnership = { legacyId?: string | null; managedId?: string | null };
+
+export type Placement = InstallationOwnership & { specifier: string };
+
+export const ownedByLegacy = (legacyId: string): InstallationOwnership => ({ legacyId, managedId: null });
+
+export const ownedByManaged = (managedId: string): InstallationOwnership => ({ legacyId: null, managedId });
+
+export function ownerOf({ legacyId, managedId }: InstallationOwnership): string {
+  return legacyId ?? managedId ?? "";
+}
 
 export function requirementKey(entry: Placement): string {
-  return `${entry.deploymentId}:${entry.specifier}`;
+  return `${ownerOf(entry)}:${entry.specifier}`;
 }
 
 export function firstFreePort(base: number, used: ReadonlySet<number>): number {

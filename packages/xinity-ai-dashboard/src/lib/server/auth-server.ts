@@ -18,7 +18,8 @@ import { MULTI_ORG_LICENSE_MESSAGE, organizationLimitReached } from "$lib/server
 import { sendEmail, commonEmailProps, type AnyComponent } from "$lib/server/notifications/email";
 import { notify, notifyOrgMembers } from "./notifications/notification.service";
 import { NotificationType } from "./notifications/events";
-import { emitAuthAuditEvent, type AuditAction } from "./orpc/audit";
+import type { AuditAction } from "$lib/audit-actions";
+import { emitAuthAuditEvent } from "./orpc/audit";
 import { CLIENT_ADDRESS_HEADER, readClientAddress } from "$lib/server/lib/auth/client-address";
 import { isEmailInProviderDomain } from "$lib/server/lib/auth/sso-domains";
 import { clearTemporaryPassword } from "$lib/server/lib/auth/temporary-password";

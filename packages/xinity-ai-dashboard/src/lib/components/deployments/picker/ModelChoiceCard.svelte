@@ -7,11 +7,12 @@
 <script lang="ts">
   import type { ModelWithSpecifier } from "common-env/model-catalog";
   import { formatGb, humanMonthYear } from "$lib/util";
+  import { ENGINE_LABELS, MODEL_TYPE_LABELS } from "./model-labels";
   import { isRecentlyAdded } from "./model-recency";
   import { Badge } from "$lib/components/ui/badge";
   import LicenseBadge from "./LicenseBadge.svelte";
   import NewModelBadge from "./NewModelBadge.svelte";
-  import { ExternalLink, Info, ShieldAlert, HardDrive, CalendarDays, EyeOff, Layers } from "@lucide/svelte";
+  import { Cpu, Info, ShieldAlert, HardDrive, CalendarDays, EyeOff, Layers } from "@lucide/svelte";
 
   let {
     model,
@@ -19,6 +20,9 @@
     blockedDetail,
     variantCount = 1,
     repeatsPreviousDescription = false,
+    current = false,
+    containsCurrent = false,
+    title,
     onSelect,
   }: {
     model: ModelWithSpecifier;
@@ -26,10 +30,15 @@
     blockedDetail?: string;
     variantCount?: number;
     repeatsPreviousDescription?: boolean;
+    /** The model the deployment already serves, which it cannot change to. */
+    current?: boolean;
+    /** A group whose variants include the model the deployment serves. */
+    containsCurrent?: boolean;
+    title?: string;
     onSelect: (model: ModelWithSpecifier) => void;
   } = $props();
 
-  const engineLabel = $derived(model.engine === "vllm" ? "vLLM" : "Ollama");
+  const engineLabel = $derived(ENGINE_LABELS[model.engine]);
   const platformLabel = $derived((model.platforms ?? []).join(" or "));
   const isVariantGroup = $derived(variantCount > 1);
 
@@ -52,35 +61,34 @@
 
 <div
   role="button"
-  tabindex={0}
-  class="group relative flex flex-col text-left bg-card border rounded-xl p-4 transition-all duration-200 min-w-0 hover:shadow-lg hover:border-primary/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 cursor-pointer"
-  onclick={() => onSelect(model)}
-  onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(model); } }}
+  tabindex={current ? -1 : 0}
+  aria-disabled={current}
+  class="group relative flex flex-col text-left bg-card border rounded-xl p-4 transition-all duration-200 min-w-0 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 {current ? 'border-primary/40 bg-primary/5 cursor-default' : 'hover:shadow-lg hover:border-primary/50 cursor-pointer'}"
+  onclick={() => !current && onSelect(model)}
+  onkeydown={(e) => { if (!current && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSelect(model); } }}
 >
   <div class="flex justify-between items-start w-full mb-2 gap-2 overflow-hidden">
     <div class="min-w-0 flex-1">
-      <h4 class="font-semibold group-hover:text-primary transition-colors truncate" title={model.name}>
-        {model.name}
+      <h4 class="font-semibold group-hover:text-primary transition-colors line-clamp-2 wrap-break-word" title={model.name}>
+        {title ?? model.name}
       </h4>
       <p class="text-xs text-muted-foreground font-mono mt-0.5 truncate" title={model.publicSpecifier}>
         {model.publicSpecifier}
       </p>
     </div>
     <div class="flex items-center gap-1.5 shrink-0">
+      {#if current}
+        <Badge class="text-xs px-1.5 py-0">Current model</Badge>
+      {:else if containsCurrent}
+        <Badge variant="outline" class="text-xs px-1.5 py-0 border-primary/40 text-primary">Has the current model</Badge>
+      {/if}
       {#if isRecentlyAdded(model.registeredAt)}
         <NewModelBadge class="text-[10px] uppercase px-1.5 py-0" />
-      {/if}
-      {#if model.url}
-        <a href={model.url} target="_blank" rel="noopener noreferrer"
-          class="p-1.5 text-muted-foreground hover:text-primary hover:bg-accent rounded-full transition-colors z-10"
-          title="View model info" onclick={(e) => e.stopPropagation()}>
-          <ExternalLink class="w-4 h-4" />
-        </a>
       {/if}
       {#if model.isCustom}
         <Badge variant="secondary" class="text-[10px] uppercase px-1.5 py-0">Custom</Badge>
       {:else}
-        <Badge variant="outline" class="text-[10px] uppercase px-1.5 py-0">{model.type}</Badge>
+        <Badge variant="outline" class="text-xs px-1.5 py-0 font-normal">{MODEL_TYPE_LABELS[model.type]}</Badge>
       {/if}
     </div>
   </div>
@@ -108,6 +116,12 @@
       <CalendarDays class="w-3 h-3 shrink-0" />
       <span>{humanMonthYear(model.createdAt)}</span>
     </span>
+    {#if !isVariantGroup}
+      <span class="flex items-center gap-1.5">
+        <Cpu class="w-3 h-3 shrink-0" />
+        <span>{engineLabel}</span>
+      </span>
+    {/if}
   </div>
 
   {#if blockedReason}

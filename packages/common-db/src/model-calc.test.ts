@@ -1,15 +1,10 @@
 import { describe, it, expect, spyOn, beforeEach, afterEach } from "bun:test";
 import { calcCanaryProgress } from "./model-calc";
-import type { ModelDeployment } from "./schema/models";
+import type { DeploymentLegacy } from "./schema/models";
 
-function makeDeployment(overrides: Partial<ModelDeployment> = {}): ModelDeployment {
+function makeDeployment(overrides: Partial<DeploymentLegacy> = {}): DeploymentLegacy {
   return {
     id: "00000000-0000-0000-0000-000000000001",
-    organizationId: "org-1",
-    name: "test-deployment",
-    description: null,
-    enabled: true,
-    publicSpecifier: "test-model",
     specifier: "new-model",
     earlySpecifier: "old-model",
     replicas: 1,
@@ -21,7 +16,6 @@ function makeDeployment(overrides: Partial<ModelDeployment> = {}): ModelDeployme
     earlyKvCacheSize: null,
     preferredDriver: null,
     settings: { version: 1 },
-    deletedAt: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

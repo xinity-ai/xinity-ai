@@ -1,249 +1,11 @@
-import { calcCanaryProgress, sql, modelDeploymentT, aiNodeT, modelInstallationT, modelInstallationStateT, installationMatchesLookup, installationTakesRequests, installationOnLiveNode, stateOfInstallation } from "common-db";
+import { sql, deploymentT } from "common-db";
 import { getDB } from "../db";
 import { config } from "../config";
-import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "common-env/model-catalog";
-import { admit as _admit, selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta, type SelectHostResult } from "./load-balancer";
-import { rootLogger } from "../logger";
-
-/** Indirection for testability. tests can swap this without mock.module. */
-export const _deps = { selectHost: _selectHost, admit: _admit };
-
-const DEFAULT_MAX_CONTEXT_LENGTH = 131072;
-
-let _catalogClient: ReturnType<typeof createCatalogClient> | undefined;
-let _infoClient: ReturnType<typeof createInfoserverClient> | undefined;
-
-export function getCatalogClient() {
-  if (!_catalogClient) {
-    _catalogClient = createCatalogClient({
-      baseUrl: config.infoserver.url,
-      cacheTtlMs: config.infoserver.cacheTtlMs,
-      logger: rootLogger.child({ name: "catalog-client" }),
-    });
-  }
-  return _catalogClient;
-}
-
-/** @deprecated Reaches the pre-per-engine catalog. Removed before 1.0.0. */
-export function getInfoClient() {
-  if (!_infoClient) {
-    _infoClient = createInfoserverClient({
-      baseUrl: config.infoserver.url,
-      cacheTtlMs: config.infoserver.cacheTtlMs,
-      logger: rootLogger.child({ name: "infoserver-client" }),
-    });
-  }
-  return _infoClient;
-}
-
 import { cache } from "../cache";
+import { rootLogger } from "../logger";
+import { loadOfType, resolveLoaded, type LoadedDeployment } from "./deployment-types";
 
 const log = rootLogger.child({ name: "model-data" });
-
-
-type CachedDeployment = {
-  id: string;
-  specifier: string;
-  earlySpecifier: string | null;
-  progress: number;
-  canaryProgressFrom: number | null;
-  canaryProgressUntil: number | null;
-};
-
-const modelSourcesCache = new Map<string, { data: ModelSources; expiresAt: number }>();
-
-/**
- * Bumped on every invalidation so a query that was already in flight cannot write
- * its now-stale result into the cache it raced.
- */
-let sourcesGeneration = 0;
-
-export function invalidateModelSources(): void {
-  sourcesGeneration += 1;
-  modelSourcesCache.clear();
-}
-
-const DEPLOYMENT_CACHE_PREFIX = "gateway:deployment:";
-
-/** The notified deployment id cannot be mapped back to the org and specifier keying this cache. */
-export async function invalidateDeployments(): Promise<void> {
-  try {
-    await cache.delPrefix(DEPLOYMENT_CACHE_PREFIX);
-  } catch (err) {
-    log.warn({ err }, "Cache error clearing deployment cache");
-  }
-}
-
-async function publicModelSpecifierToModelSource(orgId: string, specifier: string) {
-  const cacheKey = `${DEPLOYMENT_CACHE_PREFIX}${orgId}:${specifier}`;
-  try {
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      const d = JSON.parse(cached) as CachedDeployment;
-      const deploymentForCalc = {
-        ...d,
-        canaryProgressFrom: d.canaryProgressFrom !== null ? new Date(d.canaryProgressFrom) : null,
-        canaryProgressUntil: d.canaryProgressUntil !== null ? new Date(d.canaryProgressUntil) : null,
-      };
-      return {
-        deploymentId: d.id,
-        progress: calcCanaryProgress(deploymentForCalc as any),
-        primary: d.specifier,
-        early: d.earlySpecifier,
-      };
-    }
-  } catch (err) {
-    log.warn({ err }, "Cache error reading deployment cache");
-  }
-
-  const [deployment] = await getDB().select().from(modelDeploymentT).where(sql`
-    ${modelDeploymentT.organizationId} = ${orgId}
-    AND
-    ${modelDeploymentT.publicSpecifier} = ${specifier}
-    AND
-    ${modelDeploymentT.enabled}
-    AND
-    ${modelDeploymentT.deletedAt} IS NULL
-  `).limit(1);
-
-  if (!deployment) {
-    return;
-  }
-
-  const cachedData: CachedDeployment = {
-    id: deployment.id,
-    specifier: deployment.specifier,
-    earlySpecifier: deployment.earlySpecifier,
-    progress: deployment.progress,
-    canaryProgressFrom: deployment.canaryProgressFrom ? new Date(deployment.canaryProgressFrom).valueOf() : null,
-    canaryProgressUntil: deployment.canaryProgressUntil ? new Date(deployment.canaryProgressUntil).valueOf() : null,
-  };
-
-  void cache.set(cacheKey, JSON.stringify(cachedData), config.cache.modelTtlSeconds())
-    .catch((err: unknown) => log.warn({ err }, "Cache error in set deployment cache"));
-
-  return {
-    deploymentId: deployment.id,
-    progress: calcCanaryProgress(deployment),
-    primary: deployment.specifier,
-    early: deployment.earlySpecifier,
-  };
-}
-
-type HostLocation = {
-  installationId: string;
-  nodeId: string;
-  machineName: string | null;
-  driver: string;
-  authToken: string | null;
-  tls: boolean;
-  maxNumSeqs: number | null;
-};
-
-type ModelSources = {
-  hosts: string[];
-  byHost: Map<string, HostLocation>;
-};
-
-async function getModelSources(deploymentId: string, specifier: string): Promise<ModelSources> {
-  const cacheKey = `${deploymentId}:${specifier}`;
-  const now = Date.now();
-  const cached = modelSourcesCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    return cached.data;
-  }
-
-  const generationAtQuery = sourcesGeneration;
-
-  const modelLocations = await getDB().select({
-    installationId: modelInstallationT.id,
-    nodeId: aiNodeT.id,
-    machineName: aiNodeT.machineName,
-    host: aiNodeT.host,
-    nodePort: aiNodeT.port,
-    driver: modelInstallationT.driver,
-    maxNumSeqs: modelInstallationT.maxNumSeqs,
-    authToken: aiNodeT.authToken,
-    tls: aiNodeT.tls,
-  }).from(modelInstallationT)
-    .innerJoin(aiNodeT, installationOnLiveNode)
-    .innerJoin(modelInstallationStateT, sql`
-      ${stateOfInstallation}
-      AND ${modelInstallationStateT.lifecycleState} = 'ready'
-    `)
-    .where(sql`
-      ${modelInstallationT.deploymentId} = ${deploymentId}
-    AND
-      ${installationMatchesLookup(specifier)}
-    AND
-      ${modelInstallationT.deletedAt} IS NULL
-    AND
-      ${installationTakesRequests}
-    `);
-
-  const byHost = new Map<string, HostLocation>();
-  for (const loc of modelLocations) {
-    const key = `${loc.host}:${loc.nodePort}`;
-    byHost.set(key, { installationId: loc.installationId, nodeId: loc.nodeId, machineName: loc.machineName, driver: loc.driver, authToken: loc.authToken, tls: loc.tls, maxNumSeqs: loc.maxNumSeqs });
-  }
-
-  const result: ModelSources = { hosts: [...byHost.keys()], byHost };
-  if (generationAtQuery === sourcesGeneration) {
-    modelSourcesCache.set(cacheKey, { data: result, expiresAt: now + config.cache.modelTtlSeconds() * 1000 });
-  }
-
-  return result;
-}
-
-function buildHostMeta(...sources: ModelSources[]): Map<string, HostMeta> {
-  const hostMeta = new Map<string, HostMeta>();
-  for (const source of sources) {
-    for (const [host, loc] of source.byHost) {
-      hostMeta.set(host, { nodeId: loc.nodeId, machineName: loc.machineName ?? host });
-    }
-  }
-  return hostMeta;
-}
-
-type CatalogMeta = {
-  /** Name the engine itself knows the model by. Undefined when the catalog has no entry. */
-  engineSpecifier?: string;
-  type?: string;
-  tags?: string[];
-  maxContextLength: number;
-  audioPositionsPerSecond?: number;
-  requestParams?: Record<string, string>;
-};
-
-async function resolveCatalogMeta(specifier: string, driver: "vllm" | "ollama"): Promise<CatalogMeta> {
-  const result = await getCatalogClient().lookup(specifier);
-  if (result.status === "unavailable") {
-    throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
-  }
-  if (result.status === "found") {
-    const { engineSpecifier, type, tags, sizing, requestParams } = result.model;
-    return { engineSpecifier, type, tags, maxContextLength: sizing.maxContextLength, audioPositionsPerSecond: sizing.audioPositionsPerSecond, requestParams };
-  }
-  return legacyCatalogMeta(specifier, driver);
-}
-
-/**
- * Deployments created before the per-engine format hold a specifier the current
- * catalog does not know. Removed before 1.0.0.
- */
-async function legacyCatalogMeta(specifier: string, driver: "vllm" | "ollama"): Promise<CatalogMeta> {
-  const model = await getInfoClient().fetchModel(specifier);
-  if (!model) {
-    return { maxContextLength: DEFAULT_MAX_CONTEXT_LENGTH };
-  }
-  return {
-    engineSpecifier: model.providers[driver],
-    type: model.type,
-    tags: resolveTagsForDriver(model, driver),
-    maxContextLength: model.maxContextLength ?? DEFAULT_MAX_CONTEXT_LENGTH,
-    requestParams: resolveRequestParamsForDriver(model, driver),
-  };
-}
 
 export type ModelInfo = {
   /** ai_node id serving this request. Recorded on usage events for per-node attribution. */
@@ -277,81 +39,56 @@ export type ModelLookup =
 
 export type ModelLookupFailure = Exclude<ModelLookup["status"], "found">;
 
+const DEPLOYMENT_CACHE_PREFIX = "gateway:deployment-entry:";
+
+/** The notified deployment id cannot be mapped back to the org and specifier keying this cache. */
+export async function invalidateDeployments(): Promise<void> {
+  try {
+    await cache.delPrefix(DEPLOYMENT_CACHE_PREFIX);
+  } catch (err) {
+    log.warn({ err }, "Cache error clearing deployment cache");
+  }
+}
+
+async function loadDeployment(orgId: string, publicSpecifier: string): Promise<LoadedDeployment | undefined> {
+  const cacheKey = `${DEPLOYMENT_CACHE_PREFIX}${orgId}:${publicSpecifier}`;
+  try {
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached) as LoadedDeployment;
+    }
+  } catch (err) {
+    log.warn({ err }, "Cache error reading deployment cache");
+  }
+
+  const [entry] = await getDB().select().from(deploymentT).where(sql`
+    ${deploymentT.organizationId} = ${orgId}
+    AND
+    ${deploymentT.publicSpecifier} = ${publicSpecifier}
+    AND
+    ${deploymentT.enabled}
+    AND
+    ${deploymentT.deletedAt} IS NULL
+  `).limit(1);
+  if (!entry) {
+    return undefined;
+  }
+
+  const loaded: LoadedDeployment | undefined = await loadOfType(entry.type, entry);
+  if (!loaded) {
+    return undefined;
+  }
+
+  void cache.set(cacheKey, JSON.stringify(loaded), config.cache.modelTtlSeconds())
+    .catch((err: unknown) => log.warn({ err }, "Cache error in set deployment cache"));
+
+  return loaded;
+}
+
 export async function getModelInfo(orgId: string, publicSpecifier: string, prefixHashes?: string[]): Promise<ModelLookup> {
-  const accessInfo = await publicModelSpecifierToModelSource(orgId, publicSpecifier);
-  if (!accessInfo) {
+  const deployment = await loadDeployment(orgId, publicSpecifier);
+  if (!deployment) {
     return { status: "unknown" };
   }
-  const emptySources: ModelSources = { hosts: [], byHost: new Map() };
-  const [finalSources, earlySources] = await Promise.all([
-    getModelSources(accessInfo.deploymentId, accessInfo.primary),
-    accessInfo.early
-      ? getModelSources(accessInfo.deploymentId, accessInfo.early)
-      : Promise.resolve(emptySources),
-  ]);
-
-  const hostMeta = buildHostMeta(finalSources, earlySources);
-  const full = new Set<string>();
-  let result: SelectHostResult | undefined;
-  let location: HostLocation | undefined;
-  for (;;) {
-    result = await _deps.selectHost(config.inference.loadBalanceStrategy() as LoadBalanceStrategy, {
-      hosts: finalSources.hosts.filter((host) => !full.has(host)),
-      earlyHosts: earlySources.hosts.filter((host) => !full.has(host)),
-      canaryProgress: accessInfo.progress,
-      hasEarlyModel: !!accessInfo.early,
-      publicModel: publicSpecifier,
-      prefixHashes,
-      hostMeta,
-    });
-    if (!result) {
-      return { status: full.size > 0 ? "busy" : "unavailable" };
-    }
-    location = finalSources.byHost.get(result.host) ?? earlySources.byHost.get(result.host);
-    if (!location) {
-      result.release();
-      return { status: "unavailable" };
-    }
-    const releaseAdmission = await _deps.admit(location.installationId, location.maxNumSeqs);
-    if (releaseAdmission) {
-      const releaseSelection = result.release;
-      result = { ...result, release: () => { releaseSelection(); releaseAdmission(); } };
-      break;
-    }
-    result.release();
-    full.add(result.host);
-  }
-
-  const resolvedSpecifier = result.useFinalModel
-    ? accessInfo.primary
-    : (accessInfo.early ?? accessInfo.primary);
-  const { driver, authToken, tls } = location;
-  const driverProvider = driver as "vllm" | "ollama";
-
-  const meta = await resolveCatalogMeta(resolvedSpecifier, driverProvider).catch((err: unknown) => {
-    result.release();
-    throw err;
-  });
-
-  return {
-    status: "found",
-    info: {
-      installationId: location.installationId,
-      nodeId: location.nodeId,
-      host: result.host,
-      specifier: resolvedSpecifier,
-      // Best-effort pass-through: when the catalog cannot resolve the specifier,
-      // forward it as the model name and let the backend reject a mismatch.
-      model: meta.engineSpecifier ?? resolvedSpecifier,
-      driver,
-      authToken,
-      tls,
-      type: meta.type,
-      tags: meta.tags,
-      maxContextLength: meta.maxContextLength,
-      audioPositionsPerSecond: meta.audioPositionsPerSecond,
-      requestParams: meta.requestParams,
-      release: result.release,
-    },
-  };
+  return resolveLoaded(deployment, publicSpecifier, prefixHashes);
 }

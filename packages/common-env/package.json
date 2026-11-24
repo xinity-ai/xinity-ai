@@ -27,9 +27,17 @@
       "types": "./src/deployment-settings.ts",
       "default": "./src/deployment-settings.ts"
     },
+    "./rollout-advance": {
+      "types": "./src/rollout-advance.ts",
+      "default": "./src/rollout-advance.ts"
+    },
     "./node-coupling": {
       "types": "./src/node-coupling.ts",
       "default": "./src/node-coupling.ts"
+    },
+    "./deployment-types": {
+      "types": "./src/deployment-types.ts",
+      "default": "./src/deployment-types.ts"
     }
   },
   "type": "module",

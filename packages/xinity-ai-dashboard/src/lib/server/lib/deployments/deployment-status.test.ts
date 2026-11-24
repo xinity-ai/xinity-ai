@@ -2,25 +2,26 @@ import { describe, test, expect } from "bun:test";
 import { couplingIssuesOf, foldDeploymentStatusRows, type DeploymentStatusRow } from "./deployment-status";
 import type { InterconnectPath, InterconnectPort } from "common-env";
 
-const DEPLOYMENT: DeploymentStatusRow["model_deployment"] = {
+const DEPLOYMENT: DeploymentStatusRow["deployment"] = {
   id: "dep-1",
-  organizationId: "org-1",
   name: "My Deployment",
+  type: "legacy",
   description: null,
   enabled: true,
   publicSpecifier: "qwen3.6-27b",
-  specifier: "qwen3.6-27b",
-  earlySpecifier: null,
-  replicas: 4,
-  canaryProgressUntil: null,
-  canaryProgressFrom: null,
-  canaryProgressWithFeedback: false,
-  progress: 100,
-  kvCacheSize: null,
-  earlyKvCacheSize: null,
-  preferredDriver: null,
-  settings: { version: 1 },
-  deletedAt: null,
+  legacy: {
+    specifier: "qwen3.6-27b",
+    earlySpecifier: null,
+    replicas: 1,
+    canaryProgressUntil: null,
+    canaryProgressFrom: null,
+    canaryProgressWithFeedback: false,
+    progress: 100,
+    kvCacheSize: null,
+    earlyKvCacheSize: null,
+    preferredDriver: null,
+    settings: { version: 1 },
+  },
   createdAt: new Date("2026-01-01"),
   updatedAt: new Date("2026-01-01"),
 };
@@ -29,12 +30,12 @@ type State = NonNullable<DeploymentStatusRow["model_installation_state"]>;
 type Installation = NonNullable<DeploymentStatusRow["model_installation"]>;
 
 function installation(id: string, group: Installation["group"]): Installation {
-  return { id, group, gpuIds: ["gpu-0"], estCapacity: 60, hostCapacity: 8 };
+  return { id, specifier: "qwen3.6-27b", group, gpuIds: ["gpu-0"], estCapacity: 60, hostCapacity: 8 };
 }
 
 function row(overrides: Partial<DeploymentStatusRow> = {}): DeploymentStatusRow {
   return {
-    model_deployment: DEPLOYMENT,
+    deployment: DEPLOYMENT,
     model_installation: installation("inst-1", null),
     model_installation_state: state(),
     ai_node: { id: "192.0.2.1", interconnect: [], machineName: "gx10-a", host: "192.0.2.1" },
@@ -61,6 +62,53 @@ describe("foldDeploymentStatusRows", () => {
     expect(deployment!.status!.phase).toBe("ready");
   });
 
+  test("reads as partly serving while the scheduler has not placed every wanted replica", () => {
+    const short = { ...DEPLOYMENT, legacy: { ...DEPLOYMENT.legacy, replicas: 3 } };
+    const [deployment] = foldDeploymentStatusRows(replicas(2).map((each) => ({ ...each, deployment: short })));
+    expect(deployment!.status!.wanted).toEqual([{ specifier: "qwen3.6-27b", replicas: 3 }]);
+    expect(deployment!.status!.phase).toBe("partial");
+  });
+
+  describe("during a rollout", () => {
+    const rollout = { ...DEPLOYMENT, legacy: { ...DEPLOYMENT.legacy, earlySpecifier: "qwen3.6-35b", replicas: 2, progress: 30 } };
+    const side = (id: string, specifier: string, lifecycleState: State["lifecycleState"] = "ready") => row({
+      deployment: rollout,
+      model_installation: { ...installation(id, null), specifier },
+      model_installation_state: state({ lifecycleState }),
+    });
+
+    test("is degraded while one side has no machine, since its share of traffic cannot be kept", () => {
+      const [deployment] = foldDeploymentStatusRows([side("inst-0", "qwen3.6-35b")]);
+      expect(deployment!.status!.phase).toBe("degraded");
+    });
+
+    test("is degraded while one side's only replica failed", () => {
+      const [deployment] = foldDeploymentStatusRows([side("inst-0", "qwen3.6-35b"), side("inst-1", "qwen3.6-27b", "failed")]);
+      expect(deployment!.status!.phase).toBe("degraded");
+    });
+
+    test("serves while both sides do", () => {
+      const [deployment] = foldDeploymentStatusRows([side("inst-0", "qwen3.6-35b"), side("inst-1", "qwen3.6-27b")]);
+      expect(deployment!.status!.phase).toBe("ready");
+    });
+
+    test("tells the sides apart by owner when both serve the same model", () => {
+      const member = { specifier: "qwen3.6-27b", kvCacheSize: null, preferredDriver: null, settings: { version: 1 as const } };
+      const sameModel: DeploymentStatusRow["deployment"] = {
+        ...DEPLOYMENT,
+        type: "canary",
+        canary: { replicas: 2, progress: 50, advance: { type: "manual", version: 1 }, from: member, to: { ...member, kvCacheSize: 64 } },
+      };
+      const [deployment] = foldDeploymentStatusRows([{ ...row({ deployment: sameModel }), side: "from" }]);
+      expect(deployment!.status!.wanted).toEqual([
+        { specifier: "qwen3.6-27b", side: "to", replicas: 1 },
+        { specifier: "qwen3.6-27b", side: "from", replicas: 1 },
+      ]);
+      expect(deployment!.status!.replicas!.map(({ side }) => side)).toEqual(["from"]);
+      expect(deployment!.status!.phase).toBe("degraded");
+    });
+  });
+
   test("ignores a replica whose node left the cluster, even while its state still reads ready", () => {
     const [deployment] = foldDeploymentStatusRows([
       ...replicas(2),
@@ -70,12 +118,13 @@ describe("foldDeploymentStatusRows", () => {
     expect(deployment!.status!.phase).toBe("ready");
   });
 
-  test("reports no status when every installation sits on a node that left the cluster", () => {
+  test("is down when every installation sits on a node that left the cluster", () => {
     const [deployment] = foldDeploymentStatusRows([
       row({ model_installation: installation("inst-0", null), ai_node: null }),
       row({ model_installation: installation("inst-1", null), ai_node: null }),
     ]);
-    expect(deployment!.status).toBeUndefined();
+    expect(deployment!.status!.phase).toBe("down");
+    expect(deployment!.status!.replicas).toBeUndefined();
     expect(deployment!.id).toBe("dep-1");
   });
 
@@ -99,7 +148,7 @@ describe("foldDeploymentStatusRows", () => {
       row({ model_installation_state: null }),
     ]);
     expect(deployment!.status!.phase).toBe("scheduling");
-    expect(deployment!.status!.replicas).toEqual([{ phase: "scheduling", node: "gx10-a", error: null }]);
+    expect(deployment!.status!.replicas).toEqual([{ phase: "scheduling", specifier: "qwen3.6-27b", node: "gx10-a", error: null }]);
   });
 
   test("aggregates the worst phase across replicas", () => {
@@ -124,7 +173,7 @@ describe("foldDeploymentStatusRows", () => {
     const other = { ...DEPLOYMENT, id: "dep-2", name: "Other" };
     const result = foldDeploymentStatusRows([
       ...replicas(2),
-      row({ model_deployment: other, model_installation: installation("inst-x", null) }),
+      row({ deployment: other, model_installation: installation("inst-x", null) }),
     ]);
     expect(result).toHaveLength(2);
     expect(result.find(d => d.id === "dep-1")!.status!.replicas).toHaveLength(2);
@@ -143,10 +192,10 @@ describe("a replica served across machines", () => {
   test("is one replica, named after rank 0, with each machine's detail by rank", () => {
     const [deployment] = foldDeploymentStatusRows([member(1, { lifecycleState: "installing" }), member(0)]);
     expect(deployment!.status!.replicas).toEqual([{
-      phase: "installing", node: "gx10-0", error: null,
+      phase: "installing", specifier: "qwen3.6-27b", node: "gx10-0", error: null,
       members: [
-        { node: "gx10-0", phase: "ready", error: null, cards: 1, gpuGb: 60, hostGb: 8 },
-        { node: "gx10-1", phase: "installing", error: null, cards: 1, gpuGb: 60, hostGb: 8 },
+        { node: "gx10-0", phase: "ready", error: null, cards: 1, gpuGb: 60, hostGb: 8, sharedMemory: true },
+        { node: "gx10-1", phase: "installing", error: null, cards: 1, gpuGb: 60, hostGb: 8, sharedMemory: true },
       ],
       couplingIssues: [expect.objectContaining({ text: "its machines are no longer coupled" })],
     }]);

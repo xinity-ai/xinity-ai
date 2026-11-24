@@ -24,7 +24,8 @@ import { setSearchProvider } from "./llm-forward/tools/response-tools";
 import { flushUsageEvents } from "./usageRecorder";
 import { flushCallLog } from "./callLogger";
 import { createCacheInvalidation } from "./llm-forward/cache-invalidation";
-import { invalidateModelSources, invalidateDeployments } from "./llm-forward/model-data";
+import { invalidateDeployments } from "./llm-forward/model-data";
+import { invalidateModelSources } from "./llm-forward/installations";
 
 await exitOnHealthFlag({ ...config.server, tls: !!config.tls });
 

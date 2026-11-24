@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { aiNodeT, modelDeploymentT, modelInstallationStateT, modelInstallationT } from "../schema/models";
+import { aiNodeT, deploymentCanaryT, deploymentLegacyT, deploymentManagedT, deploymentT, modelInstallationStateT, modelInstallationT } from "../schema/models";
 
 /**
  * The node is live: available and not removed.
@@ -21,10 +21,44 @@ export const installationOnLiveNode = sql`${aiNodeT.id} = ${modelInstallationT.n
 export const stateOfInstallation = sql`${modelInstallationStateT.id} = ${modelInstallationT.id}`;
 
 /**
- * The installation serves the deployment.
- * Needs `model_deployment` and `model_installation`. Use as the ON when joining one onto the other.
+ * The installation serves the legacy deployment row.
+ * Needs `deployment_legacy` and `model_installation`. Use as the ON when joining one onto the other.
  */
-export const deploymentMatchesInstallation = sql`${modelDeploymentT.id} = ${modelInstallationT.deploymentId}`;
+export const legacyMatchesInstallation = sql`${deploymentLegacyT.id} = ${modelInstallationT.legacyId}`;
+
+/**
+ * The installation serves the managed deployment row.
+ * Needs `deployment_managed` and `model_installation`. Use as the ON when joining one onto the other.
+ */
+export const managedMatchesInstallation = sql`${deploymentManagedT.id} = ${modelInstallationT.managedId}`;
+
+/**
+ * The legacy row is the one the deployment points at.
+ * Needs `deployment` and `deployment_legacy`. Use as the ON when joining one onto the other.
+ */
+export const legacyOfDeployment = sql`${deploymentLegacyT.id} = ${deploymentT.legacyId}`;
+
+/**
+ * The managed row is the one the deployment points at.
+ * Needs `deployment` and `deployment_managed`. Use as the ON when joining one onto the other.
+ */
+export const managedOfDeployment = sql`${deploymentManagedT.id} = ${deploymentT.managedId}`;
+
+/**
+ * The canary row is the one the deployment points at.
+ * Needs `deployment` and `deployment_canary`. Use as the ON when joining one onto the other.
+ */
+export const canaryOfDeployment = sql`${deploymentCanaryT.id} = ${deploymentT.canaryId}`;
+
+/**
+ * The installation serves the deployment, through its legacy or managed row or either member of its canary.
+ * Needs `deployment`, `deployment_canary` joined with `canaryOfDeployment` (a left join, as most deployments
+ * have none) and `model_installation`. Use as the ON when joining `model_installation` onto the deployment.
+ */
+export const installationOfDeployment = sql`(
+  ${modelInstallationT.legacyId} = ${deploymentT.legacyId}
+  OR ${modelInstallationT.managedId} IN (${deploymentT.managedId}, ${deploymentCanaryT.fromId}, ${deploymentCanaryT.toId})
+)`;
 
 /**
  * The installation is of the given canonical specifier.

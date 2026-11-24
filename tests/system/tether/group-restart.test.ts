@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { aiNodeT, inArray, modelDeploymentT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
+import { aiNodeT, inArray, deploymentT, deploymentLegacyT, modelInstallationT, organizationT, preconfigureDB, sql } from "common-db";
 import { GROUP_RESTART_BUDGET, type GroupStage, type InstallationGroup } from "common-env";
 import { getAvailablePort } from "../test-helpers";
 import { ensureSystemReady } from "../guard";
@@ -53,20 +53,23 @@ async function setGeneration(generation: number): Promise<void> {
 beforeAll(async () => {
   await ensureSystemReady();
   await db.insert(organizationT).values({ id: organizationId, name: "Tether Group Tests", slug: `tether-group-tests-${randomUUID()}` });
-  const [deployment] = await db.insert(modelDeploymentT).values({
+  const [legacy] = await db.insert(deploymentLegacyT).values({ specifier: "group-model" }).returning();
+  deploymentId = legacy!.id;
+  await db.insert(deploymentT).values({
     organizationId,
     name: "Tether Group Test Model",
     publicSpecifier: `group-model-${randomUUID()}`,
-    specifier: "group-model",
-  }).returning();
-  deploymentId = deployment!.id;
+    type: "legacy",
+    legacyId: deploymentId,
+  });
   for (const id of nodeIds) {
     await db.insert(aiNodeT).values({ id, host: "127.0.0.1", port: await getAvailablePort(), estCapacity: 100, available: true });
   }
 });
 
 afterAll(async () => {
-  await db.delete(modelDeploymentT).where(sql`${modelDeploymentT.id} = ${deploymentId}`);
+  await db.delete(deploymentT).where(sql`${deploymentT.legacyId} = ${deploymentId}`);
+  await db.delete(deploymentLegacyT).where(sql`${deploymentLegacyT.id} = ${deploymentId}`);
   await db.update(aiNodeT).set({ deletedAt: new Date() }).where(inArray(aiNodeT.id, nodeIds));
   await db.delete(organizationT).where(sql`${organizationT.id} = ${organizationId}`);
 });
@@ -76,7 +79,7 @@ describe("tether: restarting a group served across nodes", () => {
     groupId = randomUUID();
     const rows = await db.insert(modelInstallationT).values(nodeIds.map((nodeId, rank) => ({
       nodeId,
-      deploymentId,
+      legacyId: deploymentId,
       specifier: "group-model",
       estCapacity: 30,
       port: 9000 + rank,

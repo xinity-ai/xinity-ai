@@ -33,8 +33,8 @@ function loadRootEnv() {
   }
 }
 
-async function preview(body: Record<string, unknown>): Promise<Preview> {
-  const res = await ownerFetch("/api/deployment/check-capacity", { method: "POST", body: JSON.stringify(body) });
+async function preview(legacy: Record<string, unknown>): Promise<Preview> {
+  const res = await ownerFetch("/api/deployments/check-capacity", { method: "POST", body: JSON.stringify({ type: "legacy", legacy }) });
   expect(res.status).toBe(200);
   return (await res.json()) as Preview;
 }
@@ -75,14 +75,27 @@ describe("deployment placement preview", () => {
     expect(machine!.hostGb).toBeCloseTo(5.5 * GB_PER_GIB);
   });
 
-  test("names why a replica does not fit, and still shows the ones that do", async () => {
+  test("deploys the replicas that fit, and names why the rest wait", async () => {
     const liveNodes = await db.select({ driverVersions: aiNodeT.driverVersions }).from(aiNodeT)
       .where(sql`${aiNodeT.available} AND ${aiNodeT.deletedAt} IS NULL`);
     const vllmNodes = liveNodes.filter((node) => node.driverVersions.vllm !== undefined).length;
     const body = await preview({ specifier: MODEL, replicas: vllmNodes + 1 });
-    expect(body.deployable).toBe(false);
-    expect(body.reason).toBe(`"${MODEL}" does not fit in the free memory`);
+    expect(body.deployable).toBe(true);
+    // Which reason depends on whether every other vLLM machine in the test cluster has room for one more.
+    expect(body.reason).toMatch(new RegExp(
+      `^"${MODEL}" (already runs on every machine that can run it \\(\\d+\\), so \\d+ more replicas? (has|have) nowhere to go|does not fit in the free memory)$`,
+    ));
     expect(body.replicas.some((replica) => replica.machines.some((candidate) => candidate.machineName === machineName))).toBe(true);
+  });
+
+  test("plans a canary draft as one replica per member when progress splits two evenly", async () => {
+    const res = await ownerFetch("/api/deployments/check-capacity", {
+      method: "POST",
+      body: JSON.stringify({ type: "canary", canary: { replicas: 2, progress: 50, from: { specifier: MODEL, kvCacheSize: 4 }, to: { specifier: MODEL, kvCacheSize: 6 } } }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Preview;
+    expect(body.replicas.map((replica) => replica.specifier)).toEqual([MODEL, MODEL]);
   });
 
   test("refuses a machine whose reported host memory cannot take the host part", async () => {

@@ -2,7 +2,8 @@ import { apiCallRouter } from "./procedures/api-call.procedure";
 import { apiKeyRouter } from "./procedures/api-key.procedure";
 import { applicationRouter } from "./procedures/application.procedure";
 import { authRouter } from "./procedures/account.procedure";
-import { deploymentRouter } from "./procedures/deployment.procedure";
+import { deploymentsRouter } from "./procedures/deployment.procedure";
+import { deploymentFlatRouter } from "./procedures/deployment-flat.procedure";
 import { devRouter } from "./procedures/dev.procedure";
 import { organizationRouter } from "./procedures/organization.procedure";
 import { ssoRouter } from "./procedures/sso.procedure";
@@ -25,7 +26,8 @@ export const router = {
   account: authRouter,
   organization: organizationRouter,
   user: userRouter,
-  deployment: deploymentRouter,
+  deployment: deploymentFlatRouter,
+  deployments: deploymentsRouter,
   dev: devRouter,
   sso: ssoRouter,
   onboarding: onboardingRouter,

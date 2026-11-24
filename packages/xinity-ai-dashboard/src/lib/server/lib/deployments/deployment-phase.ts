@@ -1,11 +1,3 @@
-/**
- * Shared deployment-phase aggregation logic.
- *
- * Both the notification scheduler and the deployment list procedure need to
- * compute the "worst phase" across all installations belonging to a deployment.
- * This module provides the common types and aggregation function.
- */
-
 import type { lifecycleStateEnum } from "common-db";
 type LifecycleState = typeof lifecycleStateEnum.enumValues[number];
 

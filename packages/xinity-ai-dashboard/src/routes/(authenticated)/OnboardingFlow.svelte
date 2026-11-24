@@ -13,7 +13,7 @@
   import * as Card from "$lib/components/ui/card";
 
   import { Rocket, CircleCheck, CircleX, LoaderCircle, X } from "@lucide/svelte";
-  import ModelSelectorModal from "./modelhub/ModelSelectorModal.svelte";
+  import ModelSelectorModal from "$lib/components/deployments/picker/ModelSelectorModal.svelte";
 
   let { onCompleted }: { onCompleted: () => void } = $props();
 

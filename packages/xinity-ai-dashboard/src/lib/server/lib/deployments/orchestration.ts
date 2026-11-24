@@ -1,4 +1,4 @@
-import { inArray, modelDeploymentT, sql, modelInstallationT, modelInstallationStateT, aiNodeT, nodeIsLive, type ModelInstallation, type AiNode } from "common-db";
+import { inArray, sql, modelInstallationT, modelInstallationStateT, aiNodeT, nodeIsLive, type ModelInstallation, type AiNode } from "common-db";
 import { DOES_NOT_FIT_ON_NODE, GROUP_MEMBER_FEATURE, deriveInterconnectOverview, freeMemberAddress, resolveOptimizeFor, settingsEqual, sharedRdmaSubnets, type Coupling, type FootprintPart, type InstallationGroup, type OptimizationGoal } from "common-env";
 import { getDB } from "$lib/server/db";
 import { resolveSchedulable, type SchedulableModel } from "$lib/server/lib/models/model-catalog";
@@ -7,22 +7,21 @@ import { rootLogger } from "$lib/server/logging";
 import { building } from "$app/env";
 import { maxVramGb } from "$lib/server/license";
 import { config } from "$lib/server/config";
-import { buildClusterState, chargeCapacity, chargeOf, freeGbOn, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, type ClusterState, type NewInstallation } from "./cluster-state";
+import { buildClusterState, chargeCapacity, chargeOf, freeGbOn, poolCharge, rankServers, releaseInstallationFromState, replicasOf, resourcesOf, totalVramUsed, type ClusterState, type NewInstallation } from "./cluster-state";
 import { ENGINE_SCHEDULERS } from "./engines";
 import type { MemberSlot, NodeSlot, PlacementRequest } from "./engines/engine";
-import { firstFreePort, type Placement } from "./placement";
-import { requirementsForDeployments, type ModelRequirementTable } from "./requirements";
+import { firstFreePort, ownerOf, type Placement } from "./placement";
+import { advanceRollouts } from "./canary-deployment";
+import { byType, enabledDeployments } from "./deployment-types";
+import type { ModelRequirementTable } from "./requirements";
+import type { ShortfallReason } from "./shortfall-reasons";
 import type { Capacity, DeploymentStrategy } from "./strategy";
 
 const log = rootLogger.child({ name: "orchestration.mod" })
 
 export async function assembleModelRequirementTable(): Promise<ModelRequirementTable> {
-  const enabledDeployments = await getDB().select().from(modelDeploymentT).where(sql`
-    ${modelDeploymentT.enabled}
-  AND
-    ${modelDeploymentT.deletedAt} IS NULL
-  `);
-  return requirementsForDeployments(enabledDeployments);
+  const tables = await byType(await enabledDeployments(), (type, entries) => type.requirements(entries));
+  return Object.assign({}, ...tables);
 }
 
 /** Trims installations that exceed required replica count; mutates state to free their capacity. */
@@ -240,27 +239,35 @@ function allocatePort(driver: Provider, nodeId: string, state: ClusterState, pen
   return ENGINE_SCHEDULERS[driver].port(new Set(installationsOn(nodeId, state, pending).map((i) => i.port)));
 }
 
-// The license counts GPU memory, so a unified node's host part stays out of it.
-function totalVramUsed(state: ClusterState): number {
-  let used = 0;
-  for (const installs of state.installationsByServer.values()) {
-    for (const install of installs) {
-      used += install.estCapacity;
-    }
-  }
-  return used;
-}
 
-export type ShortfallReason = "catalog_unavailable" | "not_found" | "no_compatible_node" | "no_capacity" | "license_limit";
-
-export type Shortfall = { specifier: string; missing: number; reason: ShortfallReason; constraints?: PlacementConstraints & { driver: Provider }; need?: CapacityNeed };
+export type Shortfall = {
+  specifier: string;
+  /** Replicas of it that are placed, already running or planned. */
+  placed: number;
+  missing: number;
+  reason: ShortfallReason;
+  constraints?: PlacementConstraints & { driver: Provider };
+  need?: CapacityNeed;
+  /** Machines that could run the model at all. */
+  machines?: number;
+  /** VRAM the cluster uses, what the license allows, and what the next replica would add. */
+  license?: { usedGb: number; limitGb: number; neededGb: number };
+};
 
 type PlannedMember = { installation: NewInstallation; parts: FootprintPart[] };
 
 type InstallationPlan = { toInstall: NewInstallation[]; replicas: PlannedMember[][]; shortfalls: Shortfall[] };
 
-function anyNodeCouldServe(state: ClusterState, driver: Provider, constraints: PlacementConstraints): boolean {
-  return state.availableServers.some((server) => nodeCouldServe(server, driver, constraints));
+function whyNotPlaced(query: PlacementQuery, state: ClusterState, pending: NewInstallation[]): Pick<Shortfall, "reason" | "machines" | "need"> {
+  const { placement, driver, constraints = {} } = query;
+  const compatible = state.availableServers.filter((server) => nodeCouldServe(server, driver, constraints));
+  if (compatible.length === 0) {
+    return { reason: "no_compatible_node" };
+  }
+  if (compatible.every((server) => nodeExcludesPlacement(server.id, driver, placement, state, pending))) {
+    return { reason: "no_machine_left", machines: compatible.length };
+  }
+  return { reason: "no_capacity", need: capacityNeed(query, state) };
 }
 
 type MachineNeed = { machine: string; neededGb: number; freeGb: number; sharedMemory: boolean; parts: FootprintPart[] };
@@ -329,14 +336,14 @@ async function planNewInstallations(
     if (resolution.status === "unavailable") {
       log.warn({ specifier: requirement.specifier, error: resolution.error },
         "Info server unreachable; skipping installation planning for this sync cycle");
-      shortfalls.push({ specifier, missing: requirement.replicas - current, reason: "catalog_unavailable" });
+      shortfalls.push({ specifier, placed: current, missing: requirement.replicas - current, reason: "catalog_unavailable" });
       continue;
     }
     if (resolution.status === "not_found") {
       log.warn({ specifier: requirement.specifier },
         "Model not found in catalog; installations cannot be scheduled. " +
         "If this model has been intentionally removed, disable or delete the deployment.");
-      shortfalls.push({ specifier, missing: requirement.replicas - current, reason: "not_found" });
+      shortfalls.push({ specifier, placed: current, missing: requirement.replicas - current, reason: "not_found" });
       continue;
     }
     const modelInfo = resolution.model;
@@ -348,17 +355,13 @@ async function planNewInstallations(
     const need = { model: modelInfo, kvCacheGb: effectiveKvCache, goal: resolveOptimizeFor(requirement.settings) };
 
     const constraints = { minVersion, blockedVersions, requiredPlatforms, requiredFeatures };
-    const query = { placement: { deploymentId: requirement.deploymentId, specifier }, driver, need, strategy, constraints };
+    const query = { placement: { legacyId: requirement.legacyId, managedId: requirement.managedId, specifier }, driver, need, strategy, constraints };
     for (let i = 0; i < needed; i++) {
       const replica = findPlacement(query, state, toInstall);
       const groups = replica?.coupling ? memberGroups(replica.coupling, replica.members, state, toInstall) : undefined;
       if (!replica || (replica.coupling && !groups)) {
         log.warn({ specifier: requirement.specifier }, "No server with enough capacity for additional replica");
-        const reason = anyNodeCouldServe(state, driver, constraints) ? "no_capacity" : "no_compatible_node";
-        shortfalls.push({
-          specifier, missing: needed - i, reason, constraints: { ...constraints, driver },
-          need: reason === "no_capacity" ? capacityNeed(query, state) : undefined,
-        });
+        shortfalls.push({ specifier, placed: current + i, missing: needed - i, constraints: { ...constraints, driver }, ...whyNotPlaced(query, state, toInstall) });
         break;
       }
 
@@ -368,14 +371,15 @@ async function planNewInstallations(
           { specifier: requirement.specifier, usedVram, licenseVramLimit, additional: gpuGb },
           "License VRAM limit reached; skipping additional replica",
         );
-        shortfalls.push({ specifier, missing: needed - i, reason: "license_limit" });
+        shortfalls.push({ specifier, placed: current + i, missing: needed - i, reason: "license_limit", license: { usedGb: usedVram, limitGb: licenseVramLimit, neededGb: gpuGb } });
         break;
       }
 
       replicas.push(replica.members.map((member, rank) => {
         const installation: NewInstallation = {
           nodeId: member.nodeId,
-          deploymentId: requirement.deploymentId,
+          legacyId: requirement.legacyId,
+          managedId: requirement.managedId,
           specifier: requirement.specifier,
           estCapacity: member.estCapacity,
           kvCacheCapacity: effectiveKvCache,
@@ -455,13 +459,28 @@ export async function chargeUnchargedInstallations(
     if (!model) {
       return install;
     }
-    const cards = Math.max(install.gpuIds.length, 1);
-    const charge = ENGINE_SCHEDULERS[install.driver].charge(resourcesOf(idle, install.nodeId), { model, kvCacheGb: install.kvCacheCapacity }, cards);
+    const charge = rechargeOf(install, idle, model);
     if (!charge) {
-      log.warn({ installationId: install.id, specifier: install.specifier, cards }, "Installation runs on a split its catalog entry no longer allows; keeping its old charge");
+      log.warn({ installationId: install.id, specifier: install.specifier, cards: install.gpuIds.length }, "Installation runs on a split its catalog entry no longer allows; keeping its old charge");
+      return { ...install, hostCapacity: 0 };
     }
-    return { ...install, ...(charge ?? { hostCapacity: 0 }) };
+    return { ...install, estCapacity: charge.estCapacity, hostCapacity: charge.hostCapacity, maxNumSeqs: charge.maxNumSeqs };
   }));
+}
+
+function rechargeOf(install: ModelInstallation, idle: ClusterState, model: SchedulableModel) {
+  return ENGINE_SCHEDULERS[install.driver].charge(resourcesOf(idle, install.nodeId), { model, kvCacheGb: install.kvCacheCapacity }, Math.max(install.gpuIds.length, 1));
+}
+
+// Accounting for the difference between a already running replica and its possibly drifted model info data 
+async function runningParts(install: ModelInstallation, idle: ClusterState): Promise<FootprintPart[]> {
+  if (install.group) {
+    return [];
+  }
+  const model = await lookupSchedulable(install.specifier, install.driver);
+  const charge = model && rechargeOf(install, idle, model);
+  const matches = charge && Math.abs(charge.estCapacity - install.estCapacity) < 0.01 && Math.abs(charge.hostCapacity - (install.hostCapacity ?? 0)) < 0.01;
+  return matches ? charge.parts : [];
 }
 
 async function persistCharges(before: ModelInstallation[], after: ModelInstallation[]): Promise<void> {
@@ -474,9 +493,28 @@ async function persistCharges(before: ModelInstallation[], after: ModelInstallat
 
 type PlannedMachine = { machineName: string; cards: number; gpuGb: number; hostGb: number; sharedMemory: boolean; parts: FootprintPart[] };
 
-type PlannedReplica = { specifier: string; machines: PlannedMachine[] };
+type PlannedReplica = { specifier: string; running: boolean; machines: PlannedMachine[] };
 
 type PlacementPreview = { replicas: PlannedReplica[]; shortfalls: Shortfall[] };
+
+export function releaseChangedReplicas(requirements: ModelRequirementTable, changedOwnerIds: string[], state: ClusterState): ModelInstallation[][] {
+  const stays: ModelInstallation[][] = [];
+  for (const [key, installs] of state.installationsByRequirement) {
+    const replicas = replicasOf(installs);
+    if (!replicas[0] || !changedOwnerIds.includes(ownerOf(replicas[0][0]!))) {
+      continue;
+    }
+    const requirement = requirements[key];
+    const matching = requirement ? replicas.filter((replica) => settingsEqual(replica[0]!.settings, requirement.settings)) : [];
+    const kept = matching.slice(Math.max(0, matching.length - (requirement?.replicas ?? 0)));
+    for (const replica of replicas.filter((replica) => !kept.includes(replica))) {
+      replica.forEach((install) => releaseInstallationFromState(state, install));
+    }
+    state.installationsByRequirement.set(key, kept.flat());
+    stays.push(...kept);
+  }
+  return stays;
+}
 
 const lookupSchedulable: ModelLookup = async (specifier, driver) => {
   const resolution = await resolveSchedulable(specifier, driver);
@@ -490,32 +528,41 @@ async function installationsAndLiveNodes(): Promise<[ModelInstallation[], AiNode
   ]);
 }
 
-export async function currentClusterState(replacedDeploymentId?: string): Promise<{ state: ClusterState; servers: AiNode[] }> {
+export async function currentClusterState(): Promise<{ state: ClusterState; servers: AiNode[] }> {
   const [existing, servers] = await installationsAndLiveNodes();
   const liveIds = new Set(servers.map((server) => server.id));
-  const others = existing.filter((install) => liveIds.has(install.nodeId) && install.deploymentId !== replacedDeploymentId);
-  return { state: buildClusterState(await chargeUnchargedInstallations(others, servers, lookupSchedulable), servers), servers };
+  const live = existing.filter((install) => liveIds.has(install.nodeId));
+  return { state: buildClusterState(await chargeUnchargedInstallations(live, servers, lookupSchedulable), servers), servers };
 }
 
-export async function previewPlacement(requirements: ModelRequirementTable, replacedDeploymentId?: string): Promise<PlacementPreview> {
-  const { state, servers } = await currentClusterState(replacedDeploymentId);
+export async function previewPlacement(requirements: ModelRequirementTable, changedOwnerIds: string[] = []): Promise<PlacementPreview> {
+  const { state, servers } = await currentClusterState();
+  const stays = releaseChangedReplicas(requirements, changedOwnerIds, state);
   const { replicas, shortfalls } = await planNewInstallations(requirements, state, maxVramGb(), config.compute.deploymentStrategy());
   const machineName = (nodeId: string) => {
     const server = servers.find((candidate) => candidate.id === nodeId);
     return server?.machineName ?? server?.host ?? nodeId;
   };
-  return {
-    replicas: replicas.map((members) => ({
-      specifier: members[0]!.installation.specifier,
-      machines: members.map(({ installation: install, parts }) => ({
-        machineName: machineName(install.nodeId),
-        cards: Math.max(install.gpuIds?.length ?? 0, 1),
-        gpuGb: install.estCapacity,
-        hostGb: install.hostCapacity ?? 0,
-        sharedMemory: resourcesOf(state, install.nodeId).unified,
-        parts,
-      })),
+  const replicaOf = (members: { installation: Omit<NewInstallation, "port">; parts: FootprintPart[] }[], running: boolean): PlannedReplica => ({
+    specifier: members[0]!.installation.specifier,
+    running,
+    machines: members.map(({ installation: install, parts }) => ({
+      machineName: machineName(install.nodeId),
+      cards: Math.max(install.gpuIds?.length ?? 0, 1),
+      gpuGb: install.estCapacity,
+      hostGb: install.hostCapacity ?? 0,
+      sharedMemory: resourcesOf(state, install.nodeId).unified,
+      parts,
     })),
+  });
+  const idle = buildClusterState([], servers);
+  const running = await Promise.all(stays.map((replica) =>
+    Promise.all(replica.map(async (installation) => ({ installation, parts: await runningParts(installation, idle) })))));
+  return {
+    replicas: [
+      ...running.map((members) => replicaOf(members, true)),
+      ...replicas.map((members) => replicaOf(members, false)),
+    ],
     shortfalls,
   };
 }
@@ -541,6 +588,7 @@ async function installationsThatDoNotFit(): Promise<Set<string>> {
 }
 
 async function runSyncDeployedModels() {
+  await advanceRollouts();
   const requiredModels = await assembleModelRequirementTable();
   const [existing, availableServers] = await installationsAndLiveNodes();
 
