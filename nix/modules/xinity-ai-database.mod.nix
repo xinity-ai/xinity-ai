@@ -219,7 +219,7 @@
         migratePackage = lib.mkOption {
           type = lib.types.package;
           default = self'.packages.xinity-db-migrate;
-          description = "The xinity-db-migrate package containing the Drizzle migration runner. Defaults to the package built from this flake for the current platform.";
+          description = "The xinity-db-migrate package containing the Drizzle migration runner. Defaults to running the migrations of the release pinned in this flake.";
         };
       };
 
