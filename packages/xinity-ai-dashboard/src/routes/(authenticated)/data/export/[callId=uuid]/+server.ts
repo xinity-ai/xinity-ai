@@ -12,6 +12,7 @@ import { assertOrgPermission } from "$lib/server/lib/auth/permissions";
 import { getDB } from "$lib/server/db";
 import { apiCallT, inferenceCallT, sql, type ApiCallResponse, type ApiCallInputMessage, type ApiCallInputMessageContent } from "common-db";
 import { resolveCallMessages } from "$lib/server/lib/calls/call-messages";
+import { resolveCallImages, type CallImages } from "$lib/server/lib/calls/call-images";
 import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/calls/call-record";
 import { resolveFirstRating } from "$lib/server/lib/calls/call-ratings";
 import { readMediaObject, resolveToDataUri } from "$lib/server/lib/calls/media-store";
@@ -43,6 +44,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
       ...call,
       inputMessages: await resolveMessagesMedia(call.inputMessages, orgId),
       outputMessages: await resolveMessagesMedia(call.outputMessages, orgId),
+      image: call.image && await resolveImageOutputs(call.image, orgId),
     },
     rating: (rating ?? null) satisfies ApiCallResponse | null,
   };
@@ -63,8 +65,8 @@ async function loadCall(callId: string, orgId: string): Promise<CallRecord | nul
     .limit(1);
 
   if (inference) {
-    const messages = (await resolveCallMessages([callId])).get(callId);
-    return inferenceToCallRecord(inference, messages);
+    const [messages, images] = await Promise.all([resolveCallMessages([callId]), resolveCallImages([callId])]);
+    return inferenceToCallRecord(inference, messages.get(callId), images.get(callId));
   }
 
   const [legacy] = await getDB()
@@ -74,6 +76,14 @@ async function loadCall(callId: string, orgId: string): Promise<CallRecord | nul
     .limit(1);
 
   return legacy ? legacyToCallRecord(legacy) : null;
+}
+
+async function resolveImageOutputs(image: CallImages, orgId: string): Promise<CallImages> {
+  const outputs = await Promise.all(image.outputs.map(async (ref) => {
+    const sha256 = parseMediaRef(ref);
+    return (sha256 && await resolveToDataUri(sha256, orgId)) ?? ref;
+  }));
+  return { ...image, outputs };
 }
 
 async function resolveMediaPart(

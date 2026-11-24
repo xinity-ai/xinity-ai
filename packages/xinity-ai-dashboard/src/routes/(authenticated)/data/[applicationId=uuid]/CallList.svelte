@@ -144,6 +144,9 @@
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex items-center gap-2 min-w-0">
                         <span class="font-medium truncate">{call.servedModel}</span>
+                        {#if call.image}
+                          <Badge variant="outline" class="shrink-0 text-[10px] px-1.5 py-0">Image</Badge>
+                        {/if}
                         {#if frozen}
                           <Badge variant="outline" class="shrink-0 text-[10px] px-1.5 py-0">Old format</Badge>
                         {/if}

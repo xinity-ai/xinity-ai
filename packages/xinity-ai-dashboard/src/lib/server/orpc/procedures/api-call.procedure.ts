@@ -6,6 +6,7 @@ import { z } from "zod";
 import { sql, aiApiKeyT, aiApplicationT, apiCallT, inferenceCallT } from "common-db";
 import { getDB } from "$lib/server/db";
 import { resolveCallMessages } from "$lib/server/lib/calls/call-messages";
+import { resolveCallImages } from "$lib/server/lib/calls/call-images";
 import { messageIdsOfCalls, pruneUnreferencedMessages } from "$lib/server/lib/calls/chat-message-store";
 import { inferenceToCallRecord, legacyToCallRecord, type CallRecord } from "$lib/server/lib/calls/call-record";
 
@@ -40,11 +41,12 @@ async function listCallsForKey(keyId: string): Promise<CallRecord[]> {
       .orderBy(inferenceCallT.createdAt).limit(CALL_LIST_LIMIT),
   ]);
 
-  const messages = await resolveCallMessages(inference.map((call) => call.id));
+  const inferenceIds = inference.map((call) => call.id);
+  const [messages, images] = await Promise.all([resolveCallMessages(inferenceIds), resolveCallImages(inferenceIds)]);
 
   return [
     ...legacy.map(legacyToCallRecord),
-    ...inference.map((call) => inferenceToCallRecord(call, messages.get(call.id))),
+    ...inference.map((call) => inferenceToCallRecord(call, messages.get(call.id), images.get(call.id))),
   ]
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .slice(0, CALL_LIST_LIMIT);
