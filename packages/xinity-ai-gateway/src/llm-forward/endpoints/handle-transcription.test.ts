@@ -23,7 +23,7 @@ const transcriptionModel = () => ({
   driver: "vllm",
   authToken: null,
   tls: false,
-  type: "transcription",
+  type: "transcription" as const,
   tags: [],
   requestParams: {},
   maxContextLength: 131072,

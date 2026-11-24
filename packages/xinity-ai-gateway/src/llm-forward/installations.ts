@@ -2,7 +2,7 @@ import { sql, inArray, aiNodeT, modelInstallationT, modelInstallationStateT, ins
 import { getDB } from "../db";
 import type { ModelLookup } from "./model-data";
 import { config } from "../config";
-import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "common-env/model-catalog";
+import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver, type ModelType } from "common-env/model-catalog";
 import { admit as _admit, selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta, type SelectHostResult } from "./load-balancer";
 import { rootLogger } from "../logger";
 
@@ -131,7 +131,7 @@ function buildHostMeta(...sources: ModelSources[]): Map<string, HostMeta> {
 type CatalogMeta = {
   /** Name the engine itself knows the model by. Undefined when the catalog has no entry. */
   engineSpecifier?: string;
-  type?: string;
+  type?: ModelType;
   tags?: string[];
   maxContextLength: number;
   audioPositionsPerSecond?: number;

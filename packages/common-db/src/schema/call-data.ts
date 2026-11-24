@@ -14,7 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { aiApiKeyT } from "./ai-api-key";
 import { aiApplicationT } from "./ai-application";
-import { aiNodeT } from "./models";
+import { aiNodeT, modelTypeEnum } from "./models";
 import { organizationT } from "./orgSchema";
 import { userT } from "./auth";
 import type { InferSelectModel } from "drizzle-orm";
@@ -331,6 +331,8 @@ export const usageEventT = callDataSchema.table("usage_event", {
   nodeId: uuid("node_id").references(() => aiNodeT.id, { onDelete: "set null" }),
   /** False for failed requests. Filter on it to count calls, not to sum tokens: failed requests can carry tokens. */
   success: boolean().notNull().default(true),
+  /** Catalog type of the model, which decides what inputTokens and outputTokens count. Null when the catalog entry was unavailable. */
+  modelType: modelTypeEnum("model_type"),
   createdAt,
 }, table => [
   index("usage_event_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
@@ -377,6 +379,7 @@ export const usageSummaryT = callDataSchema.table("usage_summary", {
   applicationId: uuid("application_id").notNull().default(NIL_APP_UUID),
   apiKeyId: uuid("api_key_id").notNull(),
   model: text().notNull(),
+  modelType: modelTypeEnum("model_type"),
   totalCalls: integer("total_calls").notNull().default(0),
   loggedCalls: integer("logged_calls").notNull().default(0),
   inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),

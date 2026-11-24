@@ -46,10 +46,10 @@ async function rollupUsageEvents(db: DB, orgId: string) {
       RETURNING *
     )
     INSERT INTO "call_data"."usage_summary"
-      ("date", "organization_id", "application_id", "api_key_id", "model",
+      ("date", "organization_id", "application_id", "api_key_id", "model", "model_type",
        "total_calls", "logged_calls", "input_tokens", "output_tokens", "total_duration")
     SELECT
-      DATE("created_at"), "organization_id", COALESCE("application_id", ${NIL_APP_UUID}::uuid), "api_key_id", "model",
+      DATE("created_at"), "organization_id", COALESCE("application_id", ${NIL_APP_UUID}::uuid), "api_key_id", "model", MAX("model_type"),
       COUNT(*) FILTER (WHERE "success")::int,
       COUNT(*) FILTER (WHERE "success" AND "logged")::int,
       COALESCE(SUM("input_tokens"), 0),
@@ -63,9 +63,12 @@ async function rollupUsageEvents(db: DB, orgId: string) {
       "logged_calls" = "usage_summary"."logged_calls" + EXCLUDED."logged_calls",
       "input_tokens" = "usage_summary"."input_tokens" + EXCLUDED."input_tokens",
       "output_tokens" = "usage_summary"."output_tokens" + EXCLUDED."output_tokens",
-      "total_duration" = "usage_summary"."total_duration" + EXCLUDED."total_duration"
+      "total_duration" = "usage_summary"."total_duration" + EXCLUDED."total_duration",
+      "model_type" = COALESCE(EXCLUDED."model_type", "usage_summary"."model_type")
   `);
 }
+
+const countsTokens = sql`${usageEventT.modelType} IS DISTINCT FROM 'image'`;
 
 const succeededInOrg = (orgId: string) => sql`${usageEventT.organizationId} = ${orgId} AND ${usageEventT.success}`;
 
@@ -117,6 +120,8 @@ async function loadKeyMetrics(db: DB, orgId: string, userId: string): Promise<Ke
         ${succeededInOrg(orgId)}
       AND
         ${usageEventT.createdAt} > NOW() - INTERVAL '1 hour'
+      AND
+        ${countsTokens}
       `),
 
     resolveRatingTotals(userId),
@@ -186,8 +191,8 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
       date: sql<string>`to_char(DATE(${usageEventT.createdAt}), 'YYYY-MM-DD')`,
       totalCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.success})::int`,
       loggedCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.success} AND ${usageEventT.logged})::int`,
-      inputTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens}), 0)::int`,
-      outputTokens: sql<number>`COALESCE(SUM(${usageEventT.outputTokens}), 0)::int`,
+      inputTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens}) FILTER (WHERE ${countsTokens}), 0)::int`,
+      outputTokens: sql<number>`COALESCE(SUM(${usageEventT.outputTokens}) FILTER (WHERE ${countsTokens}), 0)::int`,
     })
       .from(usageEventT)
       .where(sql`
@@ -201,7 +206,7 @@ async function loadCharts(db: DB, orgId: string): Promise<ChartsData> {
     db.select({
       applicationId: usageEventT.applicationId,
       totalCalls: sql<number>`COUNT(*) FILTER (WHERE ${usageEventT.success})::int`,
-      totalTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)::int`,
+      totalTokens: sql<number>`COALESCE(SUM(${usageEventT.inputTokens} + ${usageEventT.outputTokens}) FILTER (WHERE ${countsTokens}), 0)::int`,
     })
       .from(usageEventT)
       .where(sql`
@@ -238,6 +243,7 @@ async function loadTables(db: DB, orgId: string, includeDeployments: boolean): P
       outputTokens: usageEventT.outputTokens,
       duration: usageEventT.duration,
       logged: usageEventT.logged,
+      modelType: usageEventT.modelType,
     })
       .from(usageEventT)
       .where(sql`${usageEventT.organizationId} = ${orgId}`)

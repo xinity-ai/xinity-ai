@@ -1,5 +1,6 @@
 import { getDB } from "./db";
 import { usageEventT } from "common-db";
+import type { ModelType } from "common-env/model-catalog";
 import { rootLogger } from "./logger";
 import { isRowRejection } from "./db-errors";
 
@@ -17,6 +18,7 @@ type UsageRecord = {
   /** Node that served the request; null when none was selected. */
   nodeId: string | null;
   success: boolean;
+  modelType: ModelType | null;
 };
 
 const BATCH_SIZE = 50;

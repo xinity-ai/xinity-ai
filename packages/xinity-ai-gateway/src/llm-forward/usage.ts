@@ -3,6 +3,7 @@ import { recordTokenUsage, recordModelRequest } from "../metrics";
 import { recordUsageEvent } from "../usageRecorder";
 import type { AuthResult } from "./auth";
 import type { ApiCallInputMessage, InferenceEndpoint } from "common-db";
+import type { ModelType } from "common-env/model-catalog";
 import { rootLogger } from "../logger";
 
 const log = rootLogger.child({ name: "usage" });
@@ -35,7 +36,7 @@ export function callWillBeLogged(auth: AuthResult, logCalls?: boolean): boolean 
 export type RecordUsageContext = {
   usage: UsageData | null | undefined;
   auth: AuthResult;
-  modelInfo: { specifier: string; nodeId?: string | null };
+  modelInfo: { specifier: string; nodeId?: string | null; type?: ModelType };
   callStartTime: number;
   logCalls?: boolean;
   deployment?: string;
@@ -66,6 +67,7 @@ export const recordUsage = ({
     logged: shouldLog,
     nodeId: modelInfo.nodeId ?? null,
     success: true,
+    modelType: modelInfo.type ?? null,
   });
 
   return shouldLog;
@@ -73,7 +75,7 @@ export const recordUsage = ({
 
 export type FailedRequestContext = {
   auth: AuthResult;
-  modelInfo: { specifier: string; nodeId?: string | null };
+  modelInfo: { specifier: string; nodeId?: string | null; type?: ModelType };
   callStartTime: number;
 };
 
@@ -95,6 +97,7 @@ export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRe
     logged: false,
     nodeId: modelInfo.nodeId ?? null,
     success: false,
+    modelType: modelInfo.type ?? null,
   });
 }
 

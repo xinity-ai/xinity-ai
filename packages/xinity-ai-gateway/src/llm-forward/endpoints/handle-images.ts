@@ -239,7 +239,6 @@ async function respondWithImages(call: ImageCall, backendResponse: Response): Pr
     auth: call.auth,
     modelInfo: call.modelInfo,
     callStartTime: call.callStartTime,
-    deployment: call.originalModel,
   });
   if (shouldLog) {
     logImages(call, generated.images).catch((err) => log.error({ err, endpoint: call.endpoint }, "Logging an image call failed"));

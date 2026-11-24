@@ -25,7 +25,8 @@ export function experimentalGpuVendors(gpus: readonly { vendor: string }[]): Gpu
   return [...vendors].filter((vendor) => GPU_VENDOR_SUPPORT[vendor].experimental);
 }
 
-export const ModelTypeEnum = z.enum(["embedding", "chat", "rerank", "transcription", "image"]);
+export const MODEL_TYPES = ["embedding", "chat", "rerank", "transcription", "image"] as const;
+export const ModelTypeEnum = z.enum(MODEL_TYPES);
 export type ModelType = z.infer<typeof ModelTypeEnum>;
 
 /**

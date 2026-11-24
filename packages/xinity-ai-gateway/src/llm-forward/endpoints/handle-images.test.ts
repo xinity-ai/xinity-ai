@@ -159,7 +159,7 @@ describe("handleImageGeneration", () => {
     await generate({ n: 2 });
 
     // 4 x 2 patches per image, two images, 50 default steps.
-    expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ model: "test-image", inputTokens: 0, outputTokens: 2 * 8 * 50, success: true });
+    expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ model: "test-image", inputTokens: 0, outputTokens: 2 * 8 * 50, success: true, modelType: "image" });
   });
 
   test("counts the steps a request asked for instead of the default", async () => {

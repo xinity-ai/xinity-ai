@@ -1,4 +1,5 @@
 import { sql, deploymentT } from "common-db";
+import type { ModelType } from "common-env/model-catalog";
 import { getDB } from "../db";
 import { config } from "../config";
 import { cache } from "../cache";
@@ -22,7 +23,7 @@ export type ModelInfo = {
   authToken: string | null;
   tls: boolean;
   /** Model type from the catalog. Undefined if catalog entry is unavailable. */
-  type?: string;
+  type?: ModelType;
   tags?: string[];
   maxContextLength: number;
   audioPositionsPerSecond?: number;
