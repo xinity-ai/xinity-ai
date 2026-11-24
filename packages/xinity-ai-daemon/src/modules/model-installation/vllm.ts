@@ -31,7 +31,7 @@ import { cardCapacityGib, type HardwareProfile } from "../hardware-detect";
 import { DOES_NOT_FIT_ON_NODE, chargedAgainstHostMemory, engineProfile, engineArgValue, sharesHostMemory, gpuId, maxNumSeqs, tensorParallelLayout, type DeploymentSettings, type DesiredGroup, type GpuInfo, type GroupStage, type GroupMemberHealth } from "common-env";
 import { downloadModel, largestWeightFileBytes } from "./vllm-download";
 import { devicesFor, readHostDevices, resolvePinnedCards, type GpuDevices } from "./gpu-devices";
-import type { ModelSizingFields } from "common-env/model-catalog";
+import { isKnownModelType, type ModelSizingFields, type ModelType } from "common-env/model-catalog";
 import { dropPageCache } from "./page-cache";
 import { addressInUse, coupledPaths, linkedSubnets, memberGroupFrom } from "./coupling-network";
 import { peerSourceFor, sharePeerFilesFor } from "./peer-share";
@@ -131,8 +131,19 @@ async function warmupChatModel(port: number, model: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+const VLLM_TYPE_LAUNCH: Record<ModelType, { args: string[]; chatWarmup: boolean }> = {
+  chat: { args: [], chatWarmup: true },
+  embedding: { args: ["--runner", "pooling"], chatWarmup: false },
+  rerank: { args: ["--runner", "pooling"], chatWarmup: false },
+  transcription: { args: [], chatWarmup: false },
+  image: { args: ["--omni"], chatWarmup: false },
+};
+
+// The catalog defaults an absent type to chat.
+const typeLaunch = (modelType: string | undefined) => VLLM_TYPE_LAUNCH[isKnownModelType(modelType) ? modelType : "chat"];
+
 async function markInstallationReady(installation: SyncInstallation, providerModel: string, modelType?: string): Promise<void> {
-  if (servesHttp(installation) && modelType !== "embedding" && modelType !== "rerank" && modelType !== "transcription") {
+  if (servesHttp(installation) && typeLaunch(modelType).chatWarmup) {
     await warmupChatModel(installation.port, providerModel);
   }
   await updateInstallationState(installation.id, "ready", { statusMessage: HEALTHY, ...groupReport(installation, "running") });
@@ -463,7 +474,7 @@ export function buildVllmExtraArgs(
 ): string[] {
   const capConcurrency = maxNumSeqs !== undefined && engineArgValue(args, "--max-num-seqs") === undefined;
   return [
-    ...(modelType === "embedding" || modelType === "rerank" ? ["--runner", "pooling"] : []),
+    ...typeLaunch(modelType).args,
     ...(hasToolsTag ? ["--enable-auto-tool-choice"] : []),
     ...(capConcurrency ? ["--max-num-seqs", String(maxNumSeqs)] : []),
     ...args,
