@@ -3,6 +3,7 @@ import {
   eq,
   inArray,
   inferenceCallT,
+  inferenceCallImageT,
   inferenceCallMediaT,
   inferenceCallMessageT,
   mediaObjectT,
@@ -31,6 +32,7 @@ export type InferenceCallRecord = {
   inputMessages: ApiCallInputMessage[];
   outputMessages: ApiCallInputMessage[];
   outputMediaDigests?: string[];
+  imageRequestParams?: Record<string, unknown>;
 };
 
 type PendingMessage = {
@@ -119,6 +121,12 @@ export async function recordInferenceCalls(calls: InferenceCallRecord[]): Promis
     const mediaRows = await outputMediaRows(calls, ids, tx);
     if (mediaRows.length > 0) {
       await tx.insert(inferenceCallMediaT).values(mediaRows);
+    }
+
+    const imageRows = calls.flatMap((call, index) =>
+      call.imageRequestParams ? [{ callId: ids[index]!, requestParams: call.imageRequestParams }] : []);
+    if (imageRows.length > 0) {
+      await tx.insert(inferenceCallImageT).values(imageRows);
     }
   });
 

@@ -21,11 +21,12 @@ export type ModelInfo = {
   /** Per-node auth token for authenticating requests to the daemon. */
   authToken: string | null;
   tls: boolean;
-  /** Model type from the catalog (chat, embedding, rerank, transcription). Undefined if catalog entry is unavailable. */
+  /** Model type from the catalog. Undefined if catalog entry is unavailable. */
   type?: string;
   tags?: string[];
   maxContextLength: number;
   audioPositionsPerSecond?: number;
+  defaultInferenceSteps?: number;
   requestParams?: Record<string, string>;
   /** Call when the request completes to release load-balancer resources. */
   release: () => void;

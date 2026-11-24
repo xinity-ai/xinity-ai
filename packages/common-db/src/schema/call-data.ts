@@ -248,6 +248,15 @@ export const inferenceCallMediaT = callDataSchema.table("inference_call_media", 
 ]);
 export type InferenceCallMedia = InferSelectModel<typeof inferenceCallMediaT>;
 
+export const inferenceCallImageT = callDataSchema.table("inference_call_image", {
+  callId: uuid("call_id")
+    .primaryKey()
+    .references(() => inferenceCallT.id, { onDelete: "cascade" }),
+  /** What the gateway asked the engine for besides the prompt, so a logged image can be reproduced. */
+  requestParams: jsonb("request_params").notNull().$type<Record<string, unknown>>(),
+});
+export type InferenceCallImage = InferSelectModel<typeof inferenceCallImageT>;
+
 export type Highlight = {
   start: number;
   end: number;

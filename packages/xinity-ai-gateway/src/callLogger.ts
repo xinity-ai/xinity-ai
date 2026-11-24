@@ -181,7 +181,7 @@ export async function logChatSync(input: ChatSyncInput) {
   await enqueueCalls(calls);
 }
 
-export async function logImageCall(input: ChatLogFields & { outputMediaDigests: string[] }) {
+export async function logImageCall(input: ChatLogFields & { outputMediaDigests: string[]; requestParams: Record<string, unknown> }) {
   await enqueueCalls([{
     id: input.inferenceCallId ?? undefined,
     organizationId: input.organizationId,
@@ -195,6 +195,7 @@ export async function logImageCall(input: ChatLogFields & { outputMediaDigests: 
     inputMessages: sanitizeForPg(input.inputMessages) as ApiCallInputMessage[],
     outputMessages: [],
     outputMediaDigests: input.outputMediaDigests,
+    imageRequestParams: sanitizeForPg(input.requestParams) as Record<string, unknown>,
   }]);
 }
 

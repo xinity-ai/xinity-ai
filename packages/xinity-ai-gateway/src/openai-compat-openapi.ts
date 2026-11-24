@@ -4,6 +4,7 @@ import { ChatCompletionBodySchema, ChatSyncChoiceSchema } from "./llm-forward/en
 import { CompletionBodySchema, CompletionSyncChoiceSchema } from "./llm-forward/endpoints/handle-completions";
 import { EmbeddingBodySchema } from "./llm-forward/endpoints/handle-embeddings";
 import { RerankBodySchema } from "./llm-forward/endpoints/handle-rerank";
+import { ImageGenerationBodySchema } from "./llm-forward/endpoints/handle-images";
 import { CreateResponseBodySchema, ResponseObjectSchema } from "./llm-forward/responses/schemas";
 
 const TAG = "OpenAI Compatible";
@@ -192,6 +193,13 @@ const TranscriptTextDoneEventSchema = z.looseObject({
   }).optional(),
 });
 
+const ImagesResponseSchema = z.looseObject({
+  created: z.number().int(),
+  data: z.array(z.looseObject({ b64_json: z.string() })),
+  output_format: z.enum(["png", "jpeg", "webp"]),
+  size: z.string().optional(),
+});
+
 function jsonContent(schemaRef: string) {
   return { "application/json": { schema: { $ref: schemaRef } } };
 }
@@ -248,6 +256,8 @@ export const openaiCompatSchemas = {
   TranscriptTextDeltaEvent: toSchema(TranscriptTextDeltaEventSchema),
   TranscriptTextSegmentEvent: toSchema(TranscriptTextSegmentSchema),
   TranscriptTextDoneEvent: toSchema(TranscriptTextDoneEventSchema),
+  ImageGenerationRequest: toSchema(ImageGenerationBodySchema),
+  ImagesResponse: toSchema(ImagesResponseSchema),
   CreateResponseRequest: toSchema(CreateResponseBodySchema),
   ResponseObject: toSchema(ResponseObjectSchema),
 } as Record<string, OpenAPI.SchemaObject>;
@@ -452,6 +462,28 @@ export const openaiCompatPaths = {
       responses: {
         "101": { description: "Switching to the WebSocket protocol" },
         "426": { description: "The request was not a WebSocket upgrade", content: errorJsonContent },
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/images/generations": {
+    post: {
+      tags: [TAG],
+      summary: "Generate images from a prompt",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/images/create",
+        "",
+        "Xinity notes:",
+        "- Only available for deployments of image models that generate from a prompt alone.",
+        `- ${APP_HEADER_NOTE}`,
+        "- Images are always returned as `b64_json`. `response_format: \"url\"` is rejected.",
+        "- Streaming (`stream`, `partial_images`) is not supported.",
+        "- `output_format` accepts `png` (default), `jpeg` and `webp`. `quality`, `style` and `moderation` are accepted and ignored.",
+      ].join("\n"),
+      security: SECURITY,
+      requestBody: jsonRequest("#/components/schemas/ImageGenerationRequest"),
+      responses: {
+        "200": jsonResponse("Generated images", "#/components/schemas/ImagesResponse"),
         ...errorResponses,
       },
     },

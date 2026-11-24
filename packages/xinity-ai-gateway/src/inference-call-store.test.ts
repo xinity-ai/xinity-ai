@@ -148,6 +148,19 @@ describe("recordInferenceCalls", () => {
     expect(params.filter((p) => typeof p === "string" && p.startsWith("media-"))).toEqual(["media-b"]);
   });
 
+  test("writes an image call's settings next to it, and none for other calls", async () => {
+    resolveTo(user("Hi"), assistant("Hello"));
+    const reserved = "88888888-8888-4888-8888-888888888888";
+
+    await recordInferenceCalls([
+      call(freshOrg(), { id: reserved, endpoint: "images_generations", inputMessages: [], outputMessages: [], imageRequestParams: { seed: 7 } }),
+      call(freshOrg()),
+    ]);
+
+    const params = insertsInto("inference_call_image")[0]?.params ?? [];
+    expect(params).toEqual([reserved, JSON.stringify({ seed: 7 })]);
+  });
+
   test("touches the database not at all for an empty batch", async () => {
     expect(await recordInferenceCalls([])).toEqual([]);
     expect(capturedQueries).toHaveLength(0);

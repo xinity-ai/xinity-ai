@@ -135,6 +135,7 @@ type CatalogMeta = {
   tags?: string[];
   maxContextLength: number;
   audioPositionsPerSecond?: number;
+  defaultInferenceSteps?: number;
   requestParams?: Record<string, string>;
 };
 
@@ -144,8 +145,8 @@ async function resolveCatalogMeta(specifier: string, driver: "vllm" | "ollama"):
     throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
   }
   if (result.status === "found") {
-    const { engineSpecifier, type, tags, sizing, requestParams } = result.model;
-    return { engineSpecifier, type, tags, maxContextLength: sizing.maxContextLength, audioPositionsPerSecond: sizing.audioPositionsPerSecond, requestParams };
+    const { engineSpecifier, type, tags, sizing, requestParams, defaultInferenceSteps } = result.model;
+    return { engineSpecifier, type, tags, maxContextLength: sizing.maxContextLength, audioPositionsPerSecond: sizing.audioPositionsPerSecond, requestParams, defaultInferenceSteps };
   }
   return legacyCatalogMeta(specifier, driver);
 }
@@ -242,6 +243,7 @@ export async function selectAdmittedHost({ final, early, progress, publicSpecifi
       tags: meta.tags,
       maxContextLength: meta.maxContextLength,
       audioPositionsPerSecond: meta.audioPositionsPerSecond,
+      defaultInferenceSteps: meta.defaultInferenceSteps,
       requestParams: meta.requestParams,
       release: result.release,
     },
