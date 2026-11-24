@@ -5,13 +5,14 @@ import { bytesDigest } from "common-env";
 import { formatMediaRef } from "common-env/media-ref";
 import type { StorableImageType } from "common-env/media-types";
 import { errorResponse, extractAllowedRequestParams, forwardBackendError, recordUsage, rethrowIfAborted } from "../util";
-import { withEndpointGuards } from "../endpoint-guards";
+import { pathParam, withEndpointGuards } from "../endpoint-guards";
 import { backendPostForm, backendPostJson } from "../backend-fetch";
 import type { ModelInfo } from "../model-data";
 import type { AuthResult } from "../auth";
 import { mediaStore, sniffImageType, storeMedia } from "../../media-store";
 import { logImageCall } from "../../callLogger";
 import { config } from "../../config";
+import { cache } from "../../cache";
 import { rootLogger } from "../../logger";
 
 const log = rootLogger.child({ name: "handle-images" });
@@ -37,9 +38,6 @@ export const ImageGenerationBodySchema = z.looseObject({
 type ImageRequestBody = z.infer<typeof ImageGenerationBodySchema>;
 
 function unsupportedRequest(body: ImageRequestBody): string | null {
-  if (body.response_format === "url") {
-    return "response_format 'url' is not supported, images are returned as b64_json";
-  }
   if (body.stream || body.partial_images) {
     return "Streaming image generation is not supported";
   }
@@ -204,7 +202,46 @@ type ImageCall = {
   inputImages: DecodedImage[];
   requestParams: Record<string, unknown>;
   callStartTime: number;
+  responseFormat: ResponseFormat;
+  origin: string;
 };
+
+type ResponseFormat = NonNullable<ImageRequestBody["response_format"]>;
+
+const IMAGE_FILE_TTL_SECONDS = 60 * 60;
+const IMAGE_FILE_CACHE_PREFIX = "image-file:";
+
+type CachedImageFile = { mimeType: string; data: string };
+
+// Behind a reverse proxy the URL has to name the proxy, which the request only knows from its headers.
+function requestOrigin(req: Request): string {
+  const url = new URL(req.url);
+  const forwarded = (name: string) => req.headers.get(name)?.split(",")[0]?.trim() || undefined;
+  return `${forwarded("x-forwarded-proto") ?? url.protocol.slice(0, -1)}://${forwarded("x-forwarded-host") ?? url.host}`;
+}
+
+// Cached rather than stored, so a URL never persists an image the caller's data collection setting keeps out of the call log.
+async function cacheImageFile(image: DecodedImage, origin: string): Promise<string> {
+  const fileId = Buffer.from(crypto.getRandomValues(new Uint8Array(24))).toString("base64url");
+  const file: CachedImageFile = { mimeType: image.mimeType, data: Buffer.from(image.bytes).toString("base64") };
+  await cache.set(`${IMAGE_FILE_CACHE_PREFIX}${fileId}`, JSON.stringify(file), IMAGE_FILE_TTL_SECONDS);
+  return `${origin}/media/images/${fileId}`;
+}
+
+const IMAGE_DELIVERY: Record<ResponseFormat, (image: DecodedImage, origin: string) => Promise<{ b64_json: string } | { url: string }>> = {
+  b64_json: async (image) => ({ b64_json: Buffer.from(image.bytes).toString("base64") }),
+  url: async (image, origin) => ({ url: await cacheImageFile(image, origin) }),
+};
+
+export async function handleImageFile(req: Request): Promise<Response> {
+  const fileId = pathParam(req, "fileId");
+  const cached = fileId ? await cache.get(`${IMAGE_FILE_CACHE_PREFIX}${fileId}`) : undefined;
+  if (!cached) {
+    return errorResponse("Image not found or expired", 404);
+  }
+  const file: CachedImageFile = JSON.parse(cached);
+  return new Response(Buffer.from(file.data, "base64"), { headers: { "Content-Type": file.mimeType } });
+}
 
 async function logImages(call: ImageCall, outputImages: DecodedImage[]): Promise<void> {
   const images = [...call.inputImages, ...outputImages];
@@ -247,7 +284,7 @@ async function respondWithImages(call: ImageCall, backendResponse: Response): Pr
   const size = generated.images[0]?.dimensions;
   return Response.json({
     created: generated.created,
-    data: generated.images.map((image) => ({ b64_json: Buffer.from(image.bytes).toString("base64") })),
+    data: await Promise.all(generated.images.map((image) => IMAGE_DELIVERY[call.responseFormat](image, call.origin))),
     output_format: call.requestParams.output_format,
     ...(size ? { size: `${size.width}x${size.height}` } : {}),
   });
@@ -277,6 +314,7 @@ export const handleImageGeneration = withEndpointGuards({
     }, signal);
     return respondWithImages({
       auth, modelInfo, originalModel, endpoint: "images_generations", prompt: body.prompt, inputImages: [], requestParams, callStartTime,
+      responseFormat: body.response_format ?? "b64_json", origin: requestOrigin(req),
     }, backendResponse);
   },
 });
@@ -369,6 +407,7 @@ export const handleImageEdit = withEndpointGuards({
     const backendResponse = await backendPostForm(modelInfo, "/v1/images/edits", form, signal);
     return respondWithImages({
       auth, modelInfo, originalModel, endpoint: "images_edits", prompt: body.prompt, inputImages, requestParams, callStartTime,
+      responseFormat: body.response_format ?? "b64_json", origin: requestOrigin(req),
     }, backendResponse);
   },
 });

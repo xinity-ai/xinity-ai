@@ -195,7 +195,7 @@ const TranscriptTextDoneEventSchema = z.looseObject({
 
 const ImagesResponseSchema = z.looseObject({
   created: z.number().int(),
-  data: z.array(z.looseObject({ b64_json: z.string() })),
+  data: z.array(z.looseObject({ b64_json: z.string().optional(), url: z.string().optional() })),
   output_format: z.enum(["png", "jpeg", "webp"]),
   size: z.string().optional(),
 });
@@ -476,7 +476,7 @@ export const openaiCompatPaths = {
         "Xinity notes:",
         "- Only available for deployments of image models that generate from a prompt alone.",
         `- ${APP_HEADER_NOTE}`,
-        "- Images are always returned as `b64_json`. `response_format: \"url\"` is rejected.",
+        "- `response_format: \"url\"` returns a link to `/media/images/{fileId}` that serves the image without an API key for one hour.",
         "- Streaming (`stream`, `partial_images`) is not supported.",
         "- `output_format` accepts `png` (default), `jpeg` and `webp`. `quality`, `style` and `moderation` are accepted and ignored.",
       ].join("\n"),
@@ -500,7 +500,7 @@ export const openaiCompatPaths = {
         `- ${APP_HEADER_NOTE}`,
         "- Input images must be PNG, JPEG or WebP.",
         "- `mask` is not supported.",
-        "- Images are always returned as `b64_json`. `response_format: \"url\"` is rejected.",
+        "- `response_format: \"url\"` returns a link to `/media/images/{fileId}` that serves the image without an API key for one hour.",
         "- Streaming (`stream`, `partial_images`) is not supported.",
         "- `output_format` accepts `png` (default), `jpeg` and `webp`. `quality` and `input_fidelity` are accepted and ignored.",
       ].join("\n"),
@@ -534,6 +534,32 @@ export const openaiCompatPaths = {
       responses: {
         "200": jsonResponse("Edited images", "#/components/schemas/ImagesResponse"),
         ...errorResponses,
+      },
+    },
+  },
+  "/media/images/{fileId}": {
+    parameters: [
+      {
+        name: "fileId",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+      },
+    ],
+    get: {
+      tags: ["Media"],
+      summary: "Download an image returned as a URL",
+      description: "Serves an image from a `response_format: \"url\"` response. The link needs no API key and expires after one hour.",
+      responses: {
+        "200": {
+          description: "The image",
+          content: {
+            "image/png": { schema: { type: "string", format: "binary" } },
+            "image/jpeg": { schema: { type: "string", format: "binary" } },
+            "image/webp": { schema: { type: "string", format: "binary" } },
+          },
+        },
+        "404": { description: "Unknown or expired image", content: errorJsonContent },
       },
     },
   },

@@ -1,6 +1,7 @@
-import { afterAll, afterEach, beforeAll, describe, expect, mock, test, jest } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, mock, spyOn, test, jest } from "bun:test";
 import { deflateSync, inflateSync } from "node:zlib";
-import { mockBackendFetch, modelFound } from "./test-helpers";
+import { mockBackendFetch, modelFound, requestWithParams } from "./test-helpers";
+import { cache, memoryCache } from "../../cache";
 
 import type { checkAuth as checkAuthT } from "../auth";
 import type { getModelInfo as getModelInfoT, ModelInfo } from "../model-data";
@@ -47,7 +48,7 @@ const realMediaStore = await import("../../media-store");
 const storeMedia = mock(async () => "xinity-media://stored");
 mock.module("../../media-store", () => ({ ...realMediaStore, storeMedia }));
 
-const { handleImageEdit, handleImageGeneration } = await import("./handle-images");
+const { handleImageEdit, handleImageFile, handleImageGeneration } = await import("./handle-images");
 
 function pngChunk(type: string, data: Uint8Array): Buffer {
   const chunk = Buffer.alloc(12 + data.length);
@@ -89,8 +90,13 @@ let server: ReturnType<typeof Bun.serve>;
 let backendBodies: Record<string, unknown>[] = [];
 let backendForms: Awaited<ReturnType<Request["formData"]>>[] = [];
 let backendImages = [uncompressedPng(64, 32)];
+const cacheSpies: { mockRestore(): void }[] = [];
 
 beforeAll(() => {
+  // The test config names a Redis that is not running.
+  const inProcess = memoryCache();
+  cacheSpies.push(spyOn(cache, "get").mockImplementation(inProcess.get));
+  cacheSpies.push(spyOn(cache, "set").mockImplementation(inProcess.set));
   server = Bun.serve({
     port: 0,
     fetch: async (req) => {
@@ -118,12 +124,13 @@ afterEach(() => {
 
 afterAll(() => {
   server.stop();
+  cacheSpies.forEach((spy) => spy.mockRestore());
 });
 
-function generate(body: Record<string, unknown>): Promise<Response> {
+function generate(body: Record<string, unknown>, headers: Record<string, string> = {}): Promise<Response> {
   return handleImageGeneration(new Request("http://localhost:4000/v1/images/generations", {
     method: "POST",
-    headers: { "Authorization": "Bearer test" },
+    headers: { "Authorization": "Bearer test", ...headers },
     body: JSON.stringify({ model: "test-image", prompt: "a lighthouse", ...body }),
   }));
 }
@@ -191,7 +198,6 @@ describe("handleImageGeneration", () => {
   });
 
   test.each([
-    ["a url response", { response_format: "url" }],
     ["streaming", { stream: true }],
     ["partial images", { partial_images: 2 }],
   ])("refuses %s before reaching the engine", async (_name, body) => {
@@ -199,6 +205,34 @@ describe("handleImageGeneration", () => {
 
     expect(res.status).toBe(400);
     expect(backendBodies).toHaveLength(0);
+  });
+
+  test("returns a URL that serves the image without storing it for a key that does not collect data", async () => {
+    checkAuth.mockImplementation(async () => ({ orgId: "org-1", keyId: "key-1", applicationId: "app-1", collectData: false }));
+
+    const res = await generate({ response_format: "url" });
+    const json = await res.json() as { data: { url: string; b64_json?: string }[] };
+    const url = new URL(json.data[0]!.url);
+    const file = await handleImageFile(requestWithParams(new Request(url.href), { fileId: url.pathname.split("/").at(-1)! }));
+
+    expect(json.data[0]!.b64_json).toBeUndefined();
+    expect(url.origin + url.pathname.replace(/[^/]+$/, "")).toBe("http://localhost:4000/media/images/");
+    expect(file.headers.get("content-type")).toBe("image/png");
+    expect(idatPixels(new Uint8Array(await file.arrayBuffer()))).toEqual(idatPixels(backendImages[0]!));
+    expect(storeMedia).not.toHaveBeenCalled();
+  });
+
+  test("names the reverse proxy in the URL when the request came through one", async () => {
+    const res = await generate({ response_format: "url" }, { "X-Forwarded-Proto": "https", "X-Forwarded-Host": "ai.example.com, internal:4000" });
+    const json = await res.json() as { data: { url: string }[] };
+
+    expect(json.data[0]!.url).toStartWith("https://ai.example.com/media/images/");
+  });
+
+  test("answers 404 for an unknown image URL", async () => {
+    const res = await handleImageFile(requestWithParams(new Request("http://localhost:4000/media/images/nope"), { fileId: "nope" }));
+
+    expect(res.status).toBe(404);
   });
 
   test("refuses a model that only edits images", async () => {
