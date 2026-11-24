@@ -35,7 +35,7 @@ export function callWillBeLogged(auth: AuthResult, logCalls?: boolean): boolean 
 export type RecordUsageContext = {
   usage: UsageData | null | undefined;
   auth: AuthResult;
-  modelInfo: { model: string; nodeId?: string | null };
+  modelInfo: { specifier: string; nodeId?: string | null };
   callStartTime: number;
   logCalls?: boolean;
   deployment?: string;
@@ -51,8 +51,8 @@ export const recordUsage = ({
 }: RecordUsageContext): boolean => {
   const durationMs = Date.now() - callStartTime;
   const tokens = usage && { inputTokens: normalizeInputTokens(usage), outputTokens: normalizeOutputTokens(usage) };
-  recordTokenUsage(modelInfo.model, auth.keyId, auth.orgId, tokens, { deployment, durationMs });
-  recordModelRequest(modelInfo.model, true, auth.keyId, auth.orgId);
+  recordTokenUsage(modelInfo.specifier, auth.keyId, auth.orgId, tokens, { deployment, durationMs });
+  recordModelRequest(modelInfo.specifier, true, auth.keyId, auth.orgId);
 
   const shouldLog = callWillBeLogged(auth, logCalls);
 
@@ -60,7 +60,7 @@ export const recordUsage = ({
     organizationId: auth.orgId,
     applicationId: auth.applicationId,
     apiKeyId: auth.keyId,
-    model: modelInfo.model,
+    model: modelInfo.specifier,
     ...(tokens ?? { inputTokens: 0, outputTokens: 0 }),
     duration: durationMs,
     logged: shouldLog,
@@ -73,7 +73,7 @@ export const recordUsage = ({
 
 export type FailedRequestContext = {
   auth: AuthResult;
-  modelInfo: { model: string; nodeId?: string | null };
+  modelInfo: { specifier: string; nodeId?: string | null };
   callStartTime: number;
 };
 
@@ -82,14 +82,14 @@ export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRe
     ? { inputTokens: normalizeInputTokens(usage), outputTokens: normalizeOutputTokens(usage) }
     : { inputTokens: 0, outputTokens: 0 };
   if (usage) {
-    recordTokenUsage(modelInfo.model, auth.keyId, auth.orgId, tokens);
+    recordTokenUsage(modelInfo.specifier, auth.keyId, auth.orgId, tokens);
   }
-  recordModelRequest(modelInfo.model, false, auth.keyId, auth.orgId);
+  recordModelRequest(modelInfo.specifier, false, auth.keyId, auth.orgId);
   recordUsageEvent({
     organizationId: auth.orgId,
     applicationId: auth.applicationId,
     apiKeyId: auth.keyId,
-    model: modelInfo.model,
+    model: modelInfo.specifier,
     ...tokens,
     duration: Date.now() - callStartTime,
     logged: false,
@@ -101,7 +101,7 @@ export function recordFailedRequest({ auth, modelInfo, callStartTime }: FailedRe
 /** What every surface hands to `logChatUsage`, whichever endpoint served the call. */
 export type CallLogFields = {
   readonly auth: AuthResult;
-  readonly modelInfo: { model: string; nodeId?: string | null };
+  readonly modelInfo: { model: string; specifier: string; nodeId?: string | null };
   readonly publicSpecifier: string;
   readonly endpoint: InferenceEndpoint;
   readonly inferenceCallId?: string | null;

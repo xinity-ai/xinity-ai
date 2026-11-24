@@ -95,7 +95,7 @@ describe("forwardOpenAIStream", () => {
 
   const dummyLogFields = {
     auth: { keyId: "k", orgId: "o", applicationId: null, collectData: false },
-    modelInfo: { model: "m" },
+    modelInfo: { model: "m", specifier: "m" },
     publicSpecifier: "pub-m",
     endpoint: "chat_completions" as const,
     inputMessages: [],
@@ -215,7 +215,7 @@ describe("forwardOpenAIStream usage recording", () => {
 
   const logFields = {
     auth: { keyId: "k", orgId: "o", applicationId: null, collectData: false },
-    modelInfo: { model: "m" },
+    modelInfo: { model: "m", specifier: "m" },
     publicSpecifier: "pub-m",
     endpoint: "chat_completions" as const,
     inputMessages: [],

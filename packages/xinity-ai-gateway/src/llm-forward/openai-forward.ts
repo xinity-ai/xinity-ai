@@ -215,8 +215,8 @@ export function forwardOpenAIStream<Chunk extends StreamChunkLike, Acc>({
         }
 
         if (backendError !== undefined) {
-          const { model, nodeId } = logFields.modelInfo;
-          recordBackendError(model, backendError.code ?? 500);
+          const { specifier, nodeId } = logFields.modelInfo;
+          recordBackendError(specifier, backendError.code ?? 500);
           recordOnce(() => recordFailedRequest(logFields, tracker.total()));
           if (isCausedByRequest(backendError)) {
             log.warn({ model: originalModel, backendError }, "Backend rejected the request mid-stream");
