@@ -6,7 +6,7 @@
 import { matchesVersionRange, satisfiesMinVersion } from "./semver";
 import type { Model } from "./definitions/model-definition";
 import { isKnownModelType, type ModelType } from "./definitions/model-primitives";
-import { nearestIncompatibility, type IncompatibilityReason } from "./incompatibility";
+import { z } from "zod";
 import type { GpuInfo } from "../tether-protocol";
 
 /** Minimal representation of a node's capabilities.
@@ -31,59 +31,99 @@ export type ModelNodeRequirements = {
   requiredFeatures?: string[];
 };
 
+type CheckOptions = { requireKnownVersion?: boolean };
+
+function stage<const R extends string>(
+  reasons: readonly R[],
+  check: (node: NodeCapability, req: ModelNodeRequirements, options: CheckOptions) => R | null,
+) {
+  return { reasons, check };
+}
+
 /**
- * Checks whether a single node can serve a model.
- * Returns null if compatible, or the first failing reason.
- *
- * Check order: driver, feature, version, platform, capacity.
- * This lets callers separate "structurally incompatible" from "just no capacity"
- * for greedy allocation loops. A missing feature comes before the version, since
- * upgrading the driver does not help when its build lacks the feature.
- *
- * Fail-closed for gpus: if a model requires specific GPU platforms,
- * nodes with no GPUs or wrong vendors are excluded.
+ * The checks in the order they run, which is also how far a failing node got.
+ * Capacity comes last so callers can separate "structurally incompatible" from
+ * "just no capacity" for greedy allocation loops. A missing feature comes before
+ * the version, since upgrading the driver does not help when its build lacks the feature.
  */
-export function checkNodeCompatibility(
-  node: NodeCapability,
-  req: ModelNodeRequirements,
-  options: { requireKnownVersion?: boolean } = {},
-): IncompatibilityReason | null {
-  // TODO v1.0.0 default this to true
-  const requireKnownVersion = options.requireKnownVersion ?? false;
-
-  if (!(req.driver in node.driverVersions)) return "missing_driver";
-
-  if (req.requiredFeatures && req.requiredFeatures.length > 0) {
+const COMPATIBILITY_STAGES = [
+  stage(["missing_driver"], (node, req) => (req.driver in node.driverVersions ? null : "missing_driver")),
+  stage(["missing_feature"], (node, req) => {
     const nodeFeatures = node.driverFeatures?.[req.driver] ?? [];
-    if (!req.requiredFeatures.every(f => nodeFeatures.includes(f))) {
-      return "missing_feature";
+    return (req.requiredFeatures ?? []).every(f => nodeFeatures.includes(f)) ? null : "missing_feature";
+  }),
+  stage(["version_unknown", "version_too_old", "version_blocked"], (node, req, options) => {
+    const nodeVersion = node.driverVersions[req.driver];
+    if (!nodeVersion) {
+      const constrainsVersion = req.minVersion !== undefined || (req.blockedVersions?.length ?? 0) > 0;
+      // TODO v1.0.0 default requireKnownVersion to true
+      return constrainsVersion && options.requireKnownVersion ? "version_unknown" : null;
     }
-  }
-
-  const nodeVersion = node.driverVersions[req.driver];
-  const constrainsVersion = req.minVersion !== undefined || (req.blockedVersions?.length ?? 0) > 0;
-
-  if (constrainsVersion && !nodeVersion) {
-    if (requireKnownVersion) return "version_unknown";
-  } else if (nodeVersion) {
     if (req.minVersion && !satisfiesMinVersion(nodeVersion, req.minVersion)) {
       return "version_too_old";
     }
     if (req.blockedVersions?.some(blocked => matchesVersionRange(nodeVersion, blocked.range))) {
       return "version_blocked";
     }
-  }
-
-  if (req.requiredPlatforms.length > 0) {
+    return null;
+  }),
+  // Fail-closed: a model that requires GPU platforms excludes nodes with no GPUs or other vendors.
+  stage(["wrong_platform"], (node, req) => {
+    if (req.requiredPlatforms.length === 0) {
+      return null;
+    }
     const nodeVendors = node.gpus.map(g => g.vendor);
-    if (!req.requiredPlatforms.some(p => nodeVendors.includes(p))) {
-      return "wrong_platform";
+    return req.requiredPlatforms.some(p => nodeVendors.includes(p)) ? null : "wrong_platform";
+  }),
+  stage(["insufficient_capacity"], (node, req) => (node.free < req.capacityGb ? "insufficient_capacity" : null)),
+];
+
+export type IncompatibilityReason = (typeof COMPATIBILITY_STAGES)[number]["reasons"][number];
+
+const REASON_STAGE = Object.fromEntries(
+  COMPATIBILITY_STAGES.flatMap((s, index) => s.reasons.map(reason => [reason, index])),
+) as Record<IncompatibilityReason, number>;
+
+export const IncompatibilityReasonEnum = z.enum(
+  COMPATIBILITY_STAGES.flatMap(s => s.reasons) as [IncompatibilityReason, ...IncompatibilityReason[]],
+);
+
+/** Checks whether a single node can serve a model. Returns null if compatible, or the first failing reason. */
+export function checkNodeCompatibility(
+  node: NodeCapability,
+  req: ModelNodeRequirements,
+  options: CheckOptions = {},
+): IncompatibilityReason | null {
+  for (const { check } of COMPATIBILITY_STAGES) {
+    const reason = check(node, req, options);
+    if (reason) {
+      return reason;
     }
   }
-
-  if (node.free < req.capacityGb) return "insufficient_capacity";
-
   return null;
+}
+
+/**
+ * Collapses the outcomes of several candidates into one: null if any candidate worked,
+ * otherwise the reason from the one that came closest.
+ *
+ * Reporting the closest matters: a cluster where one node is merely full and another
+ * lacks the driver is a capacity problem, not a driver problem. The same holds across
+ * the variants of one model, where a quantization that fits beats one that does not.
+ */
+export function nearestIncompatibility(
+  reasons: Iterable<IncompatibilityReason | null>,
+): IncompatibilityReason | null {
+  let closest: IncompatibilityReason = "missing_driver";
+  for (const reason of reasons) {
+    if (reason === null) {
+      return null;
+    }
+    if (REASON_STAGE[reason] > REASON_STAGE[closest]) {
+      closest = reason;
+    }
+  }
+  return closest;
 }
 
 const VLLM_FEATURES_BY_TYPE: Record<ModelType, string[]> = {
