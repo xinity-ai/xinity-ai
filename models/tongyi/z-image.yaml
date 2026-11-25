@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  z-image-turbo-vllm:
+    name: Z-Image-Turbo
+    description: |
+      A fast text-to-image model with photorealistic output and good handling of text in
+      English and Chinese. It is distilled to finish in 9 steps, so it answers in a
+      fraction of the time the large models need, at quality close to them.
+
+      It is made to run without guidance. Raising `guidance_scale` above its default of 0
+      doubles the time and quickly degrades the image. `seed` makes a result reproducible.
+    url: https://huggingface.co/Tongyi-MAI/Z-Image-Turbo
+    license: apache-2.0
+    createdAt: 2025-11-25
+    registeredAt: 2026-11-24
+    engine: vllm
+    engineSpecifier: Tongyi-MAI/Z-Image-Turbo
+    type: image
+    family: Z-Image
+    tags: [image_gen]
+    defaultInferenceSteps: 9
+    defaultGuidanceScale: 0
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      guidance_scale: number
+    sizing:
+      weightGb: 20.61   # measured resident, 19.19 GiB
+      minKvCacheGb: 0
+      maxContextLength: 512
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed

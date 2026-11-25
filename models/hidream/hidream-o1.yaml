@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  hidream-o1-image-vllm:
+    name: HiDream-O1-Image
+    description: |
+      A text-to-image model that always produces large, detailed images of about 2048
+      pixels per side. The requested `size` only chooses the aspect ratio, so a request for
+      a small square still returns 2048×2048, and wide or tall formats come back at the
+      nearest of the model's own resolutions. It renders long text in images well and
+      suits posters, covers and print work.
+
+      It runs with guidance (`guidance_scale` 5) by default, as HiDream's own inference
+      uses. Setting it to 1 roughly halves the time with somewhat flatter results. `seed`
+      makes a result reproducible.
+    url: https://huggingface.co/HiDream-ai/HiDream-O1-Image
+    license: mit
+    createdAt: 2026-05-08
+    registeredAt: 2026-11-24
+    engine: vllm
+    engineSpecifier: HiDream-ai/HiDream-O1-Image
+    type: image
+    family: HiDream-O1
+    tags: [image_gen]
+    defaultInferenceSteps: 50
+    defaultGuidanceScale: 5.0
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      guidance_scale: number
+    sizing:
+      weightGb: 15.22   # measured resident, 14.17 GiB
+      minKvCacheGb: 0
+      # One Qwen3-VL sequence carries the prompt and the image, and nothing truncates the prompt.
+      maxContextLength: 262144
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed

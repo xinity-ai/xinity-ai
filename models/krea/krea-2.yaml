@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+x-shared:
+  identity: &identity
+    license:
+      name: Krea 2 Community License
+      url: https://cdn.jsdelivr.net/gh/krea-ai/krea-2@db3984fbc6e13b34c0064990fc2d95ac64d00058/assets/hf_samples/LICENSE.pdf
+      use: conditional
+      summary: >
+        Commercial use of the model and its images is allowed only while the company and its
+        affiliates make less than US$1 million in annual revenue, above that an enterprise
+        license from Krea is needed. Every deployment must filter prompts or outputs for
+        prohibited content, and Krea's acceptable use policy applies.
+    registeredAt: 2026-11-25
+    engine: vllm
+    type: image
+    family: Krea 2
+    tags: [image_gen]
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      guidance_scale: number
+    sizing:
+      weightGb: 33.95   # measured resident, 31.61 GiB
+      minKvCacheGb: 0
+      maxContextLength: 512
+    # The repo also ships the transformer as one original-format root file, which the diffusers loader does not read.
+    downloadFilter:
+      - "*.safetensors"
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed
+
+models:
+  krea-2-raw-vllm:
+    <<: *identity
+    name: Krea 2 Raw
+    description: |
+      The base checkpoint of Krea 2, published as a starting point for fine-tuning and
+      LoRA training rather than for everyday generation. It produces natural, unpolished
+      photographic images and follows long descriptive prompts. Krea recommends Krea 2
+      Turbo for generating images, and it is much faster.
+
+      It runs 52 steps with `guidance_scale` 3.5 by default, as Krea recommends, which
+      makes it one of the slowest models here. `seed` makes a result reproducible.
+    url: https://huggingface.co/krea/Krea-2-Raw
+    createdAt: 2026-06-18
+    engineSpecifier: krea/Krea-2-Raw
+    defaultInferenceSteps: 52
+    defaultGuidanceScale: 3.5
+
+  krea-2-turbo-vllm:
+    <<: *identity
+    name: Krea 2 Turbo
+    description: |
+      A fast text-to-image model with natural, photographic output and a wide range of
+      looks, from film photography to illustration. It follows long, descriptive prompts
+      well. It is distilled to finish in 8 steps without guidance, so it answers quickly.
+
+      Raising `guidance_scale` above its default of 0 changes the look and slows it down.
+      `seed` makes a result reproducible. Commercial use is only allowed for companies
+      below Krea's revenue limit, and every deployment has to filter content.
+    url: https://huggingface.co/krea/Krea-2-Turbo
+    createdAt: 2026-06-18
+    engineSpecifier: krea/Krea-2-Turbo
+    defaultInferenceSteps: 8
+    defaultGuidanceScale: 0

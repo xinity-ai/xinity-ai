@@ -1,0 +1,62 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+x-shared:
+  identity: &identity
+    license: apache-2.0
+    registeredAt: 2026-11-24
+    engine: vllm
+    type: image
+    family: ERNIE-Image
+    tags: [image_gen]
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      guidance_scale: number
+      extra_params.apply_pe: boolean
+    sizing:
+      weightGb: 30.80   # measured resident, 28.68 GiB
+      minKvCacheGb: 0
+      maxContextLength: 512
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed
+
+models:
+  ernie-image-vllm:
+    <<: *identity
+    name: ERNIE-Image
+    description: |
+      A text-to-image model that is especially good at designed images with text, such as
+      posters, flyers and covers, in English and Chinese.
+
+      By default a built-in prompt enhancer first rewrites the prompt into a much longer,
+      detailed description. That adds detail and invented specifics such as dates or
+      taglines, and it makes every result different even with the same `seed`. Send
+      `extra_params: {"apply_pe": false}` to use the prompt as written and get
+      reproducible results.
+
+      It runs with guidance (`guidance_scale` 4) by default, as Baidu recommends. Lower
+      values are faster but garble text and composition. This is the slowest model here.
+      ERNIE-Image-Turbo gives similar designs much sooner.
+    url: https://huggingface.co/baidu/ERNIE-Image
+    createdAt: 2026-04-07
+    engineSpecifier: baidu/ERNIE-Image
+    defaultInferenceSteps: 50
+    defaultGuidanceScale: 4.0
+
+  ernie-image-turbo-vllm:
+    <<: *identity
+    name: ERNIE-Image-Turbo
+    description: |
+      The distilled variant of ERNIE-Image. It finishes in 8 steps without guidance and
+      still produces clean posters and other designed images with English and Chinese
+      text, much faster than ERNIE-Image.
+
+      By default a built-in prompt enhancer first rewrites the prompt into a much longer,
+      detailed description. That adds detail and invented specifics such as dates or
+      taglines, and it makes every result different even with the same `seed`. Send
+      `extra_params: {"apply_pe": false}` to use the prompt as written and get
+      reproducible results. Raising `guidance_scale` above 1 more than doubles the time.
+    url: https://huggingface.co/baidu/ERNIE-Image-Turbo
+    createdAt: 2026-04-02
+    engineSpecifier: baidu/ERNIE-Image-Turbo
+    defaultInferenceSteps: 8

@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  stable-diffusion-3.5-medium-vllm:
+    name: Stable Diffusion 3.5 Medium
+    description: |
+      A compact text-to-image model from Stability AI with good composition and a wide
+      range of styles, from photographs to illustration. It is small and fast, but text in
+      images often comes out misspelled, so prefer FLUX.2 [klein] or Qwen-Image when the
+      image has to contain words.
+
+      It runs with guidance (`guidance_scale` 4.5) by default, as Stability recommends.
+      Without guidance the images come out washed out. A `negative_prompt` steers the
+      image away from what it names, and `seed` makes a result reproducible. Only the
+      first 256 tokens of a prompt are read.
+    url: https://huggingface.co/stabilityai/stable-diffusion-3.5-medium
+    license:
+      name: Stability AI Community License
+      url: https://huggingface.co/stabilityai/stable-diffusion-3.5-medium/blob/main/LICENSE.md
+      use: conditional
+      summary: >
+        Free for research and non-commercial use. Commercial use is allowed only after
+        registering with Stability AI and only while the company and its affiliates make
+        less than US$1 million in annual revenue, above that an enterprise license is needed.
+    createdAt: 2024-10-29
+    registeredAt: 2026-11-25
+    engine: vllm
+    engineSpecifier: stabilityai/stable-diffusion-3.5-medium
+    type: image
+    family: Stable Diffusion 3.5
+    tags: [image_gen]
+    defaultInferenceSteps: 40
+    defaultGuidanceScale: 4.5
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      guidance_scale: number
+      negative_prompt: string
+    sizing:
+      weightGb: 16.74   # measured resident, 15.59 GiB
+      minKvCacheGb: 0
+      maxContextLength: 256
+    # The loader reads the full-precision diffusers folders, not the root single file, the ComfyUI text_encoders folder or the fp16 copies.
+    downloadFilter:
+      - "*.safetensors"
+      - "text_encoders/**"
+      - "**/*.fp16*.safetensors"
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed

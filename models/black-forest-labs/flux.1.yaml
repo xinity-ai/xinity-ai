@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+x-shared:
+  identity: &identity
+    license:
+      name: FLUX.1 [dev] Non-Commercial License
+      url: https://huggingface.co/black-forest-labs/FLUX.1-dev/blob/main/LICENSE.md
+      use: non-commercial
+      summary: >
+        The model may only be used for non-commercial purposes and outside production, for
+        example research, testing and evaluation. Generated images may be used for any
+        purpose, including commercially, but not to train a competing model. Commercial use
+        of the model needs a license from Black Forest Labs.
+    registeredAt: 2026-11-25
+    engine: vllm
+    type: image
+    family: FLUX.1
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      guidance_scale: number
+    sizing:
+      weightGb: 33.76   # measured resident, 31.44 GiB
+      minKvCacheGb: 0
+      maxContextLength: 512
+    # The repo also ships the transformer and autoencoder as original-format root files, which the diffusers loader does not read.
+    downloadFilter:
+      - "*.safetensors"
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed
+
+models:
+  flux.1-dev-vllm:
+    <<: *identity
+    name: FLUX.1 [dev]
+    description: |
+      A widely used text-to-image model with photorealistic output, strong prompt following
+      and reliable short text in images. A large ecosystem of fine-tunes and styles is
+      built on it.
+
+      `guidance_scale` (3.5 unless set) is built into the model rather than a separate
+      guidance pass, so changing it costs no time. Lower values give looser, softer
+      images and garble text. `seed` makes a result reproducible. The license allows
+      non-commercial use only, but the generated images may be used commercially.
+    url: https://huggingface.co/black-forest-labs/FLUX.1-dev
+    createdAt: 2024-07-31
+    engineSpecifier: black-forest-labs/FLUX.1-dev
+    tags: [image_gen]
+    defaultInferenceSteps: 50
+    defaultGuidanceScale: 3.5
+
+  flux.1-kontext-dev-vllm:
+    <<: *identity
+    name: FLUX.1 Kontext [dev]
+    description: |
+      Edits one input image from an instruction, such as changing an object, its colour or
+      material, the background or the style, while keeping the rest of the scene and
+      people recognisable. Sending more than one input image is refused. For new images
+      from a prompt alone, use FLUX.1 [dev] instead.
+
+      `guidance_scale` (2.5 unless set, as Black Forest Labs recommends) is built into the
+      model, so changing it costs no time. `seed` makes a result reproducible. The license
+      allows non-commercial use only, but the edited images may be used commercially.
+    url: https://huggingface.co/black-forest-labs/FLUX.1-Kontext-dev
+    createdAt: 2025-05-28
+    engineSpecifier: black-forest-labs/FLUX.1-Kontext-dev
+    tags: [image_edit]
+    defaultInferenceSteps: 28
+    defaultGuidanceScale: 2.5

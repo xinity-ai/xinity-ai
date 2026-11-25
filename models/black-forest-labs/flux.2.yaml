@@ -1,0 +1,74 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  flux.2-klein-4b-vllm:
+    name: FLUX.2 [klein] 4B
+    description: |
+      A small, very fast model that both generates images from a prompt and edits images.
+      Edits can take several input images, for example placing an object from one photo
+      into the scene of another. Quality is high for its size, which makes it the first
+      choice when answers have to come back quickly or many images are needed.
+
+      It is distilled to finish in 4 steps. Raising `num_inference_steps` makes it slower
+      and the image worse, not better. `seed` makes a result reproducible.
+    url: https://huggingface.co/black-forest-labs/FLUX.2-klein-4B
+    license: apache-2.0
+    createdAt: 2026-01-14
+    registeredAt: 2026-11-24
+    engine: vllm
+    engineSpecifier: black-forest-labs/FLUX.2-klein-4B
+    type: image
+    family: FLUX.2
+    tags: [image_gen, image_edit]
+    defaultInferenceSteps: 4
+    requestParams:
+      seed: number
+      num_inference_steps: number
+    sizing:
+      weightGb: 15.98   # measured resident, 14.88 GiB
+      minKvCacheGb: 0
+      maxContextLength: 512
+    # The repo also ships the transformer as one original-format file, which the diffusers loader does not read.
+    downloadFilter:
+      - "*.safetensors"
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed
+
+  flux.2-klein-9b-vllm:
+    name: FLUX.2 [klein] 9B
+    description: |
+      The larger sibling of FLUX.2 [klein] 4B, with the same abilities: it generates images
+      from a prompt and edits images, including combining several input images. It gives
+      more detailed images and steadier text than the 4B while staying very fast.
+
+      It is distilled to finish in 4 steps. Raising `num_inference_steps` makes it slower
+      and the image worse, not better. `seed` makes a result reproducible. The license
+      allows non-commercial use only. FLUX.2 [klein] 4B is the choice for commercial use.
+    url: https://huggingface.co/black-forest-labs/FLUX.2-klein-9B
+    license:
+      name: FLUX Non-Commercial License
+      url: https://huggingface.co/black-forest-labs/FLUX.2-klein-9B/blob/main/LICENSE.md
+      use: non-commercial
+      summary: >
+        Non-commercial use only. Any commercial deployment needs a license from Black
+        Forest Labs.
+    createdAt: 2026-01-14
+    registeredAt: 2026-11-25
+    engine: vllm
+    engineSpecifier: black-forest-labs/FLUX.2-klein-9B
+    type: image
+    family: FLUX.2
+    tags: [image_gen, image_edit]
+    defaultInferenceSteps: 4
+    requestParams:
+      seed: number
+      num_inference_steps: number
+    sizing:
+      weightGb: 34.72   # measured resident, 32.33 GiB
+      minKvCacheGb: 0
+      maxContextLength: 512
+    # The repo also ships the transformer as one original-format file, which the diffusers loader does not read.
+    downloadFilter:
+      - "*.safetensors"
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed
