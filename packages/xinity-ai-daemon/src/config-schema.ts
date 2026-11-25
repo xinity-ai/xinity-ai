@@ -94,7 +94,8 @@ const vllm = defineGroup<Vllm>({
         "vLLM Docker image (enables vllm-docker driver). "
         + "Options: vllm/vllm-openai (https://hub.docker.com/r/vllm/vllm-openai), "
         + "timothystewart6/vllm-gb10:v0.31.0-gb10.1 (https://hub.docker.com/r/timothystewart6/vllm-gb10, recommended for DGX Spark / GB10 devices), "
-        + "vllm/vllm-openai:cu130-nightly (CUDA 13 nightly for the newest NVIDIA GPUs)",
+        + "vllm/vllm-openai:cu130-nightly (CUDA 13 nightly for the newest NVIDIA GPUs), "
+        + "vllm/vllm-omni:v0.34.0 (https://hub.docker.com/r/vllm/vllm-omni, vLLM with vllm-omni, needed for image models)",
       )),
     hfCacheDir: env("VLLM_HF_CACHE_DIR", z.string().default("/var/lib/vllm/hf-cache")
       .describe("HuggingFace cache directory").meta(expert())),
