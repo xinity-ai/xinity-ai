@@ -384,6 +384,41 @@ models:
       - --speculative-config
       - '{"method":"mtp","num_speculative_tokens":2}'
 
+  qwen3.8-flash-next-nvfp4-fp8-1m-vllm:
+    <<: *qwen38-flash-next-nvfp4
+    name: Qwen3.8 Flash Next NVFP4 (1M context)
+    description: |
+      Flash Next with its window stretched to one million tokens, four times the
+      native 262K, for very large codebases or document collections in a single
+      request. In testing it found a single fact buried in the middle of a 550K
+      token prompt. Prompts that long take several minutes before the first token
+      arrives.
+
+      The stretch is fixed rather than adapted to each request, and Qwen notes it
+      can slightly weaken answers on short prompts. Pick this entry when requests
+      really go beyond 262K.
+
+      It is tuned for one conversation at a time: a single stream runs about 8%
+      faster than on the plain NVFP4 entry, while many requests at once run about
+      7% slower. For throughput serving, the plain NVFP4 entry is still the better
+      choice.
+
+      Thinking, `reasoning_effort` and tool calling behave exactly as on the plain
+      entry.
+    # Bracketed across two nodes on vLLM 0.33: (13.02 GiB needed per card), 28.03 starts at 1.00x.
+    sizing:
+      <<: *sizing-flash-next-nvfp4
+      maxContextLength: 1048576
+      minKvCacheGb: 28.03
+      weightGb: 129.5   # measured resident, 36.46 GiB per card across two plus the n-gram table
+    engineArgs:
+      - *parsers
+      - --enable-expert-parallel
+      - --quantization-config
+      - '{"targets":{"re:.*[.](self_attn[.](qkv_proj|o_proj)|linear_attn[.](in_proj_qkvz|out_proj)|mlp[.]shared_expert[.](gate_up_proj|down_proj))$":"fp8_per_channel"}}'
+      - --hf-overrides
+      - '{"text_config":{"max_position_embeddings":1048576,"rope_parameters":{"mrope_interleaved":true,"mrope_section":[11,11,10],"rope_type":"yarn","rope_theta":10000000,"partial_rotary_factor":0.25,"factor":4.0,"original_max_position_embeddings":262144}}}'
+
   qwen3.8-27b-ollama: &q38-ollama
     name: Qwen3.8 27B (Ollama)
     description: |
