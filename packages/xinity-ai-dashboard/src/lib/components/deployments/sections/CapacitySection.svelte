@@ -5,7 +5,8 @@
   import type { ModelWithSpecifier } from "common-env/model-catalog";
   import { capacityPreview, capacityRequestOf } from "./capacity-preview.svelte";
   import DeploymentCapacitySummary from "./DeploymentCapacitySummary.svelte";
-  import { kvCacheSettable, partsOf, type SectionProps } from "./deployment-sections";
+  import { kvCacheMode, kvCacheSettable, partsOf, type KvCacheMode, type SectionProps } from "./deployment-sections";
+  import { MODEL_TYPE_LABELS } from "../picker/model-labels";
   import SummaryList from "./SummaryList.svelte";
   import { formatGb } from "$lib/util";
 
@@ -40,12 +41,23 @@
   // During a rollout each model has a cache of its own, so the label names the model.
   const kvCacheLabel = (label: string | null, specifier: string) => (label ? `KV cache of ${context.models.get(specifier)?.name ?? specifier}` : "KV cache");
 
+  const FIXED_KV_CACHE_TEXT: Record<Exclude<KvCacheMode, "settable">, (model: ModelWithSpecifier) => string> = {
+    sized_by_engine: () => "Sized by the engine",
+    none: (model) => `None, ${MODEL_TYPE_LABELS[model.type].toLowerCase()} models keep no KV cache`,
+  };
+
+  function fixedKvCacheText(model: ModelWithSpecifier): string | null {
+    const mode = kvCacheMode(model);
+    return mode === "settable" ? null : FIXED_KV_CACHE_TEXT[mode](model);
+  }
+
   function kvCacheText(model: ModelWithSpecifier | null | undefined, kvCacheSize: number | null | undefined): string {
     if (model === undefined) {
       return "…";
     }
-    if (model && !kvCacheSettable(model)) {
-      return "Sized by the engine";
+    const fixed = model && fixedKvCacheText(model);
+    if (fixed) {
+      return fixed;
     }
     if (kvCacheSize) {
       return `${kvCacheSize} GB`;
@@ -119,7 +131,7 @@
           </p>
         </div>
       {:else if model}
-        <p class="text-sm text-muted-foreground wrap-break-word">{kvCacheLabel(label, member.specifier)}: sized by the engine itself.</p>
+        <p class="text-sm text-muted-foreground wrap-break-word">{kvCacheLabel(label, member.specifier)}: {fixedKvCacheText(model)}</p>
       {:else if model === null}
         <p class="text-sm text-muted-foreground wrap-break-word">{kvCacheLabel(label, member.specifier)}: the catalog does not describe this model, so it cannot be sized here.</p>
       {/if}

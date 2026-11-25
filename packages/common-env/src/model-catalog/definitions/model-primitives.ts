@@ -52,6 +52,19 @@ export function isKnownModelType(value: unknown): value is ModelType {
   return typeof value === "string" && (ModelTypeEnum.options as readonly string[]).includes(value);
 }
 
+const KEEPS_KV_CACHE: Record<ModelType, boolean> = {
+  chat: true,
+  embedding: true,
+  rerank: true,
+  transcription: true,
+  image: false,
+};
+
+/** The catalog defaults an absent type to chat. */
+export function keepsKvCache(type: string | undefined): boolean {
+  return isKnownModelType(type) ? KEEPS_KV_CACHE[type] : true;
+}
+
 export function isKnownGpuVendor(value: unknown): value is GpuVendor {
   return typeof value === "string" && (GpuVendorEnum.options as readonly string[]).includes(value);
 }
