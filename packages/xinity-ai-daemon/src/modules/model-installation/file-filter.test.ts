@@ -28,6 +28,26 @@ describe("isMistralRepo", () => {
 });
 
 describe("buildRules / selectFiles - HF default mode", () => {
+  test("keeps every component folder of a diffusers repo", () => {
+    const files = f(
+      "model_index.json",
+      "transformer/config.json",
+      "transformer/diffusion_pytorch_model.safetensors",
+      "text_encoder/model-00001-of-00002.safetensors",
+      "text_encoder/model.safetensors.index.json",
+      "tokenizer/tokenizer.json",
+      "tokenizer/merges.txt",
+      "tokenizer/chat_template.jinja",
+      "vae/diffusion_pytorch_model.safetensors",
+      "scheduler/scheduler_config.json",
+      "teaser.jpg",
+    );
+
+    const { rules } = buildRules(files, []);
+
+    expect(names(selectFiles(files, rules))).toEqual(names(files.filter((file) => !file.path.endsWith(".jpg"))));
+  });
+
   test("keeps sharded safetensors and json, drops original/, gguf, pth", () => {
     const files = f(
       "model-00001-of-00002.safetensors",

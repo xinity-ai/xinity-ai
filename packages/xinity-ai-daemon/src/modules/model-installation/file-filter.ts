@@ -26,19 +26,19 @@ export function selectFiles<T extends { path: string }>(files: readonly T[], rul
 }
 
 const HF_DEFAULTS: readonly string[] = [
-  "!*.safetensors",
-  "!*.json",
-  "!tokenizer.*",
-  "!merges.txt",
-  "!*.txt",
-  "!*.jinja",
+  "!**/*.safetensors",
+  "!**/*.json",
+  "!**/tokenizer.*",
+  "!**/merges.txt",
+  "!**/*.txt",
+  "!**/*.jinja",
   "original/**",
-  "*.gguf",
-  "*.pt",
-  "*.pth",
-  "*.onnx",
-  "*.msgpack",
-  "*.h5",
+  "**/*.gguf",
+  "**/*.pt",
+  "**/*.pth",
+  "**/*.onnx",
+  "**/*.msgpack",
+  "**/*.h5",
 ];
 
 const MISTRAL_DEFAULTS: readonly string[] = [
@@ -53,7 +53,7 @@ const MISTRAL_DEFAULTS: readonly string[] = [
   "original/**",
 ];
 
-const BIN_FALLBACK = "!*.bin";
+const BIN_FALLBACK = "!**/*.bin";
 
 export function isMistralRepo(paths: readonly string[]): boolean {
   return paths.some((p) => /^consolidated.*\.safetensors$/.test(p));
