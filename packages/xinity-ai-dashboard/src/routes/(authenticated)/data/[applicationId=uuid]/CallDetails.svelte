@@ -990,6 +990,25 @@
         </div>
 
         <div>
+          {#if activeCall.image}
+            <h3 class="mb-2 text-lg compact:mb-1 compact:text-base font-medium">Images</h3>
+            {#if activeCall.image.outputs.length > 0}
+              <div class="flex flex-wrap gap-2">
+                {#each activeCall.image.outputs as ref, index (index)}
+                  <a href={resolveMediaSrc(ref)} target="_blank" rel="noopener">
+                    <img
+                      src={resolveMediaSrc(ref)}
+                      alt="Generated image {index + 1}"
+                      class="max-h-96 max-w-full rounded border object-contain"
+                      loading="lazy"
+                    />
+                  </a>
+                {/each}
+              </div>
+            {:else}
+              <p class="text-muted-foreground text-sm">No images were stored for this call</p>
+            {/if}
+          {:else}
           <div class="flex items-center justify-between mb-2 compact:mb-1">
             <div class="flex items-center gap-1">
               <button
@@ -1125,6 +1144,7 @@
               onblur={handleBlur}
             ></textarea>
           {/if}
+          {/if}
 
           <RatingControls
             value={currentRating?.response ?? null}
@@ -1167,6 +1187,16 @@
             <p class="font-medium">{formatDurationMs(activeCall.durationMs)}</p>
           </div>
         </div>
+        {#if activeCall.image}
+          <p class="mb-1 text-xs text-muted-foreground">Image settings</p>
+          <div class="flex flex-wrap gap-2">
+            {#each Object.entries(activeCall.image.requestParams) as [key, value] (key)}
+              <Badge variant="outline" class="font-mono text-xs">
+                {key}: {typeof value === "object" ? JSON.stringify(value) : String(value)}
+              </Badge>
+            {/each}
+          </div>
+        {/if}
       </div>
 
       {@const hasMetadata = activeCall.metadata && Object.keys(activeCall.metadata).length > 0}

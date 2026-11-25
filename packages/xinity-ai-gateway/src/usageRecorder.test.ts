@@ -29,6 +29,7 @@ function sampleRecord(index: number) {
     logged: true,
     nodeId: `node-${index}`,
     success: true,
+    modelType: "chat" as const,
   };
 }
 

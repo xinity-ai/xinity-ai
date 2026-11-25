@@ -1,3 +1,4 @@
+import type { ModelType } from "common-env/model-catalog";
 export type ChecklistData = {
   hasOrganization: boolean;
   hasDeployment: boolean;
@@ -59,6 +60,7 @@ export type RecentActivity = {
   outputTokens: number;
   duration: number | null;
   logged: boolean;
+  modelType: ModelType | null;
 };
 
 export type RecentModel = {

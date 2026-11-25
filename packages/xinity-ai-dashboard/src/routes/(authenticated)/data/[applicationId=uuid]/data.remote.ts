@@ -2,6 +2,7 @@ import { command, getRequestEvent, query } from '$app/server';
 import { requireSession } from '$lib/server/lib/auth/session';
 import { getDB } from '$lib/server/db';
 import { callMatchesSearch, legacyMatchesSearch, resolveCallMessages } from "$lib/server/lib/calls/call-messages";
+import { resolveCallImages, type CallImages } from "$lib/server/lib/calls/call-images";
 import { searchPattern } from "$lib/server/lib/search-pattern";
 import { resolveReactionSummaries, resolveUserRatings } from "$lib/server/lib/calls/call-ratings";
 import { apiCallRouter } from '$lib/server/orpc/procedures/api-call.procedure';
@@ -147,6 +148,7 @@ export type DataViewCall = {
   metadata: Record<string, unknown> | null;
   inputMessages: ApiCallInputMessage[];
   outputMessage: ApiCallInputMessage | null;
+  image: CallImages | null;
 };
 
 export const getApiCalls = query(apiCallFilters, async ({ applicationId, apiKeyId, sortOption, metadataKey, metadataValue, searchQuery, limit = 50, offset = 0 }) => {
@@ -214,7 +216,7 @@ function unionOrderBy(sortOption: ApiCallSortOption) {
   return sql`created_at DESC`;
 }
 
-type PagedCall = Omit<DataViewCall, "inputMessages" | "outputMessage">;
+type PagedCall = Omit<DataViewCall, "inputMessages" | "outputMessage" | "image">;
 
 /** Two lookups for the page rather than one per row: legacy rows carry their messages inline,
  * inference rows reference them. */
@@ -222,7 +224,7 @@ async function attachMessages(page: PagedCall[]): Promise<DataViewCall[]> {
   const legacyIds = page.filter((call) => call.source === "legacy").map((call) => call.id);
   const inferenceIds = page.filter((call) => call.source === "inference").map((call) => call.id);
 
-  const [legacyRows, resolved] = await Promise.all([
+  const [legacyRows, resolved, images] = await Promise.all([
     legacyIds.length === 0
       ? []
       : getDB()
@@ -230,6 +232,7 @@ async function attachMessages(page: PagedCall[]): Promise<DataViewCall[]> {
         .from(apiCallT)
         .where(inArray(apiCallT.id, legacyIds)),
     resolveCallMessages(inferenceIds),
+    resolveCallImages(inferenceIds),
   ]);
 
   const legacyMessages = new Map(legacyRows.map((row) => [row.id, row]));
@@ -238,10 +241,12 @@ async function attachMessages(page: PagedCall[]): Promise<DataViewCall[]> {
     const own = call.source === "legacy"
       ? legacyMessages.get(call.id)
       : resolved.get(call.id);
+    const image = images.get(call.id) ?? null;
     return {
       ...call,
       inputMessages: own?.inputMessages ?? [],
-      outputMessage: own?.outputMessage ?? { role: "assistant", content: "" },
+      outputMessage: own?.outputMessage ?? (image ? null : { role: "assistant", content: "" }),
+      image,
     } as DataViewCall;
   });
 }

@@ -1,7 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { checkNodeCompatibility, blockedVersionNotes, type DeployableModel, type NodeCapability, type ModelNodeRequirements } from "./node-compat";
+import { checkNodeCompatibility, nearestIncompatibility, blockedVersionNotes, type DeployableModel, type NodeCapability, type ModelNodeRequirements } from "./node-compat";
 import type { GpuInfo } from "../tether-protocol";
-import { nearestIncompatibility } from "./incompatibility";
 
 const nvidiaGpu: GpuInfo = { vendor: "nvidia", name: "A100", vramMb: 81920 };
 const amdGpu: GpuInfo = { vendor: "amd", name: "MI300X", vramMb: 196608 };

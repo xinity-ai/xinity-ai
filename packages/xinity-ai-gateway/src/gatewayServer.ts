@@ -14,6 +14,7 @@ import { handleModelsRequest } from "./llm-forward/endpoints/handle-models";
 import { handleCreateResponseRequest, handleGetOrDeleteResponseRequest, handleCancelResponseRequest, handleListInputItemsRequest } from "./llm-forward/endpoints/handle-responses";
 import { handleRerank } from "./llm-forward/endpoints/handle-rerank";
 import { handleTranscription } from "./llm-forward/endpoints/handle-transcription";
+import { handleImageEdit, handleImageFile, handleImageGeneration } from "./llm-forward/endpoints/handle-images";
 import { closeRealtimeSessions, handleRealtimeUpgrade, realtimeSocketHandler } from "./llm-forward/endpoints/handle-realtime";
 import { handleMetrics, withMetrics } from "./metrics";
 import { LONG_RUNNING_ROUTES } from "./serve-config";
@@ -111,6 +112,9 @@ const meteredEndpoints: Array<[string, RouteHandler]> = [
   ["/v1/completions", handleCompletion],
   ["/v1/embeddings", handleEmbeddingGeneration],
   ["/v1/audio/transcriptions", handleTranscription],
+  ["/v1/images/generations", handleImageGeneration],
+  ["/v1/images/edits", handleImageEdit],
+  ["/media/images/:fileId", handleImageFile],
   ["/v1/models", handleModelsRequest],
   ["/v1/rerank", handleRerank],
   ["/v1/responses", handleCreateResponseRequest],

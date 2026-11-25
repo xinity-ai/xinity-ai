@@ -1,6 +1,6 @@
 import type { Component } from "svelte";
 import type { z } from "zod";
-import type { Engine, ModelWithSpecifier, NodeCapability } from "common-env/model-catalog";
+import { keepsKvCache, type Engine, type ModelWithSpecifier, type NodeCapability } from "common-env/model-catalog";
 import {
   MIN_CANARY_REPLICAS,
   type CanaryDeploymentPatchDto,
@@ -61,10 +61,13 @@ type Section<T extends SectionType> = {
 
 const GENERAL = { title: "General", component: GeneralSection } as const;
 const CAPACITY = { title: "Capacity", component: CapacitySection } as const;
-const KV_CACHE_SETTABLE: Record<Engine, boolean> = { vllm: true, ollama: false };
+export type KvCacheMode = "settable" | "sized_by_engine" | "none";
 
 /** Ollama sizes its cache itself, so only other engines take a KV cache size. */
-export const kvCacheSettable = (model: ModelWithSpecifier) => KV_CACHE_SETTABLE[model.engine];
+const ENGINE_KV_CACHE: Record<Engine, KvCacheMode> = { vllm: "settable", ollama: "sized_by_engine" };
+
+export const kvCacheMode = (model: ModelWithSpecifier): KvCacheMode => (keepsKvCache(model.type) ? ENGINE_KV_CACHE[model.engine] : "none");
+export const kvCacheSettable = (model: ModelWithSpecifier) => kvCacheMode(model) === "settable";
 export const hasSettings = (model: ModelWithSpecifier) => model.engine === "vllm" || model.type === "transcription";
 
 const SETTINGS = {

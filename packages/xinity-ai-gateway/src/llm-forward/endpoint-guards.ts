@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { resolveModel, type ResolvedModel } from "./ai-sdk";
+import { resolveModel, type BodyReader, type ResolvedModel } from "./ai-sdk";
 import { errorResponse, handleEndpointError, recordFailedRequest, recordUsage, validateModelType, validationError } from "./util";
 import { checkAuth, type AuthResult } from "./auth";
 import type { Logger } from "common-log";
@@ -56,6 +56,7 @@ export type EndpointGuardOptions<TBody> = {
   bodySchema: z.ZodType<TBody>;
   log: Logger;
   method?: "POST" | "GET";
+  readBody?: BodyReader;
   handler: (ctx: EndpointHandlerContext<TBody>) => Promise<Response>;
 };
 
@@ -97,7 +98,7 @@ export function withEndpointGuards<TBody>(
         return errorResponse("Method not allowed", 405);
       }
 
-      const resolveResult = await resolveModel(req);
+      const resolveResult = await resolveModel(req, opts.readBody);
       if (resolveResult instanceof Response) {
         return resolveResult;
       }

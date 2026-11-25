@@ -75,7 +75,7 @@ The daemon deletes every model in this instance that is not deployed to the node
 
 ### vLLM
 
-Set `VLLM_BACKEND` to choose the backend (`docker`, the default, or `systemd`). It is not inferred from which of `VLLM_PATH`/`VLLM_DOCKER_IMAGE` is set. Then set `VLLM_DOCKER_IMAGE` (for the Docker backend) or `VLLM_PATH` (path to binary, for the systemd backend) in the daemon's environment. On DGX Spark and other GB10 devices, use `timothystewart6/vllm-gb10:v0.31.0-gb10.1`.
+Set `VLLM_BACKEND` to choose the backend (`docker`, the default, or `systemd`). It is not inferred from which of `VLLM_PATH`/`VLLM_DOCKER_IMAGE` is set. Then set `VLLM_DOCKER_IMAGE` (for the Docker backend) or `VLLM_PATH` (path to binary, for the systemd backend) in the daemon's environment. `VLLM_DOCKER_IMAGE` accepts any vLLM image. For DGX Spark and other GB10 devices, `timothystewart6/vllm-gb10:v0.31.0-gb10.1` is a recommended choice. Image models need an image that includes vllm-omni, for example `vllm/vllm-omni:v0.34.0`.
 
 ### Node Coupling
 
@@ -145,7 +145,7 @@ How this node runs vLLM models.
 | `VLLM_ENV_DIR` | `/etc/vllm` | vLLM environment config directory. |
 | `VLLM_TEMPLATE_UNIT_PATH` | `/etc/systemd/system/vllm-driver@.service` | vLLM systemd template unit path. |
 | `VLLM_PATH` | (unset) | Path to the vllm binary. With VLLM_BACKEND=systemd it is executed directly; with VLLM_BACKEND=docker it is the entrypoint used inside the image (default: vllm on the image PATH). Install: https://docs.vllm.ai/en/latest/getting_started/installation/index.html. |
-| `VLLM_DOCKER_IMAGE` | (unset) | vLLM Docker image (enables vllm-docker driver). Options: vllm/vllm-openai (https://hub.docker.com/r/vllm/vllm-openai), timothystewart6/vllm-gb10:v0.31.0-gb10.1 (https://hub.docker.com/r/timothystewart6/vllm-gb10, recommended for DGX Spark / GB10 devices), vllm/vllm-openai:cu130-nightly (CUDA 13 nightly for the newest NVIDIA GPUs). |
+| `VLLM_DOCKER_IMAGE` | (unset) | vLLM Docker image (enables vllm-docker driver). Options: vllm/vllm-openai (https://hub.docker.com/r/vllm/vllm-openai), timothystewart6/vllm-gb10:v0.31.0-gb10.1 (https://hub.docker.com/r/timothystewart6/vllm-gb10, recommended for DGX Spark / GB10 devices), vllm/vllm-openai:cu130-nightly (CUDA 13 nightly for the newest NVIDIA GPUs), vllm/vllm-omni:v0.34.0 (https://hub.docker.com/r/vllm/vllm-omni, vLLM with vllm-omni, needed for image models). |
 | `VLLM_HF_CACHE_DIR` | `/var/lib/vllm/hf-cache` | HuggingFace cache directory. |
 | `VLLM_TRITON_CACHE_DIR` | `/var/lib/vllm/triton-cache` | Triton cache directory. |
 | `VLLM_HF_TOKEN` | (unset) | HuggingFace token for downloading private or gated models. Secret. Can be set to `@dynamic` to take its value from the dashboard. |

@@ -57,6 +57,7 @@ While a deployment serves, its page has a Test button that opens the test fittin
 - **Chat:** Multi-turn streaming conversation with reasoning content display.
 - **Embedding:** Single text input returning the vector with dimensions and token stats.
 - **Rerank:** Query plus documents, returning ranked results with relevance scores.
+- **Image:** A prompt, returning the generated image with its size and the request's duration. Models that only edit images have no test.
 
 ## Compute Dashboard
 
@@ -66,7 +67,7 @@ Requires Prometheus (`PROMETHEUS_URL`) for live utilization and energy readings.
 
 ## Data Management
 
-Data is organized by **applications.** Each application groups API calls made with API keys scoped to it. Calls without an application appear in an "Uncategorized" section (use the `X-Application` header to route calls).
+Data is organized by **applications.** Each application groups API calls made with API keys scoped to it. Calls without an application appear in an "Uncategorized" section (use the `X-Application` header to route calls). Image calls show their prompt, their input and generated images, and the settings they ran with.
 
 ### Filtering and search
 

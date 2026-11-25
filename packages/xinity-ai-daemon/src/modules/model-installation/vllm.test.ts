@@ -518,6 +518,29 @@ describe("syncVllmInstallations$", () => {
     }
   });
 
+  test("starts image models through vllm-omni and does not warm them up with a chat completion", async () => {
+    const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+    try {
+      const id = crypto.randomUUID();
+      const inst = makeInstallation("image-model", id, 9109);
+      mockResolveEntry.mockImplementation((specifier) => Promise.resolve(catalogEntry(specifier, { type: "image" })));
+      const ops = createMockOps({
+        listRunning: mock(() => Promise.resolve([])),
+        checkHealth: mock(() => Promise.resolve(true)),
+        isAlive: mock(() => Promise.resolve(true)),
+      });
+
+      await syncSettled([inst], ops);
+
+      const startCall = (ops.start as ReturnType<typeof mock>).mock.calls[0]!;
+      expect(startCall[1].extraArgs).toContain("--omni");
+      const warmupCalls = fetchSpy.mock.calls.filter(([url]) => String(url).includes("/v1/chat/completions"));
+      expect(warmupCalls).toHaveLength(0);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   test("passes settings through to the start config", async () => {
     const id = crypto.randomUUID();
     const settings = { version: 1 as const, maxAudioInputDurationS: 1200, maxAudioInputFileSizeMB: 50 };

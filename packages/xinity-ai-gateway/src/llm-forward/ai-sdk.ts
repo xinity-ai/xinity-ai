@@ -82,23 +82,32 @@ export async function resolveAuth(req: Request): Promise<Response | AuthResult> 
   return { ...authCheckResponse, applicationId: appId };
 }
 
+export type BodyReader = (req: Request) => Promise<Record<string, unknown> | Response>;
+
+async function readJsonBody(req: Request): Promise<Record<string, unknown> | Response> {
+  try {
+    const parsed = await req.json();
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return errorResponse("Unsupported data type", 422);
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return errorResponse("Invalid JSON body", 400);
+  }
+}
+
 export async function resolveModel(
-  req: Request
+  req: Request,
+  readBody: BodyReader = readJsonBody,
 ): Promise<Response | ResolvedModel> {
   const auth = await resolveAuth(req);
   if (auth instanceof Response) {
     return auth;
   }
 
-  let body: Record<string, unknown>;
-  try {
-    const parsed = await req.json();
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return errorResponse("Unsupported data type", 422);
-    }
-    body = parsed as Record<string, unknown>;
-  } catch {
-    return errorResponse("Invalid JSON body", 400);
+  const body = await readBody(req);
+  if (body instanceof Response) {
+    return body;
   }
 
   const originalModel = body.model;

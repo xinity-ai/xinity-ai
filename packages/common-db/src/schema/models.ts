@@ -2,11 +2,13 @@ import { type InferSelectModel, sql } from "drizzle-orm";
 import { pgEnum, pgTable, real, text, timestamp, uuid, boolean, integer, jsonb, index, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { organizationT } from "./orgSchema";
 import { DEPLOYMENT_TYPES, GROUP_STAGES, type DeploymentSettings, type RolloutAdvance, type GpuInfo, type InstallationGroup, type InterconnectPort } from "common-env";
+import { MODEL_TYPES } from "common-env/model-catalog";
 
 export const lifecycleStateEnum = pgEnum("lifecycle_state", ["downloading", "installing", "ready", "failed"]);
 export const inferenceDriverEnum = pgEnum("inference_driver", ["ollama", "vllm"]);
 export const groupStageEnum = pgEnum("group_stage", GROUP_STAGES);
 export const deploymentTypeEnum = pgEnum("deployment_type", DEPLOYMENT_TYPES);
+export const modelTypeEnum = pgEnum("model_type", MODEL_TYPES);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
 const updatedAt = timestamp("updated_at", { withTimezone: true })

@@ -8,7 +8,7 @@ import { z } from "zod";
 export const EngineEnum = z.enum(["vllm", "ollama"]);
 export type Engine = z.infer<typeof EngineEnum>;
 
-export const TagEnum = z.enum(["tools", "custom_code", "vision", "diarization", "realtime"]);
+export const TagEnum = z.enum(["tools", "custom_code", "vision", "diarization", "realtime", "image_gen", "image_edit", "inpaint"]);
 export type Tag = z.infer<typeof TagEnum>;
 
 export const GpuVendorEnum = z.enum(["nvidia", "amd", "intel"]);
@@ -25,7 +25,8 @@ export function experimentalGpuVendors(gpus: readonly { vendor: string }[]): Gpu
   return [...vendors].filter((vendor) => GPU_VENDOR_SUPPORT[vendor].experimental);
 }
 
-export const ModelTypeEnum = z.enum(["embedding", "chat", "rerank", "transcription"]);
+export const MODEL_TYPES = ["embedding", "chat", "rerank", "transcription", "image"] as const;
+export const ModelTypeEnum = z.enum(MODEL_TYPES);
 export type ModelType = z.infer<typeof ModelTypeEnum>;
 
 /**
@@ -49,6 +50,19 @@ export function isKnownEngine(value: unknown): value is Engine {
 
 export function isKnownModelType(value: unknown): value is ModelType {
   return typeof value === "string" && (ModelTypeEnum.options as readonly string[]).includes(value);
+}
+
+const KEEPS_KV_CACHE: Record<ModelType, boolean> = {
+  chat: true,
+  embedding: true,
+  rerank: true,
+  transcription: true,
+  image: false,
+};
+
+/** The catalog defaults an absent type to chat. */
+export function keepsKvCache(type: string | undefined): boolean {
+  return isKnownModelType(type) ? KEEPS_KV_CACHE[type] : true;
 }
 
 export function isKnownGpuVendor(value: unknown): value is GpuVendor {

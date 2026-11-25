@@ -1,7 +1,7 @@
 <script lang="ts">
   import Chart from "$lib/components/Chart.svelte";
   import type { ChartConfiguration } from "chart.js";
-  import type { KeyMetrics, ChartsData, TablesData } from "./dashboard.types";
+  import type { KeyMetrics, ChartsData, TablesData, RecentActivity } from "./dashboard.types";
   import { humanDate, formatDurationMs } from "$lib/util";
   import { formatTokens } from "$lib/compute/format";
 
@@ -18,6 +18,10 @@
 
   function formatTokenAvg(val: number | null): string {
     return val == null ? "-" : formatTokens(val);
+  }
+
+  function usageUnit(activity: RecentActivity): string {
+    return activity.modelType === "image" ? "image units" : "tokens";
   }
 </script>
 
@@ -355,8 +359,8 @@
             <thead class="bg-gray-50">
               <tr>
                 <th scope="col" class="px-6 py-3 compact:py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
-                <th scope="col" class="px-6 py-3 compact:py-1.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Input Tokens</th>
-                <th scope="col" class="px-6 py-3 compact:py-1.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Output Tokens</th>
+                <th scope="col" class="px-6 py-3 compact:py-1.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Input</th>
+                <th scope="col" class="px-6 py-3 compact:py-1.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Output</th>
                 <th scope="col" class="px-6 py-3 compact:py-1.5 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Duration</th>
                 <th scope="col" class="px-6 py-3 compact:py-1.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
                 <th scope="col" class="px-6 py-3 compact:py-1.5 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Logged</th>
@@ -369,10 +373,10 @@
                     <div class="text-sm font-medium text-gray-900">{activity.model}</div>
                   </td>
                   <td class="px-6 py-4 compact:py-2 whitespace-nowrap text-right">
-                    <div class="text-sm text-gray-500">{formatTokens(activity.inputTokens)}</div>
+                    <div class="text-sm text-gray-500">{formatTokens(activity.inputTokens)} {usageUnit(activity)}</div>
                   </td>
                   <td class="px-6 py-4 compact:py-2 whitespace-nowrap text-right">
-                    <div class="text-sm text-gray-500">{formatTokens(activity.outputTokens)}</div>
+                    <div class="text-sm text-gray-500">{formatTokens(activity.outputTokens)} {usageUnit(activity)}</div>
                   </td>
                   <td class="px-6 py-4 compact:py-2 whitespace-nowrap text-right">
                     <div class="text-sm text-gray-500">{formatDurationMs(activity.duration)}</div>

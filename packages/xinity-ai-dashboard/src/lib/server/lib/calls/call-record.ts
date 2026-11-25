@@ -4,6 +4,7 @@
  */
 import type { apiCallT, ApiCallInputMessage, InferenceCall, InferenceEndpoint } from "common-db";
 import type { CallMessages } from "./call-messages";
+import type { CallImages } from "./call-images";
 
 export type CallRecord = {
   id: string;
@@ -19,11 +20,13 @@ export type CallRecord = {
   metadata: Record<string, unknown>;
   inputMessages: ApiCallInputMessage[];
   outputMessages: ApiCallInputMessage[];
+  image: CallImages | null;
 };
 
 export function inferenceToCallRecord(
   call: InferenceCall,
   messages: CallMessages | undefined,
+  image: CallImages | undefined,
 ): CallRecord {
   return {
     id: call.id,
@@ -39,6 +42,7 @@ export function inferenceToCallRecord(
     metadata: call.metadata,
     inputMessages: messages?.inputMessages ?? [],
     outputMessages: messages?.outputMessage ? [messages.outputMessage] : [],
+    image: image ?? null,
   };
 }
 
@@ -58,5 +62,6 @@ export function legacyToCallRecord(call: typeof apiCallT.$inferSelect): CallReco
     metadata: call.metadata ?? {},
     inputMessages: call.inputMessages,
     outputMessages: call.outputMessage ? [call.outputMessage] : [],
+    image: null,
   };
 }

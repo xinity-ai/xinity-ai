@@ -10,10 +10,14 @@ type CapturedQuery = { sql: string; params: unknown[] };
 const capturedQueries: CapturedQuery[] = [];
 
 let messageRows: Array<{ id: string; sha256: string }> = [];
+let mediaRows: Array<{ id: string; sha256: string }> = [];
 
 const preparedProto = Object.getPrototypeOf(db.select().from(inferenceCallT).prepare("_spy"));
 jest.spyOn(preparedProto, "execute").mockImplementation(async function (this: { queryString: string; params: unknown[] }) {
   capturedQueries.push({ sql: this.queryString, params: this.params });
+  if (this.queryString.includes("\"media_object\"")) {
+    return mediaRows;
+  }
   return this.queryString.includes("chat_message") ? messageRows : [];
 });
 
@@ -59,6 +63,7 @@ function call(orgId: string, overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   capturedQueries.length = 0;
   messageRows = [];
+  mediaRows = [];
 });
 
 describe("recordInferenceCalls", () => {
@@ -121,6 +126,39 @@ describe("recordInferenceCalls", () => {
     await recordInferenceCalls([call(freshOrg(), { inputMessages: [], outputMessages: [] })]);
 
     expect(capturedQueries[0]?.params).toContain("{}");
+  });
+
+  test("links the media a call produced in the order the model returned it", async () => {
+    mediaRows = [{ id: "media-b", sha256: "bbbb" }, { id: "media-a", sha256: "aaaa" }];
+
+    await recordInferenceCalls([call(freshOrg(), { inputMessages: [], outputMessages: [], outputMediaDigests: ["aaaa", "bbbb"] })]);
+
+    const params = insertsInto("inference_call_media")[0]?.params ?? [];
+    expect(params.filter((p) => typeof p === "string" && p.startsWith("media-"))).toEqual(["media-a", "media-b"]);
+    expect(params.filter((p) => typeof p === "number")).toEqual([0, 1]);
+  });
+
+  test("logs a call without the media whose upload failed, keeping the rest", async () => {
+    mediaRows = [{ id: "media-b", sha256: "bbbb" }];
+
+    await recordInferenceCalls([call(freshOrg(), { inputMessages: [], outputMessages: [], outputMediaDigests: ["aaaa", "bbbb"] })]);
+
+    expect(insertsInto("inference_call")).toHaveLength(1);
+    const params = insertsInto("inference_call_media")[0]?.params ?? [];
+    expect(params.filter((p) => typeof p === "string" && p.startsWith("media-"))).toEqual(["media-b"]);
+  });
+
+  test("writes an image call's settings next to it, and none for other calls", async () => {
+    resolveTo(user("Hi"), assistant("Hello"));
+    const reserved = "88888888-8888-4888-8888-888888888888";
+
+    await recordInferenceCalls([
+      call(freshOrg(), { id: reserved, endpoint: "images_generations", inputMessages: [], outputMessages: [], imageRequestParams: { seed: 7 } }),
+      call(freshOrg()),
+    ]);
+
+    const params = insertsInto("inference_call_image")[0]?.params ?? [];
+    expect(params).toEqual([reserved, JSON.stringify({ seed: 7 })]);
   });
 
   test("touches the database not at all for an empty batch", async () => {

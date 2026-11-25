@@ -2,7 +2,7 @@ import { sql, inArray, aiNodeT, modelInstallationT, modelInstallationStateT, ins
 import { getDB } from "../db";
 import type { ModelLookup } from "./model-data";
 import { config } from "../config";
-import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver } from "common-env/model-catalog";
+import { createCatalogClient, createInfoserverClient, resolveTagsForDriver, resolveRequestParamsForDriver, type ModelType } from "common-env/model-catalog";
 import { admit as _admit, selectHost as _selectHost, type LoadBalanceStrategy, type HostMeta, type SelectHostResult } from "./load-balancer";
 import { rootLogger } from "../logger";
 
@@ -131,10 +131,12 @@ function buildHostMeta(...sources: ModelSources[]): Map<string, HostMeta> {
 type CatalogMeta = {
   /** Name the engine itself knows the model by. Undefined when the catalog has no entry. */
   engineSpecifier?: string;
-  type?: string;
+  type?: ModelType;
   tags?: string[];
   maxContextLength: number;
   audioPositionsPerSecond?: number;
+  defaultInferenceSteps?: number;
+  defaultGuidanceScale?: number;
   requestParams?: Record<string, string>;
 };
 
@@ -144,8 +146,8 @@ async function resolveCatalogMeta(specifier: string, driver: "vllm" | "ollama"):
     throw new Error(`Infoserver unavailable for "${specifier}": ${result.error}`);
   }
   if (result.status === "found") {
-    const { engineSpecifier, type, tags, sizing, requestParams } = result.model;
-    return { engineSpecifier, type, tags, maxContextLength: sizing.maxContextLength, audioPositionsPerSecond: sizing.audioPositionsPerSecond, requestParams };
+    const { engineSpecifier, type, tags, sizing, requestParams, defaultInferenceSteps, defaultGuidanceScale } = result.model;
+    return { engineSpecifier, type, tags, maxContextLength: sizing.maxContextLength, audioPositionsPerSecond: sizing.audioPositionsPerSecond, requestParams, defaultInferenceSteps, defaultGuidanceScale };
   }
   return legacyCatalogMeta(specifier, driver);
 }
@@ -242,6 +244,8 @@ export async function selectAdmittedHost({ final, early, progress, publicSpecifi
       tags: meta.tags,
       maxContextLength: meta.maxContextLength,
       audioPositionsPerSecond: meta.audioPositionsPerSecond,
+      defaultInferenceSteps: meta.defaultInferenceSteps,
+      defaultGuidanceScale: meta.defaultGuidanceScale,
       requestParams: meta.requestParams,
       release: result.release,
     },

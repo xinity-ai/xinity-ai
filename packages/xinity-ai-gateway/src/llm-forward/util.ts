@@ -418,11 +418,11 @@ export function backendRouteFields(route: BackendRoute): Record<string, unknown>
 export async function forwardBackendError(
   backendResponse: Response,
   log: Logger,
-  route: BackendRoute & { model: string },
+  route: BackendRoute,
 ): Promise<Response> {
   const text = await backendResponse.text().catch(() => "");
   const fields = { ...backendRouteFields(route), status: backendResponse.status, body: text };
-  recordBackendError(route.model, backendResponse.status);
+  recordBackendError(route.specifier, backendResponse.status);
   const status = mapBackendStatusToClient(backendResponse.status);
 
   const failWithReference = (logMessage: string, clientStatus: number) => {

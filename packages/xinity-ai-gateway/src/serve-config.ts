@@ -3,5 +3,7 @@ export const LONG_RUNNING_ROUTES = new Set([
   "/v1/chat/completions",
   "/v1/completions",
   "/v1/audio/transcriptions",
+  "/v1/images/generations",
+  "/v1/images/edits",
   "/v1/responses",
 ]);

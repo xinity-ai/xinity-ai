@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { SvelteMap } from "svelte/reactivity";
-  import type { ModelWithSpecifier } from "common-env/model-catalog";
+  import type { ModelType, ModelWithSpecifier } from "common-env/model-catalog";
   import { browser } from "$app/env";
   import { goto, invalidate } from "$app/navigation";
   import { ArrowLeft, Copy, MessageSquare, Trash2 } from "@lucide/svelte";
@@ -30,6 +30,7 @@
   import TestChatModal from "./TestChatModal.svelte";
   import TestEmbeddingModal from "./TestEmbeddingModal.svelte";
   import TestRerankModal from "./TestRerankModal.svelte";
+  import TestImageModal from "./TestImageModal.svelte";
 
   let { data }: { data: PageData } = $props();
 
@@ -92,10 +93,16 @@
 
   const nameOf = (specifier: string) => models.get(specifier)?.name ?? specifier;
 
-  const servedType = $derived(deployment ? models.get(viewOf(deployment).models(deployment).to)?.type : undefined);
+  const servedModel = $derived(deployment ? models.get(viewOf(deployment).models(deployment).to) : undefined);
 
-  const TESTABLE_TYPES = ["chat", "embedding", "rerank"] as const;
-  const testableType = $derived(TESTABLE_TYPES.find((testable) => testable === servedType) ?? null);
+  // The image test generates, so a model that only edits has nothing to test it with.
+  const TESTABLE: Partial<Record<ModelType, (model: ModelWithSpecifier) => boolean>> = {
+    chat: () => true,
+    embedding: () => true,
+    rerank: () => true,
+    image: (model) => model.tags.includes("image_gen"),
+  };
+  const testableType = $derived(servedModel && TESTABLE[servedModel.type]?.(servedModel) ? servedModel.type : null);
 
   // Public names are unique in an organization, so the General section can say so before saving.
   // Narrowed to the id, so a refresh of the same deployment does not ask again.
@@ -283,6 +290,8 @@
     <TestEmbeddingModal open={testing} deployment={testing ? deployment : null} close={() => (testing = false)} />
   {:else if testableType === "rerank"}
     <TestRerankModal open={testing} deployment={testing ? deployment : null} close={() => (testing = false)} />
+  {:else if testableType === "image"}
+    <TestImageModal open={testing} deployment={testing ? deployment : null} close={() => (testing = false)} />
   {/if}
 
   <ConfirmDialog

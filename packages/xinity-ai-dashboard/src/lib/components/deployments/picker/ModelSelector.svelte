@@ -13,15 +13,17 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Badge } from "$lib/components/ui/badge";
+  import * as Select from "$lib/components/ui/select";
+  import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import ModelChoiceCard from "./ModelChoiceCard.svelte";
   import { ENGINE_LABELS, MODEL_TYPE_LABELS } from "./model-labels";
   import type { LicensedVram } from "../status-display";
 
   // Icons
-  import { X, Search, Info, HardDrive, Eye, EyeOff, Plus, LoaderCircle, AlertCircle,
-    LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic } from "@lucide/svelte";
-  // Icons for the not-yet-available model types (see MODEL_TYPES below):
-  // import { Image as ImageIcon, AudioLines } from "@lucide/svelte";
+  import { X, Search, Info, HardDrive, Eye, EyeOff, Plus, LoaderCircle, AlertCircle, ChevronDown,
+    LayoutGrid, MessageSquare, Boxes, ArrowUpDown, Mic, Image as ImageIcon } from "@lucide/svelte";
+  // Icon for the not-yet-available model type (see MODEL_TYPES below):
+  // import { AudioLines } from "@lucide/svelte";
 
   /** Minimum number of filtered results before auto-loading the next page. */
   const MIN_RESULTS_THRESHOLD = 10;
@@ -34,12 +36,12 @@
     { value: "embedding", label: MODEL_TYPE_LABELS.embedding, icon: Boxes },
     { value: "rerank", label: MODEL_TYPE_LABELS.rerank, icon: ArrowUpDown },
     { value: "transcription", label: MODEL_TYPE_LABELS.transcription, icon: Mic },
-    // { value: "image", label: "Image", icon: ImageIcon },
+    { value: "image", label: MODEL_TYPE_LABELS.image, icon: ImageIcon },
     // { value: "tts", label: "Text to Speech", icon: AudioLines },
   ] as const;
 
   const ENGINE_MODEL_TYPES: Record<Engine, readonly ModelType[]> = {
-    vllm: ["chat", "embedding", "rerank", "transcription"],
+    vllm: ["chat", "embedding", "rerank", "transcription", "image"],
     ollama: ["chat", "embedding"],
   };
 
@@ -228,21 +230,27 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col overflow-hidden">
-    <!-- Header -->
-    <header class="p-5 border-b flex justify-between items-center bg-muted/50">
-      <div>
-        <h2 class="text-xl font-bold">{fixedType ? "Choose the new model" : "Select Model"}</h2>
-        <p class="text-sm text-muted-foreground">
+    <header class="px-5 py-3 border-b flex justify-between items-center gap-4 bg-muted/50">
+      <div class="min-w-0">
+        <h2 class="text-lg font-bold">{fixedType ? "Choose the new model" : "Select Model"}</h2>
+        <p class="text-xs text-muted-foreground flex flex-wrap items-center gap-x-3">
           {#if fixedType}
-            Only {MODEL_TYPE_LABELS[fixedType].toLowerCase()} models, the kind this deployment serves.
+            <span>Only {MODEL_TYPE_LABELS[fixedType].toLowerCase()} models, the kind this deployment serves.</span>
           {:else if modelCatalog.initialLoaded}
-            {modelCatalog.models.length} of {modelCatalog.totalCount} models loaded
-          {:else}
-            Choose a model for your deployment
+            <span>{modelCatalog.models.length} of {modelCatalog.totalCount} models loaded</span>
+          {/if}
+          {#if nodeCapabilities.length > 0}
+            <span class="inline-flex items-center gap-1">
+              <HardDrive class="w-3 h-3" />
+              {formatGb(totalFreeCapacity)} free on the machines
+            </span>
+            {#if licensedVram && licenseRoomGb !== null}
+              <span>{formatGb(licenseRoomGb)} of {formatGb(licensedVram.limitGb)} VRAM left under the license</span>
+            {/if}
           {/if}
         </p>
       </div>
-      <div class="flex items-center gap-1">
+      <div class="flex items-center gap-1 shrink-0">
         <a
           href={MODEL_REQUEST_URL}
           target="_blank"
@@ -261,38 +269,86 @@
       </div>
     </header>
 
-    <!-- Controls -->
-    <div class="p-5 border-b bg-card space-y-4">
-      <div class="relative">
-        <!-- A dialog opening focuses its autofocus field, so search is where typing starts. -->
-        <!-- svelte-ignore a11y_autofocus -->
-        <Input
-          autofocus
-          type="text"
-          placeholder="Search by name, description, or ID..."
-          aria-label="Search models"
-          bind:value={searchTerm}
-          class="pr-10"
-        />
-        <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-muted-foreground">
-          <Search class="w-4 h-4" />
-        </div>
-      </div>
+    {#if licenseRoomGb === 0}
+      <p class="px-5 py-2 border-b text-sm text-amber-700 dark:text-amber-400">The license leaves no VRAM for new replicas, so {fixedType ? "the new model cannot start" : "a new deployment can only be saved disabled"} for now.</p>
+    {/if}
 
-      <div class="flex flex-wrap gap-2 items-center">
-        <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">Engine:</span>
-        {#each ENGINE_FILTERS as e}
-          <button
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors duration-200 {selectedEngine === e.value ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'}"
-            onclick={() => selectEngine(e.value)}
-          >
-            {e.label}
-          </button>
-        {/each}
+    <div class="px-5 py-3 border-b bg-card space-y-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative grow basis-64">
+          <!-- A dialog opening focuses its autofocus field, so search is where typing starts. -->
+          <!-- svelte-ignore a11y_autofocus -->
+          <Input
+            autofocus
+            type="text"
+            placeholder="Search by name, description, or ID..."
+            aria-label="Search models"
+            bind:value={searchTerm}
+            class="pr-10"
+          />
+          <div class="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-muted-foreground">
+            <Search class="w-4 h-4" />
+          </div>
+        </div>
+
+        <Select.Root type="single" value={selectedEngine} onValueChange={(value) => selectEngine(value as Engine | "all")}>
+          <Select.Trigger aria-label="Engine">
+            {selectedEngine === "all" ? "All engines" : ENGINE_LABELS[selectedEngine]}
+          </Select.Trigger>
+          <Select.Content portalProps={{ disabled: true }}>
+            {#each ENGINE_FILTERS as e (e.value)}
+              <Select.Item value={e.value} label={e.value === "all" ? "All engines" : e.label} />
+            {/each}
+          </Select.Content>
+        </Select.Root>
+
+        {#if !fixedType}
+          <Select.Root type="single" value={selectedType} onValueChange={(value) => (selectedType = value as typeof selectedType)}>
+            <Select.Trigger aria-label="Type">
+              {selectedType === "all" ? "All types" : MODEL_TYPE_LABELS[selectedType]}
+            </Select.Trigger>
+            <Select.Content portalProps={{ disabled: true }}>
+              {#each MODEL_TYPES as t (t.value)}
+                {@const unavailable = unavailableForEngine(t.value)}
+                <Select.Item value={t.value} label={t.value === "all" ? "All types" : t.label} disabled={Boolean(unavailable)}>
+                  <t.icon class="w-3.5 h-3.5" />
+                  <span class="flex flex-col">
+                    {t.value === "all" ? "All types" : t.label}
+                    {#if unavailable}
+                      <span class="text-xs text-muted-foreground">{unavailable}</span>
+                    {/if}
+                  </span>
+                </Select.Item>
+              {/each}
+            </Select.Content>
+          </Select.Root>
+        {/if}
+
+        {#if allTags.length > 0}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger
+              class="border-input dark:bg-input/30 inline-flex h-9 items-center gap-2 rounded-md border bg-transparent px-3 text-sm whitespace-nowrap shadow-xs"
+            >
+              Tags{selectedTags.size > 0 ? ` (${selectedTags.size})` : ""}
+              <ChevronDown class="size-4 opacity-50" />
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content portalProps={{ disabled: true }} class="w-56 max-h-72">
+              {#each allTags as tag (tag)}
+                <DropdownMenu.CheckboxItem
+                  checked={selectedTags.has(tag)}
+                  onCheckedChange={() => toggleTag(tag)}
+                  closeOnSelect={false}
+                >
+                  {tag}
+                </DropdownMenu.CheckboxItem>
+              {/each}
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
+        {/if}
 
         {#if unlistedCount > 0}
           <button
-            class="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors duration-200 {showUnlisted ? 'bg-primary/10 text-primary border-primary/20' : 'bg-background text-muted-foreground border-border hover:border-primary/50'}"
+            class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors duration-200 {showUnlisted ? 'bg-primary/10 text-primary border-primary/20' : 'bg-background text-muted-foreground border-border hover:border-primary/50'}"
             title={showUnlisted ? "Hide unlisted models again" : "Show models that are outdated or not recommended"}
             onclick={() => (showUnlisted = !showUnlisted)}
           >
@@ -307,59 +363,21 @@
         {/if}
       </div>
 
-      {#if !fixedType}
-      <div class="flex flex-wrap gap-2 items-center">
-        <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">Type:</span>
-        {#each MODEL_TYPES as t}
-          {@const unavailable = unavailableForEngine(t.value)}
-          <button
-            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-border {selectedType === t.value ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'}"
-            disabled={Boolean(unavailable)}
-            title={unavailable}
-            onclick={() => (selectedType = t.value)}
-          >
-            <t.icon class="w-3.5 h-3.5" />
-            {t.label}
-          </button>
-        {/each}
-      </div>
-      {/if}
-
-      {#if allTags.length > 0}
-        <div class="flex flex-wrap gap-2 items-center">
-          <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-1">Tags:</span>
-          {#each allTags as tag}
+      {#if selectedTags.size > 0}
+        <div class="flex flex-wrap gap-1.5">
+          {#each selectedTags as tag (tag)}
             <button
-              class="px-2.5 py-1 rounded-full text-xs font-medium border transition-colors duration-200 {selectedTags.has(tag) ? 'bg-primary/10 text-primary border-primary/20' : 'bg-background text-muted-foreground border-border hover:border-primary/50'}"
+              class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border bg-primary/10 text-primary border-primary/20"
+              aria-label="Remove tag {tag}"
               onclick={() => toggleTag(tag)}
             >
               {tag}
+              <X class="w-3 h-3" />
             </button>
           {/each}
         </div>
       {/if}
-
     </div>
-
-    <!-- Capacity Info -->
-    {#if nodeCapabilities.length > 0}
-      <div class="px-5 py-3 border-b bg-muted/30 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
-        <div class="flex items-center gap-2">
-          <HardDrive class="w-4 h-4 text-muted-foreground shrink-0" />
-          <span class="text-muted-foreground">Free on the machines:</span>
-          <span class="font-semibold">{formatGb(totalFreeCapacity)}</span>
-        </div>
-        {#if licensedVram && licenseRoomGb !== null}
-          <div class="flex items-center gap-2">
-            <span class="text-muted-foreground">Left under the license:</span>
-            <span class="font-semibold">{formatGb(licenseRoomGb)} of {formatGb(licensedVram.limitGb)} VRAM</span>
-          </div>
-          {#if licenseRoomGb === 0}
-            <p class="basis-full text-amber-700 dark:text-amber-400">The license leaves no VRAM for new replicas, so {fixedType ? "the new model cannot start" : "a new deployment can only be saved disabled"} for now.</p>
-          {/if}
-        {/if}
-      </div>
-    {/if}
 
     <!-- Model List -->
     <div class="grow overflow-y-auto p-5 bg-muted/30">

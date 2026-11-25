@@ -1,0 +1,69 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+x-shared:
+  identity: &identity
+    license:
+      name: Qwen Research License Agreement
+      url: https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE
+      use: non-commercial
+      summary: >
+        Research and evaluation only. Any commercial use needs a separate license from
+        Alibaba, and copies passed on must carry Qwen's attribution notice.
+    registeredAt: 2026-11-25
+    engine: vllm
+    type: image
+    family: Qwen-Image 2.1
+    tags: [image_gen, image_edit]
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      negative_prompt: string
+      true_cfg_scale: number
+    sizing:
+      weightGb: 32.46   # measured resident, 30.22 GiB
+      minKvCacheGb: 0
+      maxContextLength: 8192
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed
+
+models:
+  qwen-image-2.1-vllm:
+    <<: *identity
+    name: Qwen-Image 2.1
+    description: |
+      Generates and edits images in one model. It follows long, detailed prompts closely,
+      renders text in English and Chinese reliably, and can produce images with a
+      transparent background: say so in the prompt, for example "This is an RGBA image
+      with transparency ... the background is transparent", and the PNG comes back with
+      an alpha channel. Edits accept up to 10 input images and can combine them, for
+      example placing an object from one photo into the scene of another.
+
+      Qwen-Image 2.1 Turbo gives very similar results several times faster. Sending a
+      `negative_prompt` together with a `true_cfg_scale` above 1 switches on guidance,
+      which roughly doubles the time.
+    url: https://huggingface.co/Qwen/Qwen-Image-2.1
+    createdAt: 2026-09-14
+    engineSpecifier: Qwen/Qwen-Image-2.1
+    defaultInferenceSteps: 40
+
+  qwen-image-2.1-turbo-vllm:
+    <<: *identity
+    name: Qwen-Image 2.1 Turbo
+    description: |
+      The accelerated variant of Qwen-Image 2.1. It generates and edits images in 8 steps
+      with quality close to the full model, renders English and Chinese text reliably,
+      can produce transparent-background images when the prompt asks for one, and accepts
+      up to 10 input images for edits. A strong default when both quality and speed
+      matter.
+
+      It always runs the 8-step schedule that ships with the model, and the step count
+      cannot be changed. Sending a `negative_prompt` together with a `true_cfg_scale`
+      above 1 switches on guidance, which roughly doubles the time.
+    url: https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo
+    createdAt: 2026-10-09
+    engineSpecifier: Qwen/Qwen-Image-2.1-Turbo
+    defaultInferenceSteps: 8
+    requestParams:
+      seed: number
+      negative_prompt: string
+      true_cfg_scale: number

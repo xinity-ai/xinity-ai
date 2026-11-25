@@ -10,7 +10,7 @@ For the full guide on writing model definitions and self-hosting, see the [infos
 
 ### Model catalog
 
-Models are defined in YAML files with metadata including: name, description, VRAM weight, KV-cache requirements, model type (chat, embedding, rerank, transcription), provider-specific identifiers for Ollama and vLLM, capability tags (tools, vision, custom_code), and compatibility constraints (minimum driver versions, GPU vendor requirements).
+Models are defined in YAML files with metadata including: name, description, VRAM weight, KV-cache requirements, model type (chat, embedding, rerank, transcription, image), provider-specific identifiers for Ollama and vLLM, capability tags (tools, vision, custom_code, and for image models image_gen, image_edit, inpaint), and compatibility constraints (minimum driver versions, GPU vendor requirements).
 
 ### Registry composition
 
@@ -22,7 +22,7 @@ The infoserver exposes endpoints for model listing (paginated, filterable by typ
 
 ### Node compatibility checking
 
-Before scheduling a model, the system verifies: driver availability, driver version, GPU vendor compatibility, and sufficient VRAM capacity. In the shared library default (used by dashboard-driven provisioning), version checks are fail-open, missing versions never block scheduling. The daemon's `run-model --start` script opts into strict mode instead, hard-failing when the driver version is unknown.
+Before scheduling a model, the system verifies: driver availability, the driver features the model's type needs (audio support for transcription, vllm-omni for image models), driver version, GPU vendor compatibility, and sufficient VRAM capacity. In the shared library default (used by dashboard-driven provisioning), version checks are fail-open, missing versions never block scheduling. The daemon's `run-model --start` script opts into strict mode instead, hard-failing when the driver version is unknown.
 
 ### Tag resolution
 

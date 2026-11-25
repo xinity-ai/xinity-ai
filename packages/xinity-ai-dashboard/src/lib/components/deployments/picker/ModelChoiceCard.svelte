@@ -5,9 +5,9 @@
 </script>
 
 <script lang="ts">
-  import type { ModelWithSpecifier } from "common-env/model-catalog";
+  import { requiredFeaturesForEngine, type ModelWithSpecifier } from "common-env/model-catalog";
   import { formatGb, humanMonthYear } from "$lib/util";
-  import { ENGINE_LABELS, MODEL_TYPE_LABELS } from "./model-labels";
+  import { DRIVER_FEATURE_LABELS, ENGINE_LABELS, MODEL_TYPE_LABELS } from "./model-labels";
   import { isRecentlyAdded } from "./model-recency";
   import { Badge } from "$lib/components/ui/badge";
   import LicenseBadge from "./LicenseBadge.svelte";
@@ -40,6 +40,9 @@
 
   const engineLabel = $derived(ENGINE_LABELS[model.engine]);
   const platformLabel = $derived((model.platforms ?? []).join(" or "));
+  const requiredFeatureLabels = $derived(
+    requiredFeaturesForEngine(model.engine, model.type).map((feature) => DRIVER_FEATURE_LABELS[feature] ?? feature).join(" and "),
+  );
   const isVariantGroup = $derived(variantCount > 1);
 
   function undeployableMessage(reason: PickerIncompatibility): string {
@@ -52,7 +55,7 @@
       case "version_blocked":
         return `Every node runs a ${engineLabel} release known not to serve this model.`;
       case "missing_feature":
-        return `No node's ${engineLabel} build supports the features this model needs.`;
+        return `No node's ${engineLabel} build includes ${requiredFeatureLabels}.`;
       case "wrong_platform":
         return `No node has a compatible GPU${platformLabel ? ` (needs ${platformLabel})` : ""}.`;
     }

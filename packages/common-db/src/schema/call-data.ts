@@ -14,7 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { aiApiKeyT } from "./ai-api-key";
 import { aiApplicationT } from "./ai-application";
-import { aiNodeT } from "./models";
+import { aiNodeT, modelTypeEnum } from "./models";
 import { organizationT } from "./orgSchema";
 import { userT } from "./auth";
 import type { InferSelectModel } from "drizzle-orm";
@@ -193,6 +193,8 @@ export const inferenceEndpointEnum = callDataSchema.enum("inference_endpoint", [
   "audio_transcriptions",
   "rerank",
   "responses",
+  "images_generations",
+  "images_edits",
 ]);
 export type InferenceEndpoint = (typeof inferenceEndpointEnum.enumValues)[number];
 
@@ -232,6 +234,28 @@ export const inferenceCallMessageT = callDataSchema.table("inference_call_messag
   index("inference_call_message_message_id_idx").on(table.messageId),
 ]);
 export type InferenceCallMessage = InferSelectModel<typeof inferenceCallMessageT>;
+
+/** Media a call produced. No cascade to `media_object`, so a stored image cannot be deleted out from under a call that shows it. */
+export const inferenceCallMediaT = callDataSchema.table("inference_call_media", {
+  callId: uuid("call_id")
+    .notNull()
+    .references(() => inferenceCallT.id, { onDelete: "cascade" }),
+  seq: integer().notNull(),
+  mediaObjectId: uuid("media_object_id").notNull().references(() => mediaObjectT.id),
+}, table => [
+  primaryKey({ columns: [table.callId, table.seq] }),
+  index("inference_call_media_media_object_id_idx").on(table.mediaObjectId),
+]);
+export type InferenceCallMedia = InferSelectModel<typeof inferenceCallMediaT>;
+
+export const inferenceCallImageT = callDataSchema.table("inference_call_image", {
+  callId: uuid("call_id")
+    .primaryKey()
+    .references(() => inferenceCallT.id, { onDelete: "cascade" }),
+  /** What the gateway asked the engine for besides the prompt, so a logged image can be reproduced. */
+  requestParams: jsonb("request_params").notNull().$type<Record<string, unknown>>(),
+});
+export type InferenceCallImage = InferSelectModel<typeof inferenceCallImageT>;
 
 export type Highlight = {
   start: number;
@@ -307,6 +331,8 @@ export const usageEventT = callDataSchema.table("usage_event", {
   nodeId: uuid("node_id").references(() => aiNodeT.id, { onDelete: "set null" }),
   /** False for failed requests. Filter on it to count calls, not to sum tokens: failed requests can carry tokens. */
   success: boolean().notNull().default(true),
+  /** Catalog type of the model, which decides what inputTokens and outputTokens count. Null when the catalog entry was unavailable. */
+  modelType: modelTypeEnum("model_type"),
   createdAt,
 }, table => [
   index("usage_event_organization_id_created_at_idx").on(table.organizationId, table.createdAt),
@@ -353,6 +379,7 @@ export const usageSummaryT = callDataSchema.table("usage_summary", {
   applicationId: uuid("application_id").notNull().default(NIL_APP_UUID),
   apiKeyId: uuid("api_key_id").notNull(),
   model: text().notNull(),
+  modelType: modelTypeEnum("model_type"),
   totalCalls: integer("total_calls").notNull().default(0),
   loggedCalls: integer("logged_calls").notNull().default(0),
   inputTokens: bigint("input_tokens", { mode: "number" }).notNull().default(0),

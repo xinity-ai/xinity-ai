@@ -1,4 +1,5 @@
 import { sql, deploymentT } from "common-db";
+import type { ModelType } from "common-env/model-catalog";
 import { getDB } from "../db";
 import { config } from "../config";
 import { cache } from "../cache";
@@ -21,11 +22,13 @@ export type ModelInfo = {
   /** Per-node auth token for authenticating requests to the daemon. */
   authToken: string | null;
   tls: boolean;
-  /** Model type from the catalog (chat, embedding, rerank, transcription). Undefined if catalog entry is unavailable. */
-  type?: string;
+  /** Model type from the catalog. Undefined if catalog entry is unavailable. */
+  type?: ModelType;
   tags?: string[];
   maxContextLength: number;
   audioPositionsPerSecond?: number;
+  defaultInferenceSteps?: number;
+  defaultGuidanceScale?: number;
   requestParams?: Record<string, string>;
   /** Call when the request completes to release load-balancer resources. */
   release: () => void;

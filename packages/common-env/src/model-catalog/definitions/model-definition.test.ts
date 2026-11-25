@@ -155,3 +155,46 @@ describe("realtime tag", () => {
     expect(ModelSchema.safeParse({ ...transcriber, type: "chat" }).success).toBe(false);
   });
 });
+
+describe("image models", () => {
+  const imageModel = {
+    name: "x",
+    description: "x",
+    url: "https://example.com",
+    license: "apache-2.0",
+    createdAt: "2026-01-01",
+    registeredAt: "2026-01-01",
+    engine: "vllm",
+    engineSpecifier: "x/y",
+    type: "image",
+    tags: ["image_gen"],
+    defaultInferenceSteps: 50,
+    sizing: { weightGb: 20, maxContextLength: 1024, minKvCacheGb: 0 },
+  };
+
+  it("accepts an image model that names its endpoints and default step count", () => {
+    expect(ModelSchema.safeParse(imageModel).success).toBe(true);
+  });
+
+  it("rejects an image model that serves neither endpoint", () => {
+    expect(ModelSchema.safeParse({ ...imageModel, tags: [] }).success).toBe(false);
+  });
+
+  it("rejects an image model without a default step count, which leaves its usage unmeasurable", () => {
+    const { defaultInferenceSteps: _, ...withoutSteps } = imageModel;
+    expect(ModelSchema.safeParse(withoutSteps).success).toBe(false);
+  });
+
+  it("rejects an image model on ollama", () => {
+    expect(ModelSchema.safeParse({ ...imageModel, engine: "ollama" }).success).toBe(false);
+  });
+
+  it("rejects image tags and a step count on a chat model", () => {
+    expect(ModelSchema.safeParse({ ...imageModel, type: "chat", defaultInferenceSteps: undefined }).success).toBe(false);
+    expect(ModelSchema.safeParse({ ...imageModel, type: "chat", tags: [] }).success).toBe(false);
+  });
+
+  it("rejects a guidance scale on a chat model", () => {
+    expect(ModelSchema.safeParse({ ...imageModel, type: "chat", tags: [], defaultInferenceSteps: undefined, defaultGuidanceScale: 0 }).success).toBe(false);
+  });
+});

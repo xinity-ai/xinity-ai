@@ -1,7 +1,7 @@
 /** Public infoserver reference data, and onboarding reads it before an organization exists. */
 import { rootOs, withAuth } from "../root";
 import z from "zod";
-import { ModelFields } from "common-env/model-catalog";
+import { ModelFields, ModelTypeEnum } from "common-env/model-catalog";
 import { catalogClient } from "$lib/server/lib/models/model-catalog";
 
 const ModelWithSpecifierSchema = ModelFields.extend({
@@ -27,7 +27,7 @@ const listModels = rootOs
   .input(z.object({
     page: z.coerce.number().min(1).default(1),
     pageSize: z.coerce.number().min(1).max(100).default(50),
-    type: z.enum(["chat", "embedding", "rerank", "transcription"]).optional(),
+    type: ModelTypeEnum.optional(),
     family: z.string().optional(),
     tags: z.array(z.string()).optional(),
   }))

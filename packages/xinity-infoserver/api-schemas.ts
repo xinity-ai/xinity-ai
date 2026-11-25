@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ModelTypeEnum } from "common-env/model-catalog";
 
 export const PaginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -6,7 +7,7 @@ export const PaginationSchema = z.object({
 });
 
 export const ModelListQuerySchema = PaginationSchema.extend({
-  type: z.enum(["embedding", "chat", "rerank", "transcription"]).optional(),
+  type: ModelTypeEnum.optional(),
   family: z.string().optional(),
   tag: z
     .union([z.string(), z.array(z.string())])

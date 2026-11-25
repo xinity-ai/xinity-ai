@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  boogu-image-0.1-edit-vllm:
+    name: Boogu-Image 0.1 Edit
+    description: |
+      Edits one input image from an instruction: replacing or removing objects, changing
+      materials, backgrounds or style, and replacing text in English and Chinese, while
+      keeping the rest of the picture consistent. Sending more than one input image is
+      refused.
+
+      It runs with guidance (`guidance_scale` 5) by default, as Boogu recommends, and a
+      `negative_prompt` steers the edit away from what it names. Results are most stable
+      at about 1024 pixels per side. `seed` makes a result reproducible.
+    url: https://huggingface.co/Boogu/Boogu-Image-0.1-Edit
+    license: apache-2.0
+    createdAt: 2026-06-16
+    registeredAt: 2026-11-25
+    engine: vllm
+    engineSpecifier: Boogu/Boogu-Image-0.1-Edit
+    type: image
+    family: Boogu-Image
+    tags: [image_edit]
+    defaultInferenceSteps: 50
+    defaultGuidanceScale: 5.0
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      guidance_scale: number
+      negative_prompt: string
+    sizing:
+      weightGb: 37.09   # measured resident, 34.53 GiB
+      minKvCacheGb: 0
+      maxContextLength: 1280
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed

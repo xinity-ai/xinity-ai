@@ -228,7 +228,8 @@
               "embedding",
               "chat",
               "rerank",
-              "transcription"
+              "transcription",
+              "image"
             ]
           },
           "family": {
@@ -242,7 +243,7 @@
           },
           "tags": {
             "default": [],
-            "description": "Capabilities this variant supports: tools, vision, custom_code, diarization, realtime",
+            "description": "Capabilities this variant supports: tools, vision, custom_code, diarization, realtime, image_gen, image_edit, inpaint",
             "type": "array",
             "items": {
               "type": "string",
@@ -251,9 +252,23 @@
                 "custom_code",
                 "vision",
                 "diarization",
-                "realtime"
+                "realtime",
+                "image_gen",
+                "image_edit",
+                "inpaint"
               ]
             }
+          },
+          "defaultInferenceSteps": {
+            "description": "Denoising steps the image model is made to run, the count its publisher recommends. Stated for every image model and no other",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "defaultGuidanceScale": {
+            "description": "Guidance scale the image model is made to run at, the value its publisher recommends",
+            "type": "number",
+            "minimum": 0
           },
           "isCustom": {
             "default": false,

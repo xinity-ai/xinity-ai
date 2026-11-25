@@ -286,7 +286,7 @@ function unstoredMediaRef(bytes: Uint8Array): string {
   return formatMediaRef(bytesDigest(bytes));
 }
 
-async function storeMedia(
+export async function storeMedia(
   bytes: Uint8Array<ArrayBuffer>,
   mimeType: string,
   originalUrl: string | null,

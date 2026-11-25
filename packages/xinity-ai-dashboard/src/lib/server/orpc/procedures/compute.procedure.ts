@@ -111,7 +111,8 @@ const ComputeHistoryOutput = z.object({
 });
 export type ComputeHistory = z.infer<typeof ComputeHistoryOutput>;
 
-const sumNumber = (column: unknown) => sql<number>`coalesce(sum(${column}), 0)`.mapWith(Number);
+const sumTokens = (column: unknown) => 
+  sql<number>`coalesce(sum(${column}) filter (where ${usageEventT.modelType} is distinct from 'image'), 0)`.mapWith(Number);
 
 export async function buildComputeOverview(rangeHours: number): Promise<ComputeOverview> {
   const since = new Date(Date.now() - rangeHours * 60 * 60 * 1000).toISOString();
@@ -149,8 +150,8 @@ export async function buildComputeOverview(rangeHours: number): Promise<ComputeO
       nodeId: usageEventT.nodeId,
       requests: count(),
       failedRequests: sql<number>`count(*) filter (where not ${usageEventT.success})`.mapWith(Number),
-      inputTokens: sumNumber(usageEventT.inputTokens),
-      outputTokens: sumNumber(usageEventT.outputTokens),
+      inputTokens: sumTokens(usageEventT.inputTokens),
+      outputTokens: sumTokens(usageEventT.outputTokens),
     }).from(usageEventT)
       .innerJoin(aiNodeT, sql`
         ${aiNodeT.id} = ${usageEventT.nodeId}
@@ -265,7 +266,7 @@ export async function buildComputeHistory(rangeHours: number, timeZone: string):
   const usageRows = db.select({
     nodeId: sql<string>`${usageEventT.nodeId}`,
     t: sql<number>`${usageBucket}`.mapWith(Number),
-    tokens: sql<number>`coalesce(sum(${usageEventT.inputTokens} + ${usageEventT.outputTokens}), 0)`.mapWith(Number),
+    tokens: sumTokens(sql`${usageEventT.inputTokens} + ${usageEventT.outputTokens}`),
     requests: count(),
   }).from(usageEventT)
     .innerJoin(aiNodeT, sql`

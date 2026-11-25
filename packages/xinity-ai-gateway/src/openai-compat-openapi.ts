@@ -4,6 +4,7 @@ import { ChatCompletionBodySchema, ChatSyncChoiceSchema } from "./llm-forward/en
 import { CompletionBodySchema, CompletionSyncChoiceSchema } from "./llm-forward/endpoints/handle-completions";
 import { EmbeddingBodySchema } from "./llm-forward/endpoints/handle-embeddings";
 import { RerankBodySchema } from "./llm-forward/endpoints/handle-rerank";
+import { ImageGenerationBodySchema } from "./llm-forward/endpoints/handle-images";
 import { CreateResponseBodySchema, ResponseObjectSchema } from "./llm-forward/responses/schemas";
 
 const TAG = "OpenAI Compatible";
@@ -192,6 +193,13 @@ const TranscriptTextDoneEventSchema = z.looseObject({
   }).optional(),
 });
 
+const ImagesResponseSchema = z.looseObject({
+  created: z.number().int(),
+  data: z.array(z.looseObject({ b64_json: z.string().optional(), url: z.string().optional() })),
+  output_format: z.enum(["png", "jpeg", "webp"]),
+  size: z.string().optional(),
+});
+
 function jsonContent(schemaRef: string) {
   return { "application/json": { schema: { $ref: schemaRef } } };
 }
@@ -248,6 +256,8 @@ export const openaiCompatSchemas = {
   TranscriptTextDeltaEvent: toSchema(TranscriptTextDeltaEventSchema),
   TranscriptTextSegmentEvent: toSchema(TranscriptTextSegmentSchema),
   TranscriptTextDoneEvent: toSchema(TranscriptTextDoneEventSchema),
+  ImageGenerationRequest: toSchema(ImageGenerationBodySchema),
+  ImagesResponse: toSchema(ImagesResponseSchema),
   CreateResponseRequest: toSchema(CreateResponseBodySchema),
   ResponseObject: toSchema(ResponseObjectSchema),
 } as Record<string, OpenAPI.SchemaObject>;
@@ -453,6 +463,103 @@ export const openaiCompatPaths = {
         "101": { description: "Switching to the WebSocket protocol" },
         "426": { description: "The request was not a WebSocket upgrade", content: errorJsonContent },
         ...errorResponses,
+      },
+    },
+  },
+  "/v1/images/generations": {
+    post: {
+      tags: [TAG],
+      summary: "Generate images from a prompt",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/images/create",
+        "",
+        "Xinity notes:",
+        "- Only available for deployments of image models that generate from a prompt alone.",
+        `- ${APP_HEADER_NOTE}`,
+        "- `response_format: \"url\"` returns a link to `/media/images/{fileId}` that serves the image without an API key for one hour.",
+        "- Streaming (`stream`, `partial_images`) is not supported.",
+        "- `output_format` accepts `png` (default), `jpeg` and `webp`. `quality`, `style` and `moderation` are accepted and ignored.",
+      ].join("\n"),
+      security: SECURITY,
+      requestBody: jsonRequest("#/components/schemas/ImageGenerationRequest"),
+      responses: {
+        "200": jsonResponse("Generated images", "#/components/schemas/ImagesResponse"),
+        ...errorResponses,
+      },
+    },
+  },
+  "/v1/images/edits": {
+    post: {
+      tags: [TAG],
+      summary: "Edit images from a prompt",
+      description: [
+        "OpenAI: https://platform.openai.com/docs/api-reference/images/createEdit",
+        "",
+        "Xinity notes:",
+        "- Only available for deployments of image models that edit images.",
+        `- ${APP_HEADER_NOTE}`,
+        "- Input images must be PNG, JPEG or WebP.",
+        "- `mask` is only accepted by models that support masks, and must be a PNG with an alpha channel.",
+        "- `response_format: \"url\"` returns a link to `/media/images/{fileId}` that serves the image without an API key for one hour.",
+        "- Streaming (`stream`, `partial_images`) is not supported.",
+        "- `output_format` accepts `png` (default), `jpeg` and `webp`. `quality` and `input_fidelity` are accepted and ignored.",
+      ].join("\n"),
+      security: SECURITY,
+      // Hand-written: a multipart binary upload can't be derived from a Zod schema.
+      requestBody: {
+        required: true,
+        content: {
+          "multipart/form-data": {
+            schema: {
+              type: "object",
+              required: ["image", "prompt", "model"],
+              properties: {
+                image: {
+                  type: "array",
+                  items: { type: "string", format: "binary" },
+                  description: "The images to edit. Repeat the field (`image` or `image[]`) for several.",
+                },
+                prompt: { type: "string" },
+                model: { type: "string" },
+                n: { type: "integer", minimum: 1, maximum: 10, default: 1 },
+                size: { type: "string", description: "`WIDTHxHEIGHT`, or `auto` for the model's default." },
+                output_format: { type: "string", enum: ["png", "jpeg", "webp"], default: "png" },
+                output_compression: { type: "integer", minimum: 0, maximum: 100 },
+                background: { type: "string", enum: ["transparent", "opaque", "auto"] },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        "200": jsonResponse("Edited images", "#/components/schemas/ImagesResponse"),
+        ...errorResponses,
+      },
+    },
+  },
+  "/media/images/{fileId}": {
+    parameters: [
+      {
+        name: "fileId",
+        in: "path",
+        required: true,
+        schema: { type: "string" },
+      },
+    ],
+    get: {
+      tags: ["Media"],
+      summary: "Download an image returned as a URL",
+      description: "Serves an image from a `response_format: \"url\"` response. The link needs no API key and expires after one hour.",
+      responses: {
+        "200": {
+          description: "The image",
+          content: {
+            "image/png": { schema: { type: "string", format: "binary" } },
+            "image/jpeg": { schema: { type: "string", format: "binary" } },
+            "image/webp": { schema: { type: "string", format: "binary" } },
+          },
+        },
+        "404": { description: "Unknown or expired image", content: errorJsonContent },
       },
     },
   },

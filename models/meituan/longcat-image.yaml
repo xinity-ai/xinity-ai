@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+x-shared:
+  identity: &identity
+    license: apache-2.0
+    registeredAt: 2026-11-24
+    engine: vllm
+    type: image
+    family: LongCat-Image
+    defaultInferenceSteps: 50
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      guidance_scale: number
+      negative_prompt: string
+    sizing:
+      weightGb: 29.31   # measured resident, 27.29 GiB
+      minKvCacheGb: 0
+      maxContextLength: 512
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed
+
+models:
+  longcat-image-vllm:
+    <<: *identity
+    name: LongCat-Image
+    description: |
+      A mid-sized text-to-image model with natural, photorealistic output and good prompt
+      following, including Chinese text inside the image.
+
+      It runs with guidance (`guidance_scale` 4) by default, as Meituan recommends, and a
+      `negative_prompt` steers the image away from what it names. Setting `guidance_scale`
+      to 1 roughly halves the time at a small cost in sharpness. `seed` makes a result
+      reproducible.
+    url: https://huggingface.co/meituan-longcat/LongCat-Image
+    createdAt: 2025-12-04
+    engineSpecifier: meituan-longcat/LongCat-Image
+    tags: [image_gen]
+    defaultGuidanceScale: 4.0
+
+  longcat-image-edit-vllm:
+    <<: *identity
+    name: LongCat-Image-Edit
+    description: |
+      Edits one input image from an instruction and keeps everything the instruction does
+      not mention exactly as it was, down to lighting and background. It is the quickest
+      of the dedicated editing models here and a good default for single-image edits.
+      Sending more than one input image is refused.
+
+      Guidance only applies together with a `negative_prompt`. Then `guidance_scale` (4.5
+      unless set) steers away from what the negative prompt names, and the edit takes
+      about twice as long. `seed` makes a result reproducible.
+    url: https://huggingface.co/meituan-longcat/LongCat-Image-Edit
+    createdAt: 2025-12-05
+    engineSpecifier: meituan-longcat/LongCat-Image-Edit
+    tags: [image_edit]
+    defaultGuidanceScale: 4.5

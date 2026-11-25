@@ -1,0 +1,98 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+x-shared:
+  identity: &identity
+    license: apache-2.0
+    registeredAt: 2026-11-24
+    engine: vllm
+    type: image
+    family: Qwen-Image
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed
+  params: &params
+    seed: number
+    num_inference_steps: number
+    negative_prompt: string
+    true_cfg_scale: number
+
+models:
+  qwen-image-2512-vllm:
+    <<: *identity
+    name: Qwen-Image 2512
+    description: |
+      A large text-to-image model with strong prompt following. It renders text inside an
+      image reliably, such as signs, posters and labels, in English and Chinese, and
+      handles photorealistic scenes as well as illustration.
+
+      It is one of the slower models here. Pick Z-Image-Turbo or FLUX.2 [klein] 4B when
+      speed matters more than the last bit of detail.
+
+      Sending a `negative_prompt` switches on true classifier-free guidance at
+      `true_cfg_scale` (4 unless set). That steers the image away from what the negative
+      prompt names and roughly doubles the generation time. Without a negative prompt the
+      model runs unguided, which already gives good results.
+    url: https://huggingface.co/Qwen/Qwen-Image-2512
+    createdAt: 2025-12-30
+    engineSpecifier: Qwen/Qwen-Image-2512
+    tags: [image_gen]
+    defaultInferenceSteps: 50
+    requestParams: *params
+    sizing:
+      weightGb: 56.36   # measured resident, 52.48 GiB
+      minKvCacheGb: 0
+      maxContextLength: 1024
+
+  qwen-image-edit-2511-vllm:
+    <<: *identity
+    name: Qwen-Image-Edit 2511
+    description: |
+      Edits images from an instruction, such as replacing an object, changing a material or
+      style, or adding and removing elements, while keeping the rest of the picture
+      consistent. It accepts several input images at once and can combine them, for
+      example placing an object from one photo into the scene of another, and keeps
+      people recognisable across edits.
+
+      It is thorough but slow. For quick single-image edits, LongCat-Image-Edit or FLUX.2
+      [klein] 4B answer much sooner.
+
+      Sending a `negative_prompt` switches on true classifier-free guidance at
+      `true_cfg_scale` (4 unless set), which roughly doubles the time.
+    url: https://huggingface.co/Qwen/Qwen-Image-Edit-2511
+    createdAt: 2025-12-17
+    engineSpecifier: Qwen/Qwen-Image-Edit-2511
+    tags: [image_edit]
+    defaultInferenceSteps: 40
+    requestParams: *params
+    sizing:
+      weightGb: 57.78   # measured resident, 53.80 GiB
+      minKvCacheGb: 0
+      maxContextLength: 1024
+
+  qwen-image-layered-vllm:
+    <<: *identity
+    name: Qwen-Image-Layered
+    description: |
+      Splits one input image into separate layers, each returned as its own PNG with a
+      transparent background, for example sky, landscape and a building on top. Each layer
+      can then be moved, recoloured or replaced on its own without touching the others.
+      The prompt describes the image. It does not create new content.
+
+      `layers` sets how many images come back (4 unless set), and `resolution` the size of
+      the layers, either 640 (the default, recommended by Qwen) or 1024. Every layer is
+      counted as one generated image.
+
+      Sending a `negative_prompt` switches on true classifier-free guidance at
+      `true_cfg_scale` (4 unless set), which roughly doubles the time.
+    url: https://huggingface.co/Qwen/Qwen-Image-Layered
+    createdAt: 2025-12-17
+    engineSpecifier: Qwen/Qwen-Image-Layered
+    tags: [image_edit]
+    defaultInferenceSteps: 50
+    requestParams:
+      <<: *params
+      layers: number
+      resolution: number
+    sizing:
+      weightGb: 57.72   # measured resident, 53.74 GiB
+      minKvCacheGb: 0
+      maxContextLength: 1024

@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://sysinfo.xinity.ai/schemas/model.v2.json
+
+models:
+  stable-diffusion-xl-base-vllm:
+    name: Stable Diffusion XL Base
+    description: |
+      The classic open text-to-image model from Stability AI. It produces good
+      photographic and artistic images at about 1024 pixels per side and is the smallest
+      and among the fastest models here, but follows long or complex prompts less
+      precisely than the newer models and cannot render readable text.
+
+      Only the first 77 tokens of a prompt are read, so keep prompts short and put what
+      matters first. A `negative_prompt` steers the image away from what it names, and
+      `guidance_scale` (5 unless set) sets how strictly the prompt is followed. `seed`
+      makes a result reproducible.
+    url: https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0
+    license:
+      name: CreativeML Open RAIL++-M
+      url: https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md
+      use: conditional
+      summary: >
+        Commercial use is allowed with no revenue or user threshold, but the use restrictions
+        in the license attachment apply to everything generated with the model and must be
+        passed on to anyone the model or its outputs are distributed to.
+    createdAt: 2023-07-25
+    registeredAt: 2026-11-24
+    engine: vllm
+    engineSpecifier: stabilityai/stable-diffusion-xl-base-1.0
+    type: image
+    family: Stable Diffusion XL
+    tags: [image_gen]
+    defaultInferenceSteps: 50
+    requestParams:
+      seed: number
+      num_inference_steps: number
+      guidance_scale: number
+      negative_prompt: string
+    sizing:
+      weightGb: 7.05   # measured resident, 6.56 GiB
+      minKvCacheGb: 0
+      maxContextLength: 77
+    # The loader reads the full-precision diffusers folders, not the root single files or the fp16 copies.
+    downloadFilter:
+      - "*.safetensors"
+      - "**/*.fp16.safetensors"
+    engineVersions:
+      min: "0.34.0"   # verified on vllm-omni 0.34.0, not bracketed

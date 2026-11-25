@@ -60,11 +60,15 @@ A call that does not finish normally is still recorded. On `/v1/chat/completions
 | `/v1/rerank` | No |
 | `/v1/audio/transcriptions` | No |
 | `/v1/realtime` | No |
+| `/v1/images/generations` | Yes |
+| `/v1/images/edits` | Yes |
 
 On the endpoints that record content, two controls decide whether a call is recorded:
 
 - Per key: the `collectData` flag on the API key, set in the dashboard, is the default for its calls.
 - Per request: `"store"` in the request body overrides the key's flag for that call. `"store": false` keeps the call out of the record, and `"store": true` records it even when the key's flag is off.
+
+The image endpoints take no `store`, so the key's flag alone decides. A recorded image call keeps its prompt, its input and generated images, and the settings it ran with.
 
 ## Responses API
 
@@ -79,6 +83,17 @@ The gateway implements the OpenAI Responses API at `/v1/responses`:
 - Reasoning effort control via `reasoning.effort`.
 
 Completed responses are cached with a configurable TTL (default: 1 hour).
+
+## Image Generation
+
+The gateway serves image models in the OpenAI format: `/v1/images/generations` creates images from a prompt, and `/v1/images/edits` changes input images by a prompt. Each model runs at the steps and guidance its publisher recommends. The settings a model lets requests change, such as `seed` or `num_inference_steps`, are listed with the model in the catalog.
+
+- `response_format`: `b64_json` (default) returns the image in the response. `url` returns a link to the gateway, which serves the image for one hour.
+- `mask` (edits only): a PNG with an alpha channel, the size of the first input image. Its fully transparent pixels mark the area to change. Only models that support masks accept it.
+- `n`: up to 10 images per request. Some models generate only one.
+- Streaming (`stream`, `partial_images`) is not supported.
+
+Image calls are counted in usage with their model type and kept out of the token totals.
 
 ## Deep Research
 

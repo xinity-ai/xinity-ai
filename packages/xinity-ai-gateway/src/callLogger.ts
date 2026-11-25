@@ -181,6 +181,24 @@ export async function logChatSync(input: ChatSyncInput) {
   await enqueueCalls(calls);
 }
 
+export async function logImageCall(input: ChatLogFields & { outputMediaDigests: string[]; requestParams: Record<string, unknown> }) {
+  await enqueueCalls([{
+    id: input.inferenceCallId ?? undefined,
+    organizationId: input.organizationId,
+    apiKeyId: input.keyId,
+    applicationId: input.applicationId,
+    endpoint: input.endpoint,
+    servedModel: input.servedModel,
+    publicSpecifier: input.publicSpecifier,
+    durationMs: input.durationInMS,
+    metadata: input.metadata ? sanitizeForPg(input.metadata) as Record<string, unknown> : undefined,
+    inputMessages: sanitizeForPg(input.inputMessages) as ApiCallInputMessage[],
+    outputMessages: [],
+    outputMediaDigests: input.outputMediaDigests,
+    imageRequestParams: sanitizeForPg(input.requestParams) as Record<string, unknown>,
+  }]);
+}
+
 export async function logChatStream(input: ChatStreamInput) {
   const calls = input.data.flatMap((entry) =>
     entry.choices.map((choice) => buildRecord(input, toOutputMessage(choice.delta), choice.index)),
