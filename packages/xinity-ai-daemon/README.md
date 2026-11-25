@@ -75,7 +75,7 @@ The daemon deletes every model in this instance that is not deployed to the node
 
 ### vLLM
 
-Set `VLLM_BACKEND` to choose the backend (`docker`, the default, or `systemd`). It is not inferred from which of `VLLM_PATH`/`VLLM_DOCKER_IMAGE` is set. Then set `VLLM_DOCKER_IMAGE` (for the Docker backend) or `VLLM_PATH` (path to binary, for the systemd backend) in the daemon's environment. On DGX Spark and other GB10 devices, use `timothystewart6/vllm-gb10:v0.31.0-gb10.1`.
+Set `VLLM_BACKEND` to choose the backend (`docker`, the default, or `systemd`). It is not inferred from which of `VLLM_PATH`/`VLLM_DOCKER_IMAGE` is set. Then set `VLLM_DOCKER_IMAGE` (for the Docker backend) or `VLLM_PATH` (path to binary, for the systemd backend) in the daemon's environment. `VLLM_DOCKER_IMAGE` accepts any vLLM image. For DGX Spark and other GB10 devices, `timothystewart6/vllm-gb10:v0.31.0-gb10.1` is a recommended choice. Image models need an image that includes vllm-omni, for example `vllm/vllm-omni:v0.34.0`.
 
 ### Node Coupling
 
