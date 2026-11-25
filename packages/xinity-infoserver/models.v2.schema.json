@@ -243,7 +243,7 @@
           },
           "tags": {
             "default": [],
-            "description": "Capabilities this variant supports: tools, vision, custom_code, diarization, realtime, image_gen (images from a prompt), image_edit (images from a prompt and input images)",
+            "description": "Capabilities this variant supports: tools, vision, custom_code, diarization, realtime, image_gen, image_edit, inpaint",
             "type": "array",
             "items": {
               "type": "string",
@@ -254,7 +254,8 @@
                 "diarization",
                 "realtime",
                 "image_gen",
-                "image_edit"
+                "image_edit",
+                "inpaint"
               ]
             }
           },

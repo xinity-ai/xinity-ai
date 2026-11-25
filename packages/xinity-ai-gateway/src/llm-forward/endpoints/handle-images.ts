@@ -101,7 +101,8 @@ const DIMENSIONS: Partial<Record<StorableImageType, (bytes: Uint8Array) => Dimen
   "image/webp": (bytes) => WEBP_DIMENSIONS[tagAt(bytes, 12)]?.(bytes) ?? null,
 };
 
-const PNG_SIGNATURE_LENGTH = 8;
+const PNG_SIGNATURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_SIGNATURE_LENGTH = PNG_SIGNATURE.length;
 
 type PngChunk = { type: string; data: Uint8Array };
 
@@ -156,6 +157,99 @@ function decodeImage(bytes: Uint8Array<ArrayBuffer>): DecodedImage | null {
 async function toGeneratedImage(b64: string): Promise<DecodedImage | null> {
   const decoded = new Uint8Array(Buffer.from(b64, "base64"));
   return decodeImage(sniffImageType(decoded) === "image/png" ? await compressPng(decoded) : decoded);
+}
+
+// Keyed by PNG colour type: 4 is gray with alpha, 6 is RGBA. Both allow 8 or 16 bits per sample.
+const PNG_CHANNELS_WITH_ALPHA: Partial<Record<number, number>> = { 4: 2, 6: 4 };
+const PNG_ALPHA_BIT_DEPTHS = new Set([8, 16]);
+
+function paeth(left: number, up: number, upLeft: number): number {
+  const estimate = left + up - upLeft;
+  const toLeft = Math.abs(estimate - left);
+  const toUp = Math.abs(estimate - up);
+  const toUpLeft = Math.abs(estimate - upLeft);
+  if (toLeft <= toUp && toLeft <= toUpLeft) {
+    return left;
+  }
+  return toUp <= toUpLeft ? up : upLeft;
+}
+
+const PNG_FILTERS: ((left: number, up: number, upLeft: number) => number)[] = [
+  () => 0,
+  (left) => left,
+  (_left, up) => up,
+  (left, up) => (left + up) >> 1,
+  paeth,
+];
+
+function unfilterScanlines(data: Uint8Array, height: number, rowBytes: number, bytesPerPixel: number): Uint8Array {
+  if (data.length < height * (rowBytes + 1)) {
+    throw new Error("PNG image data is shorter than its header states");
+  }
+  const pixels = new Uint8Array(height * rowBytes);
+  for (let y = 0; y < height; y++) {
+    const filter = PNG_FILTERS[data[y * (rowBytes + 1)]!];
+    if (!filter) {
+      throw new Error("Unknown PNG filter type");
+    }
+    const source = y * (rowBytes + 1) + 1;
+    const row = y * rowBytes;
+    for (let x = 0; x < rowBytes; x++) {
+      const left = x >= bytesPerPixel ? pixels[row + x - bytesPerPixel]! : 0;
+      const up = y > 0 ? pixels[row - rowBytes + x]! : 0;
+      const upLeft = y > 0 && x >= bytesPerPixel ? pixels[row - rowBytes + x - bytesPerPixel]! : 0;
+      pixels[row + x] = data[source + x]! + filter(left, up, upLeft);
+    }
+  }
+  return pixels;
+}
+
+async function encodeGrayscalePng({ width, height }: Dimensions, gray: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+  const header = new Uint8Array(13);
+  viewOf(header).setUint32(0, width);
+  viewOf(header).setUint32(4, height);
+  header[8] = 8;
+  const scanlines = new Uint8Array(height * (width + 1));
+  for (let y = 0; y < height; y++) {
+    scanlines.set(gray.subarray(y * width, (y + 1) * width), y * (width + 1) + 1);
+  }
+  const chunks = [
+    { type: "IHDR", data: header },
+    { type: "IDAT", data: await deflateAsync(scanlines) },
+    { type: "IEND", data: new Uint8Array() },
+  ];
+  return new Uint8Array(Buffer.concat([PNG_SIGNATURE, ...chunks.map(encodePngChunk)]));
+}
+
+// OpenAI marks the area to edit with fully transparent pixels, the engine with white ones.
+async function engineMask(mask: Uint8Array<ArrayBuffer>, image: DecodedImage): Promise<{ png: Uint8Array<ArrayBuffer> } | { error: string }> {
+  const chunks = sniffImageType(mask) === "image/png" ? pngChunks(mask) : [];
+  const header = chunks[0]?.type === "IHDR" ? chunks[0].data : null;
+  const channels = header && PNG_CHANNELS_WITH_ALPHA[header[9]!];
+  if (!header || !channels || !PNG_ALPHA_BIT_DEPTHS.has(header[8]!)) {
+    return { error: "mask must be a PNG with an alpha channel" };
+  }
+  const dimensions = { width: viewOf(header).getUint32(0), height: viewOf(header).getUint32(4) };
+  if (image.dimensions && (image.dimensions.width !== dimensions.width || image.dimensions.height !== dimensions.height)) {
+    return { error: "mask must have the same dimensions as the first image" };
+  }
+  if (header[12] !== 0) {
+    return { error: "Interlaced mask PNGs are not supported" };
+  }
+  const sampleBytes = header[8]! / 8;
+  const bytesPerPixel = channels * sampleBytes;
+  try {
+    const data = await inflateAsync(Buffer.concat(chunks.filter((chunk) => chunk.type === "IDAT").map((chunk) => chunk.data)));
+    const pixels = unfilterScanlines(data, dimensions.height, dimensions.width * bytesPerPixel, bytesPerPixel);
+    const repaint = new Uint8Array(dimensions.width * dimensions.height);
+    for (let pixel = 0; pixel < repaint.length; pixel++) {
+      const alphaEnd = (pixel + 1) * bytesPerPixel - 1;
+      repaint[pixel] = pixels[alphaEnd] === 0 && pixels[alphaEnd + 1 - sampleBytes] === 0 ? 255 : 0;
+    }
+    return { png: await encodeGrayscalePng(dimensions, repaint) };
+  } catch {
+    return { error: "mask is not a valid PNG" };
+  }
 }
 
 const BackendImagesSchema = z.looseObject({
@@ -370,13 +464,16 @@ function typedFormParams(rawBody: Record<string, unknown>, allowed: Record<strin
   return typed;
 }
 
-function engineForm(fields: Record<string, unknown>, images: DecodedImage[]): FormData {
+function engineForm(fields: Record<string, unknown>, images: DecodedImage[], mask: Uint8Array<ArrayBuffer> | null): FormData {
   const form = new FormData();
   for (const [name, value] of Object.entries(fields)) {
     form.append(name, typeof value === "object" ? JSON.stringify(value) : String(value));
   }
   for (const [index, image] of images.entries()) {
     form.append("image", new Blob([image.bytes], { type: image.mimeType }), `image-${index}`);
+  }
+  if (mask) {
+    form.append("mask_image", new Blob([mask], { type: "image/png" }), "mask");
   }
   return form;
 }
@@ -392,21 +489,25 @@ export const handleImageEdit = withEndpointGuards({
     if (refusal) {
       return errorResponse(refusal, 400);
     }
-    if (body.mask) {
-      return errorResponse("mask is not supported", 400);
-    }
     if (lacksTag(modelInfo, "image_edit")) {
       return errorResponse(`Model '${originalModel}' does not edit images`, 400);
+    }
+    if (body.mask && lacksTag(modelInfo, "inpaint")) {
+      return errorResponse(`Model '${originalModel}' does not support masks`, 400);
     }
 
     const inputImages = await Promise.all(body.image.map(async (file) => decodeImage(new Uint8Array(await file.arrayBuffer()))));
     if (!inputImages.every((image) => image !== null)) {
       return errorResponse("Input images must be PNG, JPEG or WebP", 400);
     }
+    const mask = body.mask ? await engineMask(new Uint8Array(await body.mask.arrayBuffer()), inputImages[0]!) : null;
+    if (mask && "error" in mask) {
+      return errorResponse(mask.error, 400);
+    }
 
     const requestParams = engineRequestParams(body, typedFormParams(rawBody, modelInfo.requestParams), modelInfo);
     const signal = AbortSignal.any([req.signal, AbortSignal.timeout(config.inference.backendTimeoutMs())]);
-    const form = engineForm({ ...requestParams, model: modelInfo.model, prompt: body.prompt, response_format: "b64_json" }, inputImages);
+    const form = engineForm({ ...requestParams, model: modelInfo.model, prompt: body.prompt, response_format: "b64_json" }, inputImages, mask?.png ?? null);
     const backendResponse = await backendPostForm(modelInfo, "/v1/images/edits", form, signal);
     return respondWithImages({
       auth, modelInfo, originalModel, endpoint: "images_edits", prompt: body.prompt, inputImages, requestParams, callStartTime,

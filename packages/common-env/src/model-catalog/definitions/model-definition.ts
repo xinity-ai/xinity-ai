@@ -184,7 +184,7 @@ export const ModelFields = z.looseObject({
   type: ModelTypeEnum.default("chat").describe("Usage type, which determines API compatibility"),
   family: z.string().default("unknown").describe("Family of the model. May be unknown"),
   variantOf: z.string().optional().describe("Specifier of the standard variant of this model, when this entry is a variant of it. The UI presents the group together while each variant stays separately deployable and keeps its own license, description and capacity. A variant may not itself have variants"),
-  tags: z.array(TagEnum).default([]).describe("Capabilities this variant supports: tools, vision, custom_code, diarization, realtime, image_gen (images from a prompt), image_edit (images from a prompt and input images)"),
+  tags: z.array(TagEnum).default([]).describe("Capabilities this variant supports: tools, vision, custom_code, diarization, realtime, image_gen, image_edit, inpaint"),
   defaultInferenceSteps: z.number().int().positive().optional().describe("Denoising steps the image model is made to run, the count its publisher recommends. Stated for every image model and no other"),
   defaultGuidanceScale: z.number().min(0).optional().describe("Guidance scale the image model is made to run at, the value its publisher recommends"),
   isCustom: z.boolean().default(false).describe("Set for fine-tuned models"),
@@ -218,6 +218,7 @@ const TAG_MODEL_TYPES: Partial<Record<Tag, ModelType>> = {
   realtime: "transcription",
   image_gen: "image",
   image_edit: "image",
+  inpaint: "image",
 };
 
 const IMAGE_ENDPOINT_TAGS: Tag[] = ["image_gen", "image_edit"];

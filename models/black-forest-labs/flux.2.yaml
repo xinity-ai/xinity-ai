@@ -19,7 +19,7 @@ models:
     engineSpecifier: black-forest-labs/FLUX.2-klein-4B
     type: image
     family: FLUX.2
-    tags: [image_gen, image_edit]
+    tags: [image_gen, image_edit, inpaint]
     defaultInferenceSteps: 4
     requestParams:
       seed: number
@@ -58,7 +58,7 @@ models:
     engineSpecifier: black-forest-labs/FLUX.2-klein-9B
     type: image
     family: FLUX.2
-    tags: [image_gen, image_edit]
+    tags: [image_gen, image_edit, inpaint]
     defaultInferenceSteps: 4
     requestParams:
       seed: number

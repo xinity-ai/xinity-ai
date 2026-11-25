@@ -499,7 +499,7 @@ export const openaiCompatPaths = {
         "- Only available for deployments of image models that edit images.",
         `- ${APP_HEADER_NOTE}`,
         "- Input images must be PNG, JPEG or WebP.",
-        "- `mask` is not supported.",
+        "- `mask` is only accepted by models that support masks, and must be a PNG with an alpha channel.",
         "- `response_format: \"url\"` returns a link to `/media/images/{fileId}` that serves the image without an API key for one hour.",
         "- Streaming (`stream`, `partial_images`) is not supported.",
         "- `output_format` accepts `png` (default), `jpeg` and `webp`. `quality` and `input_fidelity` are accepted and ignored.",

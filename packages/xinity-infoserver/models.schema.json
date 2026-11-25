@@ -70,7 +70,8 @@
                 "diarization",
                 "realtime",
                 "image_gen",
-                "image_edit"
+                "image_edit",
+                "inpaint"
               ]
             }
           },
@@ -93,7 +94,8 @@
                     "diarization",
                     "realtime",
                     "image_gen",
-                    "image_edit"
+                    "image_edit",
+                    "inpaint"
                   ]
                 }
               },
@@ -108,7 +110,8 @@
                     "diarization",
                     "realtime",
                     "image_gen",
-                    "image_edit"
+                    "image_edit",
+                    "inpaint"
                   ]
                 }
               }

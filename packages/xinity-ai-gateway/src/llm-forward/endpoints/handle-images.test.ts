@@ -81,6 +81,47 @@ function pngBlob(width: number, height: number): Blob {
   return new Blob([uncompressedPng(width, height)], { type: "image/png" });
 }
 
+type MaskFormat = { colorType: 4 | 6; bitDepth: 8 | 16 };
+
+// Rows cycle through the filter types None, Sub, Up and Average, so the gateway has to undo each.
+// Opaque pixels alternate between full and nearly zero alpha, and only fully transparent ones mark the edit.
+function alphaMaskBlob(width: number, height: number, transparent: (x: number, y: number) => boolean, { colorType, bitDepth }: MaskFormat = { colorType: 6, bitDepth: 8 }): Blob {
+  const sampleBytes = bitDepth / 8;
+  const bytesPerPixel = (colorType === 6 ? 4 : 2) * sampleBytes;
+  const rowBytes = width * bytesPerPixel;
+  const raw = Buffer.alloc(height * rowBytes);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const pixel = y * rowBytes + x * bytesPerPixel;
+      for (let byte = 0; byte < bytesPerPixel - sampleBytes; byte++) {
+        raw[pixel + byte] = (x * 7 + y * 13 + byte * 29) & 0xff;
+      }
+      raw.fill(transparent(x, y) ? 0 : x % 2 ? 0xff : 0x01, pixel + bytesPerPixel - sampleBytes, pixel + bytesPerPixel);
+    }
+  }
+  const filtered = Buffer.alloc(height * (rowBytes + 1));
+  for (let y = 0; y < height; y++) {
+    const filter = y % 4;
+    filtered[y * (rowBytes + 1)] = filter;
+    for (let x = 0; x < rowBytes; x++) {
+      const left = x >= bytesPerPixel ? raw[y * rowBytes + x - bytesPerPixel]! : 0;
+      const up = y > 0 ? raw[(y - 1) * rowBytes + x]! : 0;
+      const prediction = [0, left, up, (left + up) >> 1][filter]!;
+      filtered[y * (rowBytes + 1) + 1 + x] = (raw[y * rowBytes + x]! - prediction) & 0xff;
+    }
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([bitDepth, colorType, 0, 0, 0], 8);
+  return new Blob([Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", header),
+    pngChunk("IDAT", deflateSync(filtered)),
+    pngChunk("IEND", new Uint8Array()),
+  ])], { type: "image/png" });
+}
+
 function idatPixels(png: Uint8Array): Buffer {
   const length = Buffer.from(png).readUInt32BE(33);
   return inflateSync(png.subarray(41, 41 + length));
@@ -325,8 +366,39 @@ describe("handleImageEdit", () => {
     expect(message!.content.map((part) => part.type)).toEqual(["text", "image_url"]);
   });
 
+  const inpaintModel = () => modelFound(imageModel({ tags: ["image_edit", "inpaint"] }));
+  const lowerLeftCorner = (x: number, y: number) => x < 12 && y >= 20;
+
   test.each([
-    ["a mask", { mask: pngBlob(32, 32) }],
+    ["RGBA", { colorType: 6, bitDepth: 8 }],
+    ["16-bit gray and alpha", { colorType: 4, bitDepth: 16 }],
+  ] as const)("sends an %s mask to the engine as white where it was fully transparent and black elsewhere", async (_name, format) => {
+    getModelInfo.mockImplementation(async () => inpaintModel());
+
+    const res = await edit({ mask: alphaMaskBlob(32, 32, lowerLeftCorner, format) });
+
+    expect(res.status).toBe(200);
+    const mask = new Uint8Array(await (backendForms[0]!.get("mask_image") as Blob).arrayBuffer());
+    expect([...mask.subarray(24, 26)]).toEqual([8, 0]);
+    const expectedRows = Array.from({ length: 32 }, (_, y) => [0, ...Array.from({ length: 32 }, (_, x) => lowerLeftCorner(x, y) ? 255 : 0)]);
+    expect([...idatPixels(mask)]).toEqual(expectedRows.flat());
+  });
+
+  test.each([
+    ["a mask without an alpha channel", { mask: pngBlob(32, 32) }],
+    ["a mask that is not a PNG", { mask: new Blob(["not an image"]) }],
+    ["a mask of another size than the first image", { mask: alphaMaskBlob(16, 16, lowerLeftCorner) }],
+  ])("refuses %s before reaching the engine", async (_name, fields) => {
+    getModelInfo.mockImplementation(async () => inpaintModel());
+
+    const res = await edit(fields);
+
+    expect(res.status).toBe(400);
+    expect(backendForms).toHaveLength(0);
+  });
+
+  test.each([
+    ["a mask for a model that does not inpaint", { mask: alphaMaskBlob(32, 32, lowerLeftCorner) }],
     ["an input that is not an image", { image: new Blob(["not an image"]) }],
     ["a missing input image", { image: [] }],
   ])("refuses %s before reaching the engine", async (_name, fields) => {
