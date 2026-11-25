@@ -35,9 +35,10 @@ export type ModelNodeRequirements = {
  * Checks whether a single node can serve a model.
  * Returns null if compatible, or the first failing reason.
  *
- * Check order: driver, version, platform, capacity.
+ * Check order: driver, feature, version, platform, capacity.
  * This lets callers separate "structurally incompatible" from "just no capacity"
- * for greedy allocation loops.
+ * for greedy allocation loops. A missing feature comes before the version, since
+ * upgrading the driver does not help when its build lacks the feature.
  *
  * Fail-closed for gpus: if a model requires specific GPU platforms,
  * nodes with no GPUs or wrong vendors are excluded.
@@ -52,6 +53,13 @@ export function checkNodeCompatibility(
 
   if (!(req.driver in node.driverVersions)) return "missing_driver";
 
+  if (req.requiredFeatures && req.requiredFeatures.length > 0) {
+    const nodeFeatures = node.driverFeatures?.[req.driver] ?? [];
+    if (!req.requiredFeatures.every(f => nodeFeatures.includes(f))) {
+      return "missing_feature";
+    }
+  }
+
   const nodeVersion = node.driverVersions[req.driver];
   const constrainsVersion = req.minVersion !== undefined || (req.blockedVersions?.length ?? 0) > 0;
 
@@ -63,13 +71,6 @@ export function checkNodeCompatibility(
     }
     if (req.blockedVersions?.some(blocked => matchesVersionRange(nodeVersion, blocked.range))) {
       return "version_blocked";
-    }
-  }
-
-  if (req.requiredFeatures && req.requiredFeatures.length > 0) {
-    const nodeFeatures = node.driverFeatures?.[req.driver] ?? [];
-    if (!req.requiredFeatures.every(f => nodeFeatures.includes(f))) {
-      return "missing_feature";
     }
   }
 

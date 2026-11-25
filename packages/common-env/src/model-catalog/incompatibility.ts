@@ -14,10 +14,10 @@ export type IncompatibilityReason = z.infer<typeof IncompatibilityReasonEnum>;
 /** How far through checkNodeCompatibility's ordered checks a node got before failing. */
 const REASON_PROGRESS: Record<IncompatibilityReason, number> = {
   missing_driver: 0,
-  version_unknown: 1,
-  version_too_old: 1,
-  version_blocked: 1,
-  missing_feature: 2,
+  missing_feature: 1,
+  version_unknown: 2,
+  version_too_old: 2,
+  version_blocked: 2,
   wrong_platform: 3,
   insufficient_capacity: 4,
 };
