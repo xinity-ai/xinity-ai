@@ -28,6 +28,7 @@ export type ModelInfo = {
   maxContextLength: number;
   audioPositionsPerSecond?: number;
   defaultInferenceSteps?: number;
+  defaultGuidanceScale?: number;
   requestParams?: Record<string, string>;
   /** Call when the request completes to release load-balancer resources. */
   release: () => void;

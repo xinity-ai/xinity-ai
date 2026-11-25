@@ -147,7 +147,7 @@ describe("handleImageGeneration", () => {
     expect(json).toMatchObject({ size: "64x32", output_format: "png" });
   });
 
-  test("asks the engine for uncompressed base64 PNGs and forwards only allowlisted extras", async () => {
+  test("asks the engine for uncompressed base64 PNGs at the model's default steps and forwards only allowlisted extras", async () => {
     await generate({ size: "auto", output_compression: 40, seed: 7, guidance_scale: 3 });
 
     expect(backendBodies[0]).toEqual({
@@ -156,6 +156,7 @@ describe("handleImageGeneration", () => {
       response_format: "b64_json",
       output_format: "png",
       n: 1,
+      num_inference_steps: 50,
       seed: 7,
     });
   });
@@ -169,9 +170,22 @@ describe("handleImageGeneration", () => {
     expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ model: "test-image", inputTokens: 0, outputTokens: 2 * 8 * 50, success: true, modelType: "image" });
   });
 
-  test("counts the steps a request asked for instead of the default", async () => {
+  test("sends the model's guidance scale unless the request sets its own", async () => {
+    getModelInfo.mockImplementation(async () => modelFound(imageModel({
+      defaultGuidanceScale: 0,
+      requestParams: { guidance_scale: "number" },
+    })));
+
+    await generate({});
+    await generate({ guidance_scale: 3 });
+
+    expect(backendBodies.map((body) => body.guidance_scale)).toEqual([0, 3]);
+  });
+
+  test("sends and counts the steps a request asked for instead of the default", async () => {
     await generate({ num_inference_steps: 4 });
 
+    expect(backendBodies[0]).toMatchObject({ num_inference_steps: 4 });
     expect(recordUsageEvent.mock.calls[0]![0]).toMatchObject({ outputTokens: 8 * 4 });
   });
 
@@ -287,6 +301,7 @@ describe("handleImageEdit", () => {
       output_format: "png",
       n: "2",
       seed: "7",
+      num_inference_steps: "50",
     });
   });
 

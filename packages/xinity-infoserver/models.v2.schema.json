@@ -259,10 +259,15 @@
             }
           },
           "defaultInferenceSteps": {
-            "description": "Denoising steps an image model runs when a request leaves the step count unset. Stated for every image model and no other",
+            "description": "Denoising steps the image model is made to run, the count its publisher recommends. Stated for every image model and no other",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
+          },
+          "defaultGuidanceScale": {
+            "description": "Guidance scale the image model is made to run at, the value its publisher recommends",
+            "type": "number",
+            "minimum": 0
           },
           "isCustom": {
             "default": false,

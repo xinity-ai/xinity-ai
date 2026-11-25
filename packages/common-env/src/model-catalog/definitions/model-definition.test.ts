@@ -193,4 +193,8 @@ describe("image models", () => {
     expect(ModelSchema.safeParse({ ...imageModel, type: "chat", defaultInferenceSteps: undefined }).success).toBe(false);
     expect(ModelSchema.safeParse({ ...imageModel, type: "chat", tags: [] }).success).toBe(false);
   });
+
+  it("rejects a guidance scale on a chat model", () => {
+    expect(ModelSchema.safeParse({ ...imageModel, type: "chat", tags: [], defaultInferenceSteps: undefined, defaultGuidanceScale: 0 }).success).toBe(false);
+  });
 });

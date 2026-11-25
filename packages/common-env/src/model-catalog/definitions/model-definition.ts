@@ -184,8 +184,9 @@ export const ModelFields = z.looseObject({
   type: ModelTypeEnum.default("chat").describe("Usage type, which determines API compatibility"),
   family: z.string().default("unknown").describe("Family of the model. May be unknown"),
   variantOf: z.string().optional().describe("Specifier of the standard variant of this model, when this entry is a variant of it. The UI presents the group together while each variant stays separately deployable and keeps its own license, description and capacity. A variant may not itself have variants"),
-  tags: z.array(TagEnum).default([]).describe("Capabilities this variant supports: tools, vision, custom_code, diarization, realtime, image_gen, image_edit"),
-  defaultInferenceSteps: z.number().int().positive().optional().describe("Denoising steps an image model runs when a request leaves the step count unset. Stated for every image model and no other"),
+  tags: z.array(TagEnum).default([]).describe("Capabilities this variant supports: tools, vision, custom_code, diarization, realtime, image_gen (images from a prompt), image_edit (images from a prompt and input images)"),
+  defaultInferenceSteps: z.number().int().positive().optional().describe("Denoising steps the image model is made to run, the count its publisher recommends. Stated for every image model and no other"),
+  defaultGuidanceScale: z.number().min(0).optional().describe("Guidance scale the image model is made to run at, the value its publisher recommends"),
   isCustom: z.boolean().default(false).describe("Set for fine-tuned models"),
 
   unlisted: z.boolean().default(false).describe("Keeps the entry out of the model picker without making it unusable. Deployments referencing it keep working, and a user can still reach it deliberately"),
@@ -246,6 +247,10 @@ function withModelRules<T extends typeof ModelFields | typeof RelayedModelFields
     .refine(
       model => (model.type === "image") === (model.defaultInferenceSteps !== undefined),
       { message: "defaultInferenceSteps is stated exactly for image models", path: ["defaultInferenceSteps"] },
+    )
+    .refine(
+      model => model.type === "image" || model.defaultGuidanceScale === undefined,
+      { message: "defaultGuidanceScale is stated only for image models", path: ["defaultGuidanceScale"] },
     )
     .refine(
       model => !model.tags.includes("realtime") || model.sizing.audioPositionsPerSecond !== undefined,

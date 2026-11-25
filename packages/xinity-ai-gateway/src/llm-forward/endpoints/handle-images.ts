@@ -52,6 +52,9 @@ function lacksTag(modelInfo: ModelInfo, tag: string): boolean {
 function engineRequestParams(body: ImageRequestBody, rawBody: Record<string, unknown>, modelInfo: ModelInfo): Record<string, unknown> {
   const outputFormat = body.output_format ?? "png";
   return {
+    // The engine's own fallbacks ignore the model, so a distilled model would run steps and guidance it was not made for.
+    ...(modelInfo.defaultInferenceSteps !== undefined ? { num_inference_steps: modelInfo.defaultInferenceSteps } : {}),
+    ...(modelInfo.defaultGuidanceScale !== undefined ? { guidance_scale: modelInfo.defaultGuidanceScale } : {}),
     ...extractAllowedRequestParams(rawBody, modelInfo.requestParams),
     n: body.n ?? 1,
     ...(body.size && body.size !== "auto" ? { size: body.size } : {}),
