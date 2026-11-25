@@ -315,14 +315,14 @@ models:
         circumvented without an equivalent, and redistributing the weights requires
         NVIDIA's license and notice.
     # minKvCacheGb is authored: every attention layer also keeps the sparse-attention indexer's
-    # compressed keys, which no rank splits. Bracketed across two nodes: 7.28 aborts, 7.29
-    # starts at 1.01x.
+    # compressed keys, which no rank splits. Bracketed across two nodes on vLLM 0.33: 7.43 aborts,
+    # 7.48 starts at 1.01x.
     sizing: &sizing-flash-next-nvfp4
       kvBytesPerToken: 24576
       attentionHeads: 24
       kvHeads: 2
       stateBytesPerSequence: 115458048
-      minKvCacheGb: 7.29
+      minKvCacheGb: 7.48
       maxContextLength: 262144
       weightGb: 132.6   # measured resident, 37.9 GiB per card across two plus the n-gram table
       layers: 48
@@ -349,12 +349,12 @@ models:
       Thinking, `reasoning_effort` and the window behave exactly as on the plain
       entry.
     # The MTP head is one more attention layer with its own cache and indexer, so the floor moves.
-    # Bracketed across two nodes: 8.06 aborts, 8.07 starts at 1.01x.
+    # Bracketed across two nodes on vLLM 0.33: 8.23 aborts, 8.28 starts at 1.01x.
     sizing:
       <<: *sizing-flash-next-nvfp4
       weightGb: 135.5   # measured resident with the MTP head, 39.26 GiB per card across two
       attentionLayers: 13
-      minKvCacheGb: 8.07
+      minKvCacheGb: 8.28
     engineArgs:
       - *parsers
       - --enable-expert-parallel
@@ -372,12 +372,12 @@ models:
 
       Thinking, `reasoning_effort` and the window behave exactly as on the plain
       entry.
-    # Bracketed across two nodes: 8.23 aborts, 8.24 starts at 1.01x.
+    # Bracketed across two nodes on vLLM 0.33: 8.24 aborts, 8.47 starts at 1.01x.
     sizing:
       <<: *sizing-flash-next-nvfp4
       weightGb: 135.5   # measured resident with the MTP head, 39.26 GiB per card across two
       attentionLayers: 13
-      minKvCacheGb: 8.24
+      minKvCacheGb: 8.47
     engineArgs:
       - *parsers
       - --enable-expert-parallel
